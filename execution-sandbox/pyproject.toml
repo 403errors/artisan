@@ -1,0 +1,22 @@
+[project]
+name = "artisan-execution-sandbox"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "Sameer Verma", email = "na21b061@smail.iitm.ac.in" }
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+artisan-execution-sandbox = "artisan_execution_sandbox:main"
+
+[build-system]
+requires = ["uv_build>=0.12.6,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+]

@@ -1,0 +1,32 @@
+[project]
+name = "artisan-agents"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "Sameer Verma", email = "na21b061@smail.iitm.ac.in" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "githubkit==0.16.1",
+    "google-adk==2.8.0",
+    "google-cloud-firestore==2.29.0",
+    "google-cloud-pubsub==2.39.2",
+    "google-cloud-run==0.16.1",
+    "google-cloud-secret-manager==2.30.0",
+    "opentelemetry-exporter-gcp-trace==1.15.0",
+    "opentelemetry-sdk==1.42.1",
+    "pydantic==2.13.4",
+]
+
+[project.scripts]
+artisan-agents = "artisan_agents:main"
+
+[build-system]
+requires = ["uv_build>=0.12.6,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+]
