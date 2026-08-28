@@ -196,16 +196,18 @@ class ConflictVerdict(BaseModel):
   pr_url: string | null,
   escalation_history: [{ at: timestamp, reason: string, gate: "1"|"2"|"3" }],
   trace_ids: string[],
-  processed_delivery_ids: string[],   // idempotency
   created_at: timestamp,
   updated_at: timestamp
 }
 ```
+Idempotency is tracked separately, not as a field here — see the top-level
+`processed_deliveries/{delivery_id}` collection in §7, which exists (and must be checked)
+*before* a ticket doc necessarily exists yet.
 
 ## 7. State Management
 
 - **Firestore is the single source of truth per ticket** — every gate reads and writes through it; agents themselves are stateless between invocations.
-- **Idempotency:** every webhook delivery ID is checked against `processed_delivery_ids` before any side effect runs, since Pub/Sub delivery is at-least-once.
+- **Idempotency is a claim, not a flag:** a `processed_deliveries/{delivery_id}` doc (top-level collection, not a field on the ticket doc) is atomically claimed *before* `handle_event` runs, not marked after — Gate 2 can run for minutes, and Pub/Sub's own ack-deadline-driven redelivery can easily arrive while the first attempt is still in flight, so a naive check-then-mark-on-success guard leaves that whole window unprotected (found and fixed in Sprint 3). `status` moves `in_progress` -> `completed` (permanent dedupe) or `in_progress` -> `failed` (immediately reclaimable, so Pub/Sub's own retry-on-failure still works); a stale `in_progress` claim (the owning instance died mid-request) is also reclaimable after a timeout, so one crashed attempt can't block a delivery forever.
 - **Caps enforced in Firestore, not in agent prompts:** `clarification_rounds` (max 3) and `retry_count` (max N, configurable) are read and incremented transactionally so a race between duplicate deliveries can't bypass a cap.
 - **Session/PR mapping:** the ticket doc is the join point between a GitHub issue, a Jira ticket, and (once opened) a PR — the dashboard and every agent resolve identity through this doc, never by re-deriving it from GitHub/Jira directly.
 
@@ -215,7 +217,7 @@ class ConflictVerdict(BaseModel):
 - **Artisan → Jira:** a single Artisan service account, API token in Secret Manager, used exclusively by the orchestrator (direct Jira Cloud REST API calls, Basic Auth) — end users never authenticate to Jira through Artisan. (Originally routed through an `mcp-atlassian` MCP server; dropped in Sprint 2, see §2.)
 - **Artisan → Gemini:** Vertex AI, authenticated via the orchestrator's own service account (ADC) — no API key/secret at all. Requires `GOOGLE_GENAI_USE_VERTEXAI=TRUE` + `GOOGLE_CLOUD_PROJECT` + `GOOGLE_CLOUD_LOCATION=global` env vars on the Cloud Run service and `roles/aiplatform.user` on `orchestrator@` (added Sprint 2 — see `docs/CONTEXT.md`). `location` must be `global`; `gemini-3.7-flash` isn't served from regional endpoints like `us-central1`.
 - **Dashboard → user:** GitHub OAuth (Auth.js), scoped to `read:org`/repo access so a signed-in user's dashboard access matches their actual GitHub repo permissions. Jira ticket data is shown as read-only mirrored state (via the service account above), not fetched with the user's own Jira credentials.
-- **IAM:** each Cloud Run service/job runs under its own least-privilege service account (orchestrator: Firestore + Pub/Sub + Secret Manager + Vertex AI (`aiplatform.user`) + Cloud Run Jobs-trigger access; execution-sandbox: Firestore write + GitHub App token minting only — the latter means `execution-sandbox@` needs its own `secretAccessor` grant on `github-app-private-key` specifically, added in Sprint 3, since it mints its own installation token rather than being handed one by the orchestrator; dashboard: Firestore read-only).
+- **IAM:** each Cloud Run service/job runs under its own least-privilege service account (orchestrator: Firestore + Pub/Sub + Secret Manager + Vertex AI (`aiplatform.user`) + Cloud Trace (`cloudtrace.agent`) + Cloud Run Jobs-trigger access; execution-sandbox: Firestore write + GitHub App token minting (its own `secretAccessor` grant on `github-app-private-key` specifically, since it mints its own installation token rather than being handed one by the orchestrator) + Vertex AI (`aiplatform.user`) for the coding agent's own Gemini calls — all granted at Sprint 3's live-deploy close-out; dashboard: Firestore read-only). The `cloudtrace.agent` grant on `orchestrator@` was missing from Sprint 2 through Sprint 3's initial deploy — every gate span silently failed to export (`cloudtrace.traces.patch` permission denied) until this was caught live during Sprint 3's close-out and fixed; don't assume tracing works from code review alone, verify the IAM grant is actually present.
 
 ## 9. Failure Handling & Escalation
 

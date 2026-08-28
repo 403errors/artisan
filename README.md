@@ -101,12 +101,21 @@ At runtime (as a Cloud Run Job execution, not a long-running service), the orche
 `ATTEMPT_NUMBER`, `PLAN_JSON`, and `PRIOR_FEEDBACK` as per-execution env var overrides — these
 aren't meant to be set by hand except for a manual smoke-test trigger.
 
-Needs its own IAM grant beyond Sprint 1's `execution-sandbox@` (`datastore.user`): `secretAccessor`
-on the `github-app-private-key` secret only, since this job mints its own GitHub App installation
-token rather than being handed one by the orchestrator (see [SYSTEM_DESIGN.md §8](./docs/SYSTEM_DESIGN.md#8-auth--security)).
+Needs two IAM grants beyond Sprint 1's `execution-sandbox@` (`datastore.user`): `secretAccessor`
+on the `github-app-private-key` secret, since this job mints its own GitHub App installation
+token rather than being handed one by the orchestrator; and `aiplatform.user`, for the coding
+agent's own Gemini calls (see [SYSTEM_DESIGN.md §8](./docs/SYSTEM_DESIGN.md#8-auth--security)).
+Both are granted as of Sprint 3's close-out.
 
-Deploying/registering it as a Cloud Run Job (not yet done as of this writing — see
-[CONTEXT.md](./docs/CONTEXT.md)) — same repo-root build-context requirement as `agents/` above:
+If Docker isn't available locally, `gcloud builds submit` with a small `cloudbuild.yaml`
+(`docker build -f <dockerfile> -t <image> .`, repo root as context) builds the same Dockerfile in
+Cloud Build and pushes automatically — this is how both images were actually built for Sprint 3's
+close-out, since no local Docker daemon existed in that environment either.
+
+Deploying/registering it as a Cloud Run Job — done as of Sprint 3's close-out, deployed with
+`--task-timeout=1800` and `ARTISAN_DEMO_REPO_TEST_COMMAND=true` (see
+[CONTEXT.md](./docs/CONTEXT.md) Milestone 5) — same repo-root build-context requirement as
+`agents/` above:
 
 ```bash
 # from the repo root
@@ -139,4 +148,4 @@ None of this repo's code ever takes a raw secret as a literal. Everything (`gith
 
 ## Deployment
 
-Cloud Run (services: `orchestrator`, `dashboard`; job: `execution-sandbox`; `mcp-atlassian` was deployed in Sprint 1 and deleted in Sprint 2 after being superseded, see above). `orchestrator` has a Dockerfile and a manual `docker build` + `gcloud run deploy --image` path (see above) as of Sprint 2, updated in Sprint 3 for the `uv` workspace's repo-root build context; `execution-sandbox` gets its first Dockerfile in Sprint 3 but has not yet been deployed/registered as a Cloud Run Job (see [CONTEXT.md](./docs/CONTEXT.md)). Full IaC + CI/CD automation for all services lands in Sprint 7 — see [SPRINT.md](./docs/SPRINT.md#sprint-7--deployment--cicd).
+Cloud Run (services: `orchestrator`, `dashboard`; job: `execution-sandbox`; `mcp-atlassian` was deployed in Sprint 1 and deleted in Sprint 2 after being superseded, see above). `orchestrator` has a Dockerfile and a manual `docker build` + `gcloud run deploy --image` path (see above) as of Sprint 2, updated in Sprint 3 for the `uv` workspace's repo-root build context; `execution-sandbox` got its first Dockerfile in Sprint 3 and was deployed/registered as a Cloud Run Job for the first time as of Sprint 3's close-out (see [CONTEXT.md](./docs/CONTEXT.md) Milestone 5). Full IaC + CI/CD automation for all services lands in Sprint 7 — see [SPRINT.md](./docs/SPRINT.md#sprint-7--deployment--cicd).

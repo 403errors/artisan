@@ -95,14 +95,56 @@ async def test_clarification_round_cap_flips_to_manual_pickup_on_third_round(
 
 
 @pytest.mark.asyncio
-async def test_duplicate_delivery_guard(cleanup_delivery) -> None:
+async def test_claim_delivery_rejects_a_concurrent_duplicate_while_still_fresh(
+    cleanup_delivery,
+) -> None:
     _require_credentials()
     delivery_id = "test-delivery-900003"
     cleanup_delivery.append(delivery_id)
 
-    assert await firestore_client.is_duplicate_delivery(delivery_id) is False
-    await firestore_client.mark_delivery_processed(delivery_id)
-    assert await firestore_client.is_duplicate_delivery(delivery_id) is True
+    assert await firestore_client.claim_delivery(delivery_id) is True
+    # A second delivery of the same ID arriving while the first is still (by definition,
+    # since nothing has marked it completed/failed yet) in flight must be rejected — this is
+    # the exact race a naive check-then-mark-after-success guard misses.
+    assert await firestore_client.claim_delivery(delivery_id) is False
+
+
+@pytest.mark.asyncio
+async def test_claim_delivery_is_permanently_blocked_after_completion(cleanup_delivery) -> None:
+    _require_credentials()
+    delivery_id = "test-delivery-900004"
+    cleanup_delivery.append(delivery_id)
+
+    assert await firestore_client.claim_delivery(delivery_id) is True
+    await firestore_client.mark_delivery_completed(delivery_id)
+    assert await firestore_client.claim_delivery(delivery_id) is False
+
+
+@pytest.mark.asyncio
+async def test_claim_delivery_is_reclaimable_after_failure(cleanup_delivery) -> None:
+    _require_credentials()
+    delivery_id = "test-delivery-900005"
+    cleanup_delivery.append(delivery_id)
+
+    assert await firestore_client.claim_delivery(delivery_id) is True
+    await firestore_client.mark_delivery_failed(delivery_id)
+    # A genuinely failed attempt must not block Pub/Sub's own retry-on-failure mechanism.
+    assert await firestore_client.claim_delivery(delivery_id) is True
+
+
+@pytest.mark.asyncio
+async def test_claim_delivery_reclaims_a_stale_in_progress_claim(
+    cleanup_delivery, monkeypatch
+) -> None:
+    _require_credentials()
+    delivery_id = "test-delivery-900006"
+    cleanup_delivery.append(delivery_id)
+
+    assert await firestore_client.claim_delivery(delivery_id) is True
+    # Simulate the owning instance having died mid-request: shrink the staleness window to 0
+    # rather than sleeping in the test.
+    monkeypatch.setattr(firestore_client, "DELIVERY_CLAIM_STALE_AFTER_SECONDS", 0)
+    assert await firestore_client.claim_delivery(delivery_id) is True
 
 
 @pytest.mark.asyncio

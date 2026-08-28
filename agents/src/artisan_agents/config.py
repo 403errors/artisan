@@ -8,6 +8,14 @@ GEMINI_MODEL_ID = "gemini-3.7-flash"
 MAX_CLARIFICATION_ROUNDS = 3
 MAX_EXECUTION_RETRIES = 3
 MAX_TRIVIAL_CONFLICT_ATTEMPTS = 1
+# A claimed-but-still-"in_progress" delivery older than this is assumed to belong to a Cloud Run
+# instance that died mid-request (never reached the except/mark_delivery_failed path) and is
+# reclaimable rather than blocking that delivery forever. Must stay longer than the orchestrator's
+# own Cloud Run request timeout (3600s, its max — see docs/SYSTEM_DESIGN.md §7) so a claim only
+# goes stale after the underlying request could no longer possibly still be legitimately running —
+# 1800 would have been shorter than that timeout and reopened the exact race this guards against
+# for a long-running attempt, so this must stay above 3600.
+DELIVERY_CLAIM_STALE_AFTER_SECONDS = 4200
 
 # Environment-driven settings — deploy-time identifiers, not secrets (those live in Secret
 # Manager, see gcp/secrets.py). Defaults match the identifiers already provisioned in Sprint 1

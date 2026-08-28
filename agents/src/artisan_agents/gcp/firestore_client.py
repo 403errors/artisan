@@ -3,14 +3,26 @@
 
 Firestore is the single source of truth per ticket (SYSTEM_DESIGN.md §7) — every gate reads and
 writes through here, and caps (`clarification_rounds`) are read/incremented transactionally so a
-race between duplicate Pub/Sub deliveries can't bypass a cap (cross-cutting rule 3)."""
+race between duplicate Pub/Sub deliveries can't bypass a cap (cross-cutting rule 3).
 
-from datetime import datetime, timezone
+The delivery guard itself is a claim, not a flag: `claim_delivery` must be called — and must
+succeed — *before* any side effect runs, not after, since Gate 2 can take minutes and Pub/Sub's own
+ack-deadline-driven redelivery can easily arrive while the first attempt is still in flight. A
+`processed_deliveries/{delivery_id}` doc's `status` moves in_progress -> completed (permanent
+dedupe) or in_progress -> failed (reclaimable immediately, so Pub/Sub's own retry-on-failure still
+works); an in_progress claim older than DELIVERY_CLAIM_STALE_AFTER_SECONDS is also reclaimable, so a
+crashed instance can't block a delivery forever."""
+
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 
 from google.cloud import firestore
 
-from artisan_agents.config import MAX_CLARIFICATION_ROUNDS, MAX_EXECUTION_RETRIES
+from artisan_agents.config import (
+    DELIVERY_CLAIM_STALE_AFTER_SECONDS,
+    MAX_CLARIFICATION_ROUNDS,
+    MAX_EXECUTION_RETRIES,
+)
 from artisan_shared.firestore_schema import EscalationEntry, TicketDoc
 from artisan_shared.ticket_ids import ticket_doc_id
 
@@ -18,12 +30,13 @@ __all__ = [
     "ClarificationCapExceeded",
     "RetryCapExceeded",
     "append_escalation",
+    "claim_delivery",
     "create_ticket",
     "get_ticket",
     "increment_clarification_round",
     "increment_retry_round",
-    "is_duplicate_delivery",
-    "mark_delivery_processed",
+    "mark_delivery_completed",
+    "mark_delivery_failed",
     "ticket_doc_id",
     "update_ticket",
 ]
@@ -79,14 +92,45 @@ async def update_ticket(repo: str, issue_number: int, **fields) -> None:
     await _client().collection("tickets").document(ticket_doc_id(repo, issue_number)).update(fields)
 
 
-async def is_duplicate_delivery(delivery_id: str) -> bool:
-    snapshot = await _client().collection("processed_deliveries").document(delivery_id).get()
-    return snapshot.exists
+@firestore.async_transactional
+async def _claim_delivery_txn(transaction: firestore.AsyncTransaction, doc_ref) -> bool:
+    snapshot = await doc_ref.get(transaction=transaction)
+    now = _now()
+    if snapshot.exists:
+        data = snapshot.to_dict()
+        status = data.get("status")
+        if status == "completed":
+            return False
+        if status == "in_progress":
+            claimed_at = datetime.fromisoformat(data["claimed_at"])
+            if now - claimed_at < timedelta(seconds=DELIVERY_CLAIM_STALE_AFTER_SECONDS):
+                return False
+            # else: stale in_progress claim (owning instance likely died mid-request) — reclaim.
+        # status == "failed", or a stale in_progress claim — reclaimable either way.
+    transaction.set(doc_ref, {"status": "in_progress", "claimed_at": now.isoformat()})
+    return True
 
 
-async def mark_delivery_processed(delivery_id: str) -> None:
+async def claim_delivery(delivery_id: str) -> bool:
+    """Atomically claims a Pub/Sub delivery for processing before any side effect runs
+    (cross-cutting rule 5). Returns True if the caller should proceed with handle_event, False if
+    another still-fresh attempt already owns this delivery ID or it was already fully completed —
+    the two cases a real concurrent-duplicate delivery and a genuinely-already-done delivery need
+    to be told apart from a delivery that's safe to retry (failed, or stale in_progress)."""
+    doc_ref = _client().collection("processed_deliveries").document(delivery_id)
+    transaction = _client().transaction()
+    return await _claim_delivery_txn(transaction, doc_ref)
+
+
+async def mark_delivery_completed(delivery_id: str) -> None:
     await _client().collection("processed_deliveries").document(delivery_id).set(
-        {"processed_at": _now().isoformat()}
+        {"status": "completed", "completed_at": _now().isoformat()}, merge=True
+    )
+
+
+async def mark_delivery_failed(delivery_id: str) -> None:
+    await _client().collection("processed_deliveries").document(delivery_id).set(
+        {"status": "failed", "failed_at": _now().isoformat()}, merge=True
     )
 
 

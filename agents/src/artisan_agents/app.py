@@ -4,8 +4,10 @@
   raw body is still available, then publishes to Pub/Sub and returns fast. No side effects beyond
   that — this route's only job is fast, verified ingestion.
 - POST /pubsub/push: the push subscription's target. Verifies the Pub/Sub-issued OIDC token,
-  checks idempotency against `processed_delivery_ids`/`processed_deliveries` (cross-cutting rule
-  5), then dispatches (dispatch.py).
+  atomically claims the delivery via `processed_deliveries` *before* dispatching (cross-cutting
+  rule 5 — claim-before-process, not check-then-mark-after, since Gate 2 can run for minutes and a
+  naive after-the-fact mark leaves a window for Pub/Sub's own redelivery to double-process), then
+  dispatches (dispatch.py).
 """
 
 from contextlib import asynccontextmanager
@@ -15,7 +17,11 @@ from fastapi import FastAPI, Request, Response
 from artisan_agents import tracing
 from artisan_agents.config import SECRET_GITHUB_WEBHOOK_SECRET
 from artisan_agents.dispatch import handle_event
-from artisan_agents.gcp.firestore_client import is_duplicate_delivery, mark_delivery_processed
+from artisan_agents.gcp.firestore_client import (
+    claim_delivery,
+    mark_delivery_completed,
+    mark_delivery_failed,
+)
 from artisan_agents.gcp.pubsub import (
     PushTokenVerificationError,
     decode_push_message,
@@ -61,9 +67,14 @@ async def pubsub_push(request: Request) -> Response:
     body = await request.json()
     envelope = decode_push_message(body)
 
-    if await is_duplicate_delivery(envelope.delivery_id):
+    if not await claim_delivery(envelope.delivery_id):
         return Response(status_code=200)
 
-    await handle_event(envelope)
-    await mark_delivery_processed(envelope.delivery_id)
+    try:
+        await handle_event(envelope)
+    except Exception:
+        await mark_delivery_failed(envelope.delivery_id)
+        raise
+
+    await mark_delivery_completed(envelope.delivery_id)
     return Response(status_code=200)

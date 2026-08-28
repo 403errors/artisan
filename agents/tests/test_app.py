@@ -84,15 +84,15 @@ def test_pubsub_push_is_a_no_op_for_a_duplicate_delivery(client, monkeypatch) ->
     monkeypatch.setattr(app_module, "verify_push_token", lambda _header: None)
     monkeypatch.setattr(app_module, "decode_push_message", lambda _body: envelope)
 
-    async def _is_duplicate(_delivery_id):
-        return True
+    async def _claim(_delivery_id):
+        return False  # already claimed by another (still-fresh or completed) attempt
 
     dispatched = []
 
     async def _handle_event(_envelope):
         dispatched.append(_envelope)
 
-    monkeypatch.setattr(app_module, "is_duplicate_delivery", _is_duplicate)
+    monkeypatch.setattr(app_module, "claim_delivery", _claim)
     monkeypatch.setattr(app_module, "handle_event", _handle_event)
 
     response = client.post(
@@ -103,7 +103,7 @@ def test_pubsub_push_is_a_no_op_for_a_duplicate_delivery(client, monkeypatch) ->
     assert dispatched == []
 
 
-def test_pubsub_push_dispatches_and_marks_processed_for_a_new_delivery(client, monkeypatch) -> None:
+def test_pubsub_push_dispatches_and_marks_completed_for_a_new_delivery(client, monkeypatch) -> None:
     from artisan_shared.models import GitHubWebhookEnvelope
 
     envelope = GitHubWebhookEnvelope(
@@ -112,21 +112,21 @@ def test_pubsub_push_dispatches_and_marks_processed_for_a_new_delivery(client, m
     monkeypatch.setattr(app_module, "verify_push_token", lambda _header: None)
     monkeypatch.setattr(app_module, "decode_push_message", lambda _body: envelope)
 
-    async def _is_duplicate(_delivery_id):
-        return False
+    async def _claim(_delivery_id):
+        return True
 
     dispatched = []
-    marked = []
+    completed = []
 
     async def _handle_event(_envelope):
         dispatched.append(_envelope)
 
-    async def _mark_processed(delivery_id):
-        marked.append(delivery_id)
+    async def _mark_completed(delivery_id):
+        completed.append(delivery_id)
 
-    monkeypatch.setattr(app_module, "is_duplicate_delivery", _is_duplicate)
+    monkeypatch.setattr(app_module, "claim_delivery", _claim)
     monkeypatch.setattr(app_module, "handle_event", _handle_event)
-    monkeypatch.setattr(app_module, "mark_delivery_processed", _mark_processed)
+    monkeypatch.setattr(app_module, "mark_delivery_completed", _mark_completed)
 
     response = client.post(
         "/pubsub/push",
@@ -134,4 +134,42 @@ def test_pubsub_push_dispatches_and_marks_processed_for_a_new_delivery(client, m
     )
     assert response.status_code == 200
     assert len(dispatched) == 1
-    assert marked == ["d-2"]
+    assert completed == ["d-2"]
+
+
+def test_pubsub_push_marks_failed_and_reraises_on_handler_exception(client, monkeypatch) -> None:
+    from artisan_shared.models import GitHubWebhookEnvelope
+
+    envelope = GitHubWebhookEnvelope(
+        delivery_id="d-3", event="issues", action="opened", repo="a/b", payload={}
+    )
+    monkeypatch.setattr(app_module, "verify_push_token", lambda _header: None)
+    monkeypatch.setattr(app_module, "decode_push_message", lambda _body: envelope)
+
+    async def _claim(_delivery_id):
+        return True
+
+    async def _handle_event(_envelope):
+        raise RuntimeError("boom")
+
+    failed = []
+    completed = []
+
+    async def _mark_failed(delivery_id):
+        failed.append(delivery_id)
+
+    async def _mark_completed(delivery_id):
+        completed.append(delivery_id)
+
+    monkeypatch.setattr(app_module, "claim_delivery", _claim)
+    monkeypatch.setattr(app_module, "handle_event", _handle_event)
+    monkeypatch.setattr(app_module, "mark_delivery_failed", _mark_failed)
+    monkeypatch.setattr(app_module, "mark_delivery_completed", _mark_completed)
+
+    with pytest.raises(RuntimeError):
+        client.post(
+            "/pubsub/push",
+            json={"message": {"data": base64.b64encode(b"{}").decode()}},
+        )
+    assert failed == ["d-3"]
+    assert completed == []
