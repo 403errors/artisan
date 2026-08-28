@@ -167,7 +167,7 @@ class ConflictVerdict(BaseModel):
 - **GitHub → Artisan:** GitHub App installation, webhook secret verified on receipt, private key in Secret Manager, JWT-based installation tokens minted per call (never long-lived PATs).
 - **Artisan → Jira:** a single Artisan service account, API token in Secret Manager, used exclusively by the `mcp-atlassian` service — end users never authenticate to Jira through Artisan.
 - **Dashboard → user:** GitHub OAuth (Auth.js), scoped to `read:org`/repo access so a signed-in user's dashboard access matches their actual GitHub repo permissions. Jira ticket data is shown as read-only mirrored state (via the service account above), not fetched with the user's own Jira credentials.
-- **IAM:** each Cloud Run service/job runs under its own least-privilege service account (orchestrator: Firestore + Pub/Sub + Secret Manager access; execution-sandbox: Firestore write + GitHub App token minting only; dashboard: Firestore read-only).
+- **IAM:** each Cloud Run service/job runs under its own least-privilege service account (orchestrator: Firestore + Pub/Sub + Secret Manager access; execution-sandbox: Firestore write + GitHub App token minting only; dashboard: Firestore read-only). The orchestrator additionally needs `roles/run.invoker` scoped specifically to the `mcp-atlassian` service — Cloud Run's `run.developer` role (used for managing Cloud Run resources) does not itself grant permission to invoke another private service, so this is a separate grant, not implied by the baseline roles above.
 
 ## 9. Failure Handling & Escalation
 

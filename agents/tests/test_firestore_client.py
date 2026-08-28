@@ -1,0 +1,101 @@
+"""Integration tests against the real `artisan-multiagent-ai` Firestore database — same
+skip-if-no-ADC convention as test_firestore_schema.py. Exercises ticket bootstrap (Phase 2.2), the
+idempotency guard (Phase 2.1), and the transactional clarification-round cap (Phase 2.4)."""
+
+import pytest
+import pytest_asyncio
+from google.cloud import firestore
+
+from artisan_agents.gcp import firestore_client
+from artisan_agents.gcp.firestore_client import ClarificationCapExceeded
+
+REPO = "403errors/artisan-demo"
+
+
+@pytest.fixture(autouse=True)
+def _fresh_firestore_client():
+    """pytest-asyncio gives each test its own event loop, but `_client()` is process-lifetime
+    lru_cached (by design — one AsyncClient/gRPC channel per Cloud Run process, not per request).
+    Clear it around each test so a channel from a closed loop is never reused across tests."""
+    firestore_client._client.cache_clear()
+    yield
+    firestore_client._client.cache_clear()
+
+
+def _require_credentials() -> None:
+    try:
+        firestore.Client(project="artisan-multiagent-ai")
+    except Exception as exc:  # pragma: no cover - environment-dependent
+        pytest.skip(f"no Firestore credentials available: {exc}")
+
+
+@pytest_asyncio.fixture
+async def cleanup_ticket():
+    issue_numbers: list[int] = []
+    yield issue_numbers
+    client = firestore_client._client()
+    for issue_number in issue_numbers:
+        await client.collection("tickets").document(
+            firestore_client.ticket_doc_id(REPO, issue_number)
+        ).delete()
+
+
+@pytest_asyncio.fixture
+async def cleanup_delivery():
+    delivery_ids: list[str] = []
+    yield delivery_ids
+    client = firestore_client._client()
+    for delivery_id in delivery_ids:
+        await client.collection("processed_deliveries").document(delivery_id).delete()
+
+
+def test_ticket_doc_id_is_deterministic_and_slug_safe() -> None:
+    assert firestore_client.ticket_doc_id("403errors/artisan-demo", 7) == "403errors_artisan-demo__7"
+
+
+@pytest.mark.asyncio
+async def test_create_and_get_ticket_roundtrip(cleanup_ticket) -> None:
+    _require_credentials()
+    issue_number = 900001
+    cleanup_ticket.append(issue_number)
+
+    assert await firestore_client.get_ticket(REPO, issue_number) is None
+
+    created = await firestore_client.create_ticket(REPO, issue_number, jira_key="ART-900001")
+    assert created.status == "intake"
+    assert created.clarification_rounds == 0
+
+    fetched = await firestore_client.get_ticket(REPO, issue_number)
+    assert fetched is not None
+    assert fetched.jira_key == "ART-900001"
+
+
+@pytest.mark.asyncio
+async def test_clarification_round_cap_flips_to_manual_pickup_on_third_round(
+    cleanup_ticket,
+) -> None:
+    _require_credentials()
+    issue_number = 900002
+    cleanup_ticket.append(issue_number)
+    await firestore_client.create_ticket(REPO, issue_number, jira_key="ART-900002")
+
+    assert await firestore_client.increment_clarification_round(REPO, issue_number) == 1
+    assert await firestore_client.increment_clarification_round(REPO, issue_number) == 2
+
+    with pytest.raises(ClarificationCapExceeded):
+        await firestore_client.increment_clarification_round(REPO, issue_number)
+
+    ticket = await firestore_client.get_ticket(REPO, issue_number)
+    assert ticket.status == "manual_pickup"
+    assert ticket.clarification_rounds == 3
+
+
+@pytest.mark.asyncio
+async def test_duplicate_delivery_guard(cleanup_delivery) -> None:
+    _require_credentials()
+    delivery_id = "test-delivery-900003"
+    cleanup_delivery.append(delivery_id)
+
+    assert await firestore_client.is_duplicate_delivery(delivery_id) is False
+    await firestore_client.mark_delivery_processed(delivery_id)
+    assert await firestore_client.is_duplicate_delivery(delivery_id) is True

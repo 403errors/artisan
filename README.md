@@ -32,6 +32,34 @@ uv sync
 uv run pytest
 ```
 
+This includes the orchestrator (the Cloud Run service handling Gate 1 intake — see [SYSTEM_DESIGN.md §3](./docs/SYSTEM_DESIGN.md#3-data-flow--gate-1-intake)). To run it locally:
+
+```bash
+cd agents
+uv run artisan-agents   # serves on :8080 (or $PORT)
+```
+
+Requires GCP Application Default Credentials (`gcloud auth application-default login`) for Firestore/Secret Manager/Pub/Sub access, and these env vars for anything beyond the Sprint 1 defaults:
+
+| Var | Purpose | Default |
+|---|---|---|
+| `ARTISAN_GCP_PROJECT_ID` | GCP project for Firestore/Secret Manager/Pub/Sub | `artisan-multiagent-ai` |
+| `ARTISAN_PUBSUB_TOPIC` | Topic the ingestion route publishes to | `artisan-github-events` |
+| `ARTISAN_PUBSUB_PUSH_AUDIENCE` | Expected audience on the Pub/Sub push OIDC token | *(unset — set to the deployed orchestrator URL)* |
+| `ARTISAN_MCP_ATLASSIAN_URL` | Internal URL of the `mcp-atlassian` Cloud Run service | *(unset — required for Jira calls)* |
+| `ARTISAN_JIRA_PROJECT_KEY` | Jira project tickets are created under | `ART` |
+| `ARTISAN_GITHUB_APP_ID` / `ARTISAN_GITHUB_INSTALLATION_ID` | GitHub App identity for installation-token auth | Sprint 1's provisioned App/installation |
+
+Deploying to Cloud Run (`agents/Dockerfile`):
+
+```bash
+cd agents
+gcloud run deploy orchestrator --source . --region us-central1 \
+  --set-env-vars ARTISAN_MCP_ATLASSIAN_URL=<mcp-atlassian-url>,ARTISAN_PUBSUB_PUSH_AUDIENCE=<this-service-url>
+```
+
+then point the GitHub App's webhook URL (App settings → Webhook) at `<orchestrator-url>/webhooks/github`, and create the Pub/Sub topic/push subscription targeting `<orchestrator-url>/pubsub/push` (see [CONTEXT.md](./docs/CONTEXT.md) "Known follow-up: Sprint 2 infra/deployment not yet executed" for the exact commands and required IAM grants — none of this is automated yet; Sprint 7 adds IaC).
+
 ### Execution sandbox (`execution-sandbox/`)
 
 ```bash
@@ -64,4 +92,4 @@ None of this repo's code ever takes a raw secret as a literal. Everything (`gith
 
 ## Deployment
 
-Cloud Run (services: `orchestrator`, `mcp-atlassian`, `dashboard`; job: `execution-sandbox`). Deployment automation lands in Sprint 7 — see [SPRINT.md](./docs/SPRINT.md#sprint-7--deployment--cicd).
+Cloud Run (services: `orchestrator`, `mcp-atlassian`, `dashboard`; job: `execution-sandbox`). `orchestrator` has a Dockerfile and a manual `gcloud run deploy` path (see above) as of Sprint 2; full IaC + CI/CD automation for all services lands in Sprint 7 — see [SPRINT.md](./docs/SPRINT.md#sprint-7--deployment--cicd).

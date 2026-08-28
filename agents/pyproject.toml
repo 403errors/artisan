@@ -7,8 +7,9 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
+    "fastapi==0.141.1",
     "githubkit==0.16.1",
-    "google-adk==2.8.0",
+    "google-adk[mcp]==2.8.0",
     "google-cloud-firestore==2.29.0",
     "google-cloud-pubsub==2.39.2",
     "google-cloud-run==0.16.1",
@@ -16,6 +17,7 @@ dependencies = [
     "opentelemetry-exporter-gcp-trace==1.15.0",
     "opentelemetry-sdk==1.42.1",
     "pydantic==2.13.4",
+    "uvicorn[standard]==0.52.4",
 ]
 
 [project.scripts]

@@ -3,6 +3,7 @@ from artisan_agents.models import (
     ConflictVerdict,
     DomainExpertOutput,
     ExecutionResult,
+    GitHubWebhookEnvelope,
     IntakeVerdict,
     Plan,
     VerificationVerdict,
@@ -42,3 +43,28 @@ def test_execution_result_and_verification_verdict_roundtrip() -> None:
 def test_conflict_verdict_classification_literal() -> None:
     verdict = ConflictVerdict(classification="trivial", resolution_branch="artisan/fix-1")
     assert verdict.classification in ("trivial", "semantic")
+
+
+def test_github_webhook_envelope_roundtrip() -> None:
+    envelope = GitHubWebhookEnvelope(
+        delivery_id="abc-123",
+        event="issues",
+        action="opened",
+        repo="403errors/artisan-demo",
+        payload={"issue": {"number": 1}},
+    )
+    assert GitHubWebhookEnvelope.model_validate_json(envelope.model_dump_json()) == envelope
+
+
+def test_github_webhook_envelope_rejects_unsupported_event() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        GitHubWebhookEnvelope(
+            delivery_id="abc-123",
+            event="star",
+            action="created",
+            repo="403errors/artisan-demo",
+            payload={},
+        )

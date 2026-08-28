@@ -39,3 +39,14 @@ class ConflictVerdict(BaseModel):
     classification: Literal["trivial", "semantic"]
     resolution_branch: str | None = None
     comparison: str | None = None
+
+
+class GitHubWebhookEnvelope(BaseModel):
+    """The message published to `artisan-github-events`. Per SYSTEM_DESIGN.md §6.1 — the
+    ingestion route's only job is producing this typed envelope, never a raw dict."""
+
+    delivery_id: str
+    event: Literal["issues", "issue_comment", "pull_request"]
+    action: str
+    repo: str
+    payload: dict
