@@ -67,6 +67,27 @@ OpenTelemetry → Cloud Trace / Cloud Logging (every gate decision)
 5. **Sufficient:** Jira ticket transitions to *In Progress*; Gate 2 is triggered.
 6. **Insufficient:** Artisan posts the specific question as a GitHub issue comment, increments `clarification_rounds` in Firestore, and stops. A reply re-triggers step 4. After 3 rounds still insufficient, the ticket is flagged `manual_pickup` and Jira is annotated accordingly — no further automated attempts.
 
+**Flowchart:**
+
+```mermaid
+flowchart TD
+    A["GitHub: issue opened / comment created"] --> B["GitHub App webhook"]
+    B --> C["Pub/Sub: artisan-github-events"]
+    C --> D{"Delivery ID\nseen before?"}
+    D -- Yes --> Z1["No-op (idempotent skip)"]
+    D -- No --> E["Ticket bootstrap:\nFirestore doc + Jira ticket"]
+    E --> F["Intake Agent\n(Gemini 3.7 Flash)"]
+    F --> G{"sufficient?"}
+    G -- Yes --> H["Jira: transition to In Progress"]
+    H --> I(["Trigger Gate 2"])
+    G -- No --> J["Post clarifying question\nas GitHub issue comment"]
+    J --> K["Increment clarification_rounds\n(Firestore, transactional)"]
+    K --> L{"clarification_rounds\n>= 3?"}
+    L -- Yes --> M(["status: manual_pickup\nJira annotated — stop"])
+    L -- No --> N["Wait for issue reply"]
+    N --> F
+```
+
 ## 4. Data Flow — Gate 2 (Plan → Execute → Verify → PR)
 
 1. Orchestrator (Gemini 3.7 Flash, high-thinking) decides which domain-expert persona(s) apply (frontend / backend / infra-devops) and whether they run in parallel or in sequence.
@@ -76,6 +97,31 @@ OpenTelemetry → Cloud Trace / Cloud Logging (every gate decision)
    - **Green + tests pass:** orchestrator opens the PR (via GitHub App), tagging the issue and summarizing the approach; mirrors the summary as a Jira comment. **Jira status is not transitioned on this path** — this Jira site's real team-managed Kanban workflow only has `Backlog`/`Selected for Development`/`In Progress`/`Done` (confirmed live against `ART-8`/`ART-9` in Sprint 3), with no "PR Open — Awaiting Review" status to move into; the ticket stays *In Progress* in Jira, and the PR link/summary is communicated via the comment instead. Firestore's own `TicketDoc.status` still tracks `"pr_open"` precisely — it, not Jira's coarser workflow, is the source of truth for this state.
    - **Failed verification or failed tests:** specific feedback is appended to the ticket's Firestore doc, `retry_count` increments transactionally (same commit-then-raise shape as Gate 1's clarification cap), and the loop returns to step 2 (Planning) with that feedback in context.
 5. On exceeding the retry cap, the ticket is flagged `escalated` with the last failure appended to `escalation_history` (an atomic `firestore.ArrayUnion`, not read-modify-write), and Jira/GitHub are notified — no further automated retries.
+
+**Flowchart:**
+
+```mermaid
+flowchart TD
+    A(["Triggered: Gate 1 sufficient\n(Jira → In Progress)"]) --> B["Orchestrator routing:\npick domain-expert persona(s),\nparallel or sequential"]
+    B --> C["Domain-Expert Agent(s)\n(frontend / backend / infra-devops)"]
+    C --> D["Planning Agent:\nproduce Plan (steps, touched_files,\ntest_cases, doc_updates)"]
+    D --> E["Store Plan on\nFirestore ticket doc"]
+    E --> F["Trigger execution-sandbox\nCloud Run Job"]
+    F --> G["Job: clone repo, branch,\ncoding agent writes code/tests/docs,\nrun full test suite, push branch"]
+    G --> H["ExecutionResult:\nsuccess/failure + diff/logs"]
+    H --> I{"tests_passed?"}
+    I -- No --> M["VerificationVerdict: green=false\n(short-circuit, no model call)"]
+    I -- Yes --> J["Verification Agent:\ncompare ExecutionResult\nvs Plan vs original issue"]
+    J --> K{"green?"}
+    K -- Yes --> P["Open PR via GitHub App\n(tags issue, summarizes approach)"]
+    P --> Q["Jira comment with PR link/summary\n(status stays In Progress —\nno 'PR Open' status exists)"]
+    Q --> R(["Firestore status: pr_open\nawaiting human merge"])
+    K -- No --> N
+    M --> N["Append feedback to Firestore;\nincrement retry_count (transactional)"]
+    N --> O{"retry_count\n> cap N?"}
+    O -- Yes --> T(["status: escalated\nappend escalation_history\nnotify Jira + GitHub — stop"])
+    O -- No --> D
+```
 
 ## 5. Data Flow — Gate 3 (Merge Conflicts)
 
