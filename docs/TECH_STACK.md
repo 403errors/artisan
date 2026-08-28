@@ -35,6 +35,8 @@ artisan/
 
 > **Note (Sprint 2):** originally `mcp-atlassian` (a Cloud Run MCP server) sat between the orchestrator and Jira. Dropped after live testing found an unresolved auth bug in the pinned `sooperset/mcp-atlassian:0.23.1` image — see `docs/SYSTEM_DESIGN.md` §2 and `docs/CONTEXT.md` for the full diagnosis. The orchestrator now calls Jira Cloud's REST API directly via `httpx`.
 
+> **Note (Sprint 2):** Gemini access is via **Vertex AI**, not the Gemini Developer API — no API key/secret needed, ADK's `Agent` picks this up automatically from env vars on the orchestrator's Cloud Run service: `GOOGLE_GENAI_USE_VERTEXAI=TRUE`, `GOOGLE_CLOUD_PROJECT=artisan-multiagent-ai`, `GOOGLE_CLOUD_LOCATION=global`. The `orchestrator@` service account needs `roles/aiplatform.user`. **`location` must be `global`, not a regional endpoint** — `gemini-3.7-flash` 404s on `us-central1` even though the project has access to it; only the `global` Vertex AI endpoint serves this model. This was undocumented before Sprint 2's live field-testing surfaced it (see `docs/CONTEXT.md`).
+
 ## Dashboard (`dashboard/`) — TypeScript
 
 | Library | Version | Notes |
@@ -58,7 +60,7 @@ artisan/
 | Docker | multi-stage builds for `agents/`, `execution-sandbox/`, `dashboard/` |
 | Cloud Run (services) | `orchestrator`, `dashboard` (`mcp-atlassian` deleted in Sprint 2 after being superseded, see note above) |
 | Cloud Run Jobs | `execution-sandbox` — triggered per plan-execution attempt, not long-running |
-| Pub/Sub | topic `artisan-github-events`, push subscription to `orchestrator` |
+| Pub/Sub | topic `artisan-github-events`, push subscription to `orchestrator`, dead-letter topic `artisan-github-events-dlq` (max 5 delivery attempts — added Sprint 2 after a permanently-failing test message looped for ~95 minutes with no dead-letter policy configured) |
 | Firestore | native mode |
 | Secret Manager | `github-app-private-key`, `github-webhook-secret`, `jira-api-token` |
 | CI/CD | GitHub Actions → build + push images → deploy to Cloud Run (keeps everything in the GitHub App's existing auth context) |

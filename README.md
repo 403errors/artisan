@@ -50,8 +50,13 @@ Requires GCP Application Default Credentials (`gcloud auth application-default l
 | `ARTISAN_JIRA_USERNAME` | Jira service-account email (paired with the `jira-api-token` secret, Basic Auth) | `pieisnot22by7@gmail.com` |
 | `ARTISAN_JIRA_PROJECT_KEY` | Jira project tickets are created under | `ART` |
 | `ARTISAN_GITHUB_APP_ID` / `ARTISAN_GITHUB_INSTALLATION_ID` | GitHub App identity for installation-token auth | Sprint 1's provisioned App/installation |
+| `GOOGLE_GENAI_USE_VERTEXAI` | Routes ADK's Gemini calls through Vertex AI (no API key needed — uses ADC) instead of the Gemini Developer API | `TRUE` |
+| `GOOGLE_CLOUD_PROJECT` | Vertex AI project | `artisan-multiagent-ai` |
+| `GOOGLE_CLOUD_LOCATION` | Vertex AI location — **must be `global`**, not a region; `gemini-3.7-flash` isn't served from regional endpoints like `us-central1` (see [CONTEXT.md](./docs/CONTEXT.md) Milestone 3) | `global` |
 
 Jira access is a direct REST API call (Basic Auth, email + `jira-api-token` from Secret Manager) — not routed through the `mcp-atlassian` service from Sprint 1, which was deleted after being superseded (see [CONTEXT.md](./docs/CONTEXT.md) for why).
+
+Gemini access requires `aiplatform.googleapis.com` enabled on the project and `roles/aiplatform.user` granted to the orchestrator's service account — see [CONTEXT.md](./docs/CONTEXT.md) Milestone 3 for the exact commands (this wasn't a Sprint 1 default; it was missing until Sprint 2's live field-testing caught it).
 
 Deploying to Cloud Run (`agents/Dockerfile`):
 
@@ -61,7 +66,7 @@ gcloud run deploy orchestrator --source . --region us-central1 \
   --set-env-vars ARTISAN_PUBSUB_PUSH_AUDIENCE=<this-service-url>/pubsub/push
 ```
 
-then point the GitHub App's webhook URL (App settings → Webhook) at `<orchestrator-url>/webhooks/github`, and create the Pub/Sub topic/push subscription targeting `<orchestrator-url>/pubsub/push` (see [CONTEXT.md](./docs/CONTEXT.md) "Known follow-up: Sprint 2 infra/deployment not yet executed" for the exact commands and required IAM grants — none of this is automated yet; Sprint 7 adds IaC).
+then point the GitHub App's webhook URL (App settings → Webhook) at `<orchestrator-url>/webhooks/github`, and create the Pub/Sub topic/push subscription (with a dead-letter policy — see [CONTEXT.md](./docs/CONTEXT.md) Milestone 3) targeting `<orchestrator-url>/pubsub/push` (see [CONTEXT.md](./docs/CONTEXT.md) "Known follow-up: Sprint 2 infra/deployment — done; Gate 1 verified live end-to-end" for the exact commands and required IAM grants — none of this is automated yet; Sprint 7 adds IaC).
 
 ### Execution sandbox (`execution-sandbox/`)
 
