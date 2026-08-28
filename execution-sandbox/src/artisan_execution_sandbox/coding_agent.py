@@ -111,6 +111,38 @@ def _build_prompt(plan: Plan, prior_feedback: str | None) -> str:
     return prompt
 
 
+async def _run_bounded_agent(
+    *, workdir: Path, instruction: str, prompt: str, model: str | object
+) -> str:
+    """Shared ADK Runner/session boilerplate behind both `run_coding_agent` (Gate 2) and
+    `run_conflict_resolution_agent` (Gate 3) — only the instruction/prompt differ; the tool set,
+    tool-call cap, and session wiring are identical for both."""
+    tools, finished = _build_tools(workdir)
+    agent = Agent(
+        model=model,
+        name="coding_agent",
+        instruction=instruction,
+        tools=tools,
+    )
+
+    session_service = InMemorySessionService()
+    session = await session_service.create_session(
+        app_name=APP_NAME, user_id=_USER_ID, session_id=str(uuid.uuid4())
+    )
+    runner = Runner(agent=agent, app_name=APP_NAME, session_service=session_service)
+    message = types.Content(role="user", parts=[types.Part(text=prompt)])
+
+    try:
+        async for _event in runner.run_async(
+            user_id=_USER_ID, session_id=session.id, new_message=message
+        ):
+            pass
+    except ToolCallLimitExceeded:
+        pass
+
+    return finished.get("summary", "(coding agent did not call finish)")
+
+
 async def run_coding_agent(
     *, workdir: Path, plan: Plan, prior_feedback: str | None = None, model: str | object = GEMINI_MODEL_ID
 ) -> str:
@@ -124,27 +156,46 @@ async def run_coding_agent(
     this `Agent` is built fresh per call (its tools close over this call's `workdir`), so unlike
     the module-level agent singletons in `agents/`, there's no persistent object whose `.model`
     tests can monkeypatch after construction; this parameter is that seam instead."""
-    tools, finished = _build_tools(workdir)
-    agent = Agent(
-        model=model,
-        name="coding_agent",
+    return await _run_bounded_agent(
+        workdir=workdir,
         instruction=CODING_INSTRUCTION,
-        tools=tools,
+        prompt=_build_prompt(plan, prior_feedback),
+        model=model,
     )
 
-    session_service = InMemorySessionService()
-    session = await session_service.create_session(
-        app_name=APP_NAME, user_id=_USER_ID, session_id=str(uuid.uuid4())
+
+CONFLICT_RESOLUTION_INSTRUCTION = """You are Artisan's coding agent, resolving a real git merge \
+conflict inside a cloned checkout (Gate 3, SPRINT.md Phase 4.3 — this attempt was already \
+classified "trivial" by the Conflict Agent, so a sensible reconciliation is expected to exist). \
+You will be given the conflicted file paths and their literal contents, including the \
+<<<<<<</=======/>>>>>>> conflict markers. Use `read_file`, `write_file`, `list_directory`, and \
+`run_shell_command` to reconcile each conflicted file: keep BOTH sides' intended changes where \
+they don't truly overlap, remove every conflict marker, and leave each file in a coherent, \
+syntactically valid state. Never run `git commit`, `git push`, or modify git remotes yourself — \
+those happen outside your control, after you finish. When every conflicted file is resolved, \
+call `finish` exactly once with a short summary of how you reconciled them, and stop."""
+
+
+def _build_conflict_resolution_prompt(conflicted_files: list[str], conflict_markers: str) -> str:
+    return (
+        f"Conflicted files: {', '.join(conflicted_files)}\n\n"
+        f"Conflict markers:\n{conflict_markers}"
     )
-    runner = Runner(agent=agent, app_name=APP_NAME, session_service=session_service)
-    message = types.Content(role="user", parts=[types.Part(text=_build_prompt(plan, prior_feedback))])
 
-    try:
-        async for _event in runner.run_async(
-            user_id=_USER_ID, session_id=session.id, new_message=message
-        ):
-            pass
-    except ToolCallLimitExceeded:
-        pass
 
-    return finished.get("summary", "(coding agent did not call finish)")
+async def run_conflict_resolution_agent(
+    *,
+    workdir: Path,
+    conflicted_files: list[str],
+    conflict_markers: str,
+    model: str | object = GEMINI_MODEL_ID,
+) -> str:
+    """Gate 3's conflict-resolution coding step (SPRINT.md Phase 4.3) — reuses the exact same
+    bounded tool set/cap as `run_coding_agent`, with a conflict-specific instruction/prompt instead
+    of a `Plan`'s steps."""
+    return await _run_bounded_agent(
+        workdir=workdir,
+        instruction=CONFLICT_RESOLUTION_INSTRUCTION,
+        prompt=_build_conflict_resolution_prompt(conflicted_files, conflict_markers),
+        model=model,
+    )

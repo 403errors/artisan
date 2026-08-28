@@ -9,7 +9,7 @@ from functools import lru_cache
 from google.cloud import firestore
 
 from artisan_execution_sandbox.config import GCP_PROJECT_ID
-from artisan_shared.models import ExecutionResult
+from artisan_shared.models import ConflictDetectionResult, ExecutionResult
 from artisan_shared.ticket_ids import ticket_doc_id
 
 
@@ -18,11 +18,31 @@ def _client() -> firestore.AsyncClient:
     return firestore.AsyncClient(project=GCP_PROJECT_ID)
 
 
-async def write_execution_result(repo: str, issue_number: int, result: ExecutionResult) -> None:
+async def _update(repo: str, issue_number: int, field: str, payload) -> None:
     doc_ref = _client().collection("tickets").document(ticket_doc_id(repo, issue_number))
     await doc_ref.update(
         {
-            "last_execution_result": result.model_dump(mode="json"),
+            field: payload.model_dump(mode="json"),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
     )
+
+
+async def write_execution_result(repo: str, issue_number: int, result: ExecutionResult) -> None:
+    await _update(repo, issue_number, "last_execution_result", result)
+
+
+async def write_conflict_detection_result(
+    repo: str, issue_number: int, result: ConflictDetectionResult
+) -> None:
+    """Gate 3, SPRINT.md Phase 4.1/4.2."""
+    await _update(repo, issue_number, "last_conflict_detection", result)
+
+
+async def write_conflict_resolution_result(
+    repo: str, issue_number: int, result: ExecutionResult
+) -> None:
+    """Gate 3, SPRINT.md Phase 4.3 — kept in a field distinct from `last_execution_result` (Gate
+    2's field) even though the type is identical, so the Sprint 5 dashboard's decision trail can
+    tell the two histories apart."""
+    await _update(repo, issue_number, "last_conflict_resolution", result)

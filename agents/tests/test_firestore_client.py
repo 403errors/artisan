@@ -1,7 +1,8 @@
 """Integration tests against the real `artisan-multiagent-ai` Firestore database — same
 skip-if-no-ADC convention as test_firestore_schema.py. Exercises ticket bootstrap (Phase 2.2), the
-idempotency guard (Phase 2.1), the transactional clarification-round cap (Phase 2.4), and Gate 2's
-transactional retry cap + escalation-history append (Phase 3.5, SPRINT.md)."""
+idempotency guard (Phase 2.1), the transactional clarification-round cap (Phase 2.4), Gate 2's
+transactional retry cap + escalation-history append (Phase 3.5), and Gate 3's transactional
+trivial-conflict cap + PR-index pointer (Phase 4.1/4.3, SPRINT.md)."""
 
 from datetime import UTC, datetime
 
@@ -10,7 +11,11 @@ import pytest_asyncio
 from google.cloud import firestore
 
 from artisan_agents.gcp import firestore_client
-from artisan_agents.gcp.firestore_client import ClarificationCapExceeded, RetryCapExceeded
+from artisan_agents.gcp.firestore_client import (
+    ClarificationCapExceeded,
+    RetryCapExceeded,
+    TrivialConflictCapExceeded,
+)
 from artisan_shared.firestore_schema import EscalationEntry
 
 REPO = "403errors/artisan-demo"
@@ -51,6 +56,17 @@ async def cleanup_delivery():
     client = firestore_client._client()
     for delivery_id in delivery_ids:
         await client.collection("processed_deliveries").document(delivery_id).delete()
+
+
+@pytest_asyncio.fixture
+async def cleanup_pr_pointer():
+    pr_numbers: list[int] = []
+    yield pr_numbers
+    client = firestore_client._client()
+    for pr_number in pr_numbers:
+        await client.collection("pr_index").document(
+            firestore_client.pr_pointer_doc_id(REPO, pr_number)
+        ).delete()
 
 
 def test_ticket_doc_id_is_deterministic_and_slug_safe() -> None:
@@ -182,3 +198,65 @@ async def test_append_escalation_is_atomic_and_flips_status(cleanup_ticket) -> N
     assert len(ticket.escalation_history) == 1
     assert ticket.escalation_history[0].reason == "verification failed 3x"
     assert ticket.escalation_history[0].gate == "2"
+
+
+@pytest.mark.asyncio
+async def test_trivial_conflict_attempt_first_call_succeeds_even_though_new_count_equals_cap(
+    cleanup_ticket,
+) -> None:
+    """The critical regression test: MAX_TRIVIAL_CONFLICT_ATTEMPTS=1 means the first call's
+    new_count (1) equals the cap — this must NOT raise, unlike the clarification/retry caps'
+    `>=` comparison (which gate the *next* attempt after a failure, not the first one)."""
+    _require_credentials()
+    issue_number = 900010
+    cleanup_ticket.append(issue_number)
+    await firestore_client.create_ticket(REPO, issue_number, jira_key="ART-900010")
+
+    assert await firestore_client.increment_trivial_conflict_attempt(REPO, issue_number) == 1
+
+    ticket = await firestore_client.get_ticket(REPO, issue_number)
+    assert ticket.status != "escalated"
+    assert ticket.trivial_conflict_attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_trivial_conflict_attempt_second_call_raises_and_flips_to_escalated(
+    cleanup_ticket,
+) -> None:
+    _require_credentials()
+    issue_number = 900011
+    cleanup_ticket.append(issue_number)
+    await firestore_client.create_ticket(REPO, issue_number, jira_key="ART-900011")
+
+    await firestore_client.increment_trivial_conflict_attempt(REPO, issue_number)
+    with pytest.raises(TrivialConflictCapExceeded):
+        await firestore_client.increment_trivial_conflict_attempt(REPO, issue_number)
+
+    ticket = await firestore_client.get_ticket(REPO, issue_number)
+    assert ticket.status == "escalated"
+    assert ticket.trivial_conflict_attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_write_and_read_pr_pointer_roundtrips_to_ticket(
+    cleanup_ticket, cleanup_pr_pointer
+) -> None:
+    _require_credentials()
+    issue_number = 900012
+    pr_number = 5012
+    cleanup_ticket.append(issue_number)
+    cleanup_pr_pointer.append(pr_number)
+    await firestore_client.create_ticket(REPO, issue_number, jira_key="ART-900012")
+
+    await firestore_client.write_pr_pointer(REPO, pr_number, issue_number)
+
+    ticket = await firestore_client.get_ticket_by_pr(REPO, pr_number)
+    assert ticket is not None
+    assert ticket.github_issue_number == issue_number
+    assert ticket.jira_key == "ART-900012"
+
+
+@pytest.mark.asyncio
+async def test_get_ticket_by_pr_returns_none_for_untracked_pr() -> None:
+    _require_credentials()
+    assert await firestore_client.get_ticket_by_pr(REPO, 999999999) is None

@@ -125,10 +125,36 @@ flowchart TD
 
 ## 5. Data Flow — Gate 3 (Merge Conflicts)
 
-1. `pull_request` webhook (synchronize / conflict signal) → Pub/Sub → orchestrator.
-2. Conflict Agent classifies the conflict from the diff and conflict markers: `trivial` or `semantic`.
-3. **Trivial:** a scratch worktree (inside a Cloud Run Job) attempts resolution; the full test suite must pass there before the resolution is pushed. Failure here escalates immediately — it is not retried indefinitely.
-4. **Semantic:** no resolution is attempted. Artisan posts a structured comparison (both sides' intent + diff) as a PR comment and escalates to the maintainer.
+1. `pull_request` webhook (`opened`/`synchronize`) → Pub/Sub → orchestrator. The orchestrator resolves the PR number to its owning ticket via the `pr_index/{repo}__{prNumber}` pointer doc (written when Gate 2 opens the PR); a PR with no pointer isn't Artisan's concern and is a no-op — Artisan never operates on repo state it doesn't own (PRD.md §5).
+2. **Detection is Artisan's own authoritative trial-merge, not GitHub's `mergeable_state`** — that field is computed asynchronously and is frequently stale/null right when the webhook fires, which is unacceptable for a must-be-live demo. Orchestrator triggers the `execution-sandbox` Cloud Run Job in `detect_conflict` mode: it clones the repo, checks out the PR's **head** branch, fetches and merges the **base** branch into it (`--no-commit --no-ff`). Checking out head and merging base into it — never the reverse — is deliberate: merging head into a base checkout produces a commit that isn't a fast-forward of head, so pushing the fix back would require a force-push, which PRD.md §5 forbids. Clean → no-op, nothing to do. Conflicted → the job also gathers the base branch's recent history for the conflicted files (side B's intent) so the classification step doesn't need a second GitHub API round-trip.
+3. Conflict Agent classifies the conflict from the diff, conflict markers, and both sides' stated intent (the PR's own title/body vs. the base branch's recent history): `trivial` or `semantic`.
+4. **Trivial:** the orchestrator transactionally claims Gate 3's one allowed resolution attempt (`trivial_conflict_attempts`, capped at 1 — claimed *before* the attempt runs, unlike Gate 2's retry cap which gates the *next* attempt after a failure) and triggers `execution-sandbox` in `resolve_conflict` mode: it re-does the same trial merge, runs the bounded conflict-resolution coding agent against the conflict markers if still conflicted, and only pushes if the full test suite passes. Any failure — cap already used, the merge job crashing, or the resolution's tests failing — escalates immediately; there is no retry loop like Gate 2's.
+5. **Semantic:** no resolution is attempted at all. Artisan posts a structured comparison ("Side A intent" vs "Side B intent," never a raw diff dump) as a PR comment and escalates to the maintainer.
+6. Every escalation (semantic, or a failed/capped trivial attempt) posts to **both** GitHub (a PR comment) and Jira, per §9's cross-cutting rule — unlike Gate 2's own escalation path, which currently only posts to Jira (a known Gate 2 gap, out of scope for Sprint 4, flagged for Sprint 6).
+
+**Flowchart:**
+
+```mermaid
+flowchart TD
+    A["GitHub: pull_request\nopened / synchronize"] --> B["Pub/Sub: artisan-github-events"]
+    B --> C{"pr_index pointer\nexists for this PR?"}
+    C -- No --> Z1(["No-op — not an\nArtisan-tracked PR"])
+    C -- Yes --> D["Trigger execution-sandbox\n(JOB_MODE=detect_conflict):\ncheckout HEAD, merge BASE into it"]
+    D --> E{"merge clean?"}
+    E -- Yes --> F(["No-op — no conflict"])
+    E -- No --> G["Conflict Agent classifies:\nmarkers + both sides' intent"]
+    G --> H{"trivial or semantic?"}
+    H -- semantic --> I["Build 'Side A intent /\nSide B intent' comparison"]
+    I --> J(["Escalate: PR comment\n+ Jira comment — stop"])
+    H -- trivial --> K["Claim 1 allowed attempt\n(trivial_conflict_attempts, transactional)"]
+    K --> L{"cap already used?"}
+    L -- Yes --> J
+    L -- No --> M["Trigger execution-sandbox\n(JOB_MODE=resolve_conflict):\nresolve markers, run full test suite"]
+    M --> N{"tests_passed?"}
+    N -- Yes --> O["Push to HEAD branch\n(fast-forward, no force-push)"]
+    O --> P(["PR comment + Jira comment:\nconflict auto-resolved"])
+    N -- No --> J
+```
 
 ## 6. API Contracts
 
@@ -175,6 +201,15 @@ class ConflictVerdict(BaseModel):
     classification: Literal["trivial", "semantic"]
     resolution_branch: str | None = None
     comparison: str | None = None
+
+class ConflictDetectionResult(BaseModel):
+    has_conflict: bool
+    conflicted_files: list[str]
+    conflict_markers: str
+    base_branch_history: str
+    diff_summary: str
+    logs_uri: str
+    head_sha: str
 ```
 
 ### 6.3 Dashboard read API (Next.js route handlers, server-side only)
@@ -194,21 +229,32 @@ class ConflictVerdict(BaseModel):
   domains: string[],
   plan: Plan | null,
   pr_url: string | null,
+  pr_number: number | null,
+  trivial_conflict_attempts: number,
+  last_conflict_detection: ConflictDetectionResult | null,
+  last_conflict_resolution: ExecutionResult | null,
   escalation_history: [{ at: timestamp, reason: string, gate: "1"|"2"|"3" }],
   trace_ids: string[],
   created_at: timestamp,
   updated_at: timestamp
 }
 ```
+`last_conflict_resolution` is the same `ExecutionResult` shape Gate 2 writes to
+`last_execution_result`, kept in a separate field so the two histories stay distinguishable in the
+Sprint 5 dashboard's decision trail.
+
 Idempotency is tracked separately, not as a field here — see the top-level
 `processed_deliveries/{delivery_id}` collection in §7, which exists (and must be checked)
-*before* a ticket doc necessarily exists yet.
+*before* a ticket doc necessarily exists yet. Gate 3's PR→ticket lookup is likewise a separate
+top-level collection, `pr_index/{repo}__{prNumber} -> { ticket_doc_id: string }` — a second
+deterministic-id scheme (mirroring the ticket doc's own id derivation) so a `pull_request` webhook
+resolves to its ticket via a direct `.get()`, never a query.
 
 ## 7. State Management
 
 - **Firestore is the single source of truth per ticket** — every gate reads and writes through it; agents themselves are stateless between invocations.
 - **Idempotency is a claim, not a flag:** a `processed_deliveries/{delivery_id}` doc (top-level collection, not a field on the ticket doc) is atomically claimed *before* `handle_event` runs, not marked after — Gate 2 can run for minutes, and Pub/Sub's own ack-deadline-driven redelivery can easily arrive while the first attempt is still in flight, so a naive check-then-mark-on-success guard leaves that whole window unprotected (found and fixed in Sprint 3). `status` moves `in_progress` -> `completed` (permanent dedupe) or `in_progress` -> `failed` (immediately reclaimable, so Pub/Sub's own retry-on-failure still works); a stale `in_progress` claim (the owning instance died mid-request) is also reclaimable after a timeout, so one crashed attempt can't block a delivery forever.
-- **Caps enforced in Firestore, not in agent prompts:** `clarification_rounds` (max 3) and `retry_count` (max N, configurable) are read and incremented transactionally so a race between duplicate deliveries can't bypass a cap.
+- **Caps enforced in Firestore, not in agent prompts:** `clarification_rounds` (max 3) and `retry_count` (max N, configurable) are read and incremented transactionally so a race between duplicate deliveries can't bypass a cap. `trivial_conflict_attempts` (Gate 3, max 1) uses the same transactional shape but a different comparison: it's claimed *before* the one allowed attempt runs (`new_count > MAX`, mirroring `claim_delivery`'s claim-before-side-effect philosophy), not after a failure like the other two caps (`new_count >= MAX`, gating the *next* attempt) — copying the wrong comparison here would make trivial-conflict resolution unreachable on the very first call.
 - **Session/PR mapping:** the ticket doc is the join point between a GitHub issue, a Jira ticket, and (once opened) a PR — the dashboard and every agent resolve identity through this doc, never by re-deriving it from GitHub/Jira directly.
 
 ## 8. Auth & Security
@@ -236,7 +282,7 @@ Idempotency is tracked separately, not as a field here — see the top-level
 
 - Single GCP project, single region.
 - Cloud Run services: `orchestrator`, `dashboard`. (`mcp-atlassian`, deployed in Sprint 1, was deleted in Sprint 2 after being superseded — see §2.)
-- Cloud Run Jobs: `execution-sandbox` (triggered per attempt, not long-running).
+- Cloud Run Jobs: `execution-sandbox` (triggered per attempt, not long-running) — shared by Gate 2 and Gate 3 via a `JOB_MODE` env var (`execute` / `detect_conflict` / `resolve_conflict`) rather than a second job resource, since `execution-sandbox@` is deliberately the only service account with GitHub-App-token-minting rights (§8).
 - Pub/Sub: topic `artisan-github-events` with a push subscription to the orchestrator.
 - Firestore: native mode, single database.
 - Secret Manager: `github-app-private-key`, `github-webhook-secret`, `jira-api-token`.

@@ -55,3 +55,68 @@ def push(repo_dir: str, branch_name: str, *, token: str, repo: str) -> None:
     any output/error before it can reach a log."""
     remote_url = f"https://x-access-token:{token}@github.com/{repo}.git"
     _run(["push", remote_url, branch_name], cwd=repo_dir, redact=token)
+
+
+def checkout(repo_dir: str, branch_name: str) -> None:
+    """Checks out an EXISTING branch (unlike create_branch, never `-b`). Relies on git's DWIM
+    behavior to create a local tracking branch from `origin/<branch_name>` automatically if it
+    isn't local yet — safe here since these clones only ever have one remote."""
+    _run(["checkout", branch_name], cwd=repo_dir)
+
+
+def fetch(repo_dir: str, branch_name: str, *, redact: str | None = None) -> None:
+    _run(["fetch", "origin", branch_name], cwd=repo_dir, redact=redact)
+
+
+def merge(repo_dir: str, branch_name: str) -> tuple[bool, str]:
+    """Attempts `git merge --no-commit --no-ff origin/<branch_name>` into whatever's currently
+    checked out (Gate 3, SPRINT.md Phase 4.1/4.3). A real conflict is expected OUTPUT here, not a
+    subprocess failure — unlike every other wrapper in this module, a nonzero exit does not
+    automatically raise. It's distinguished from a genuine git-level error (e.g. an unknown ref) by
+    checking whether `list_conflicted_files` actually reports conflicted files; only a genuine
+    error raises GitCommandError. Returns (merged_clean, combined_output)."""
+    result = subprocess.run(
+        ["git", "merge", "--no-commit", "--no-ff", f"origin/{branch_name}"],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    output = result.stdout + result.stderr
+    if result.returncode == 0:
+        return True, output
+    if list_conflicted_files(repo_dir):
+        return False, output
+    raise GitCommandError(f"git merge origin/{branch_name} failed: {output}")
+
+
+def abort_merge(repo_dir: str) -> None:
+    _run(["merge", "--abort"], cwd=repo_dir)
+
+
+def list_conflicted_files(repo_dir: str) -> list[str]:
+    output = _run(["diff", "--name-only", "--diff-filter=U"], cwd=repo_dir)
+    return [line for line in output.splitlines() if line]
+
+
+def read_conflict_markers(repo_dir: str, conflicted_files: list[str]) -> str:
+    """Concatenates each conflicted file's full contents (including the literal <<<<<<</=======/
+    >>>>>>> markers) — the Conflict Agent's and the resolution agent's shared raw material."""
+    sections = []
+    for path in conflicted_files:
+        try:
+            with open(f"{repo_dir}/{path}", encoding="utf-8", errors="replace") as f:
+                content = f.read()
+        except OSError as exc:
+            content = f"(could not read file: {exc})"
+        sections.append(f"--- {path} ---\n{content}")
+    return "\n\n".join(sections)
+
+
+def log_for_paths(repo_dir: str, branch_name: str, paths: list[str], *, limit: int = 5) -> str:
+    """`git log -n<limit> --oneline origin/<branch_name> -- <paths>` — side B's recent history
+    scoped to the conflicted files, gathered here since this job already has the fetch; not worth
+    a second GitHub API round-trip from the orchestrator."""
+    if not paths:
+        return ""
+    return _run(["log", f"-n{limit}", "--oneline", f"origin/{branch_name}", "--", *paths], cwd=repo_dir)

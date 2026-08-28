@@ -1,9 +1,10 @@
 """Gate 1 dispatch: routes a decoded GitHub webhook envelope through ticket bootstrap (2.2),
 the Intake Agent (2.3), and the clarification loop + caps (2.4), tracing every decision (2.5).
 Called from the /pubsub/push route only, after idempotency has already been checked. A sufficient
-verdict hands off into Gate 2 (gate2.start_gate2, Sprint 3) in the same call."""
+verdict hands off into Gate 2 (gate2.start_gate2, Sprint 3) in the same call. `pull_request` events
+hand off into Gate 3 (gate3.handle_pull_request_event, Sprint 4)."""
 
-from artisan_agents import gate2, tracing
+from artisan_agents import gate2, gate3, tracing
 from artisan_agents.agents.intake_agent import run_intake
 from artisan_agents.gcp import firestore_client
 from artisan_agents.gcp.firestore_client import ClarificationCapExceeded
@@ -17,7 +18,8 @@ async def handle_event(envelope: GitHubWebhookEnvelope) -> None:
         await _handle_issue_opened(envelope)
     elif envelope.event == "issue_comment" and envelope.action == "created":
         await _handle_issue_comment(envelope)
-    # pull_request events are Gate 3's concern (Sprint 4) — ignored here.
+    elif envelope.event == "pull_request" and envelope.action in {"opened", "synchronize"}:
+        await gate3.handle_pull_request_event(envelope.repo, envelope.payload)
 
 
 async def _handle_issue_opened(envelope: GitHubWebhookEnvelope) -> None:

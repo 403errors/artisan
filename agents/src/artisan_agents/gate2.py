@@ -123,14 +123,19 @@ async def _open_pr_and_sync(
     plan: Plan,
     execution_result: ExecutionResult,
 ) -> None:
-    _pr_number, pr_url = await github_client.open_pull_request(
+    pr_number, pr_url = await github_client.open_pull_request(
         repo,
         head=execution_result.branch,
         base=PR_BASE_BRANCH,
         title=f"Artisan: {issue_title}",
         body=_pr_body(issue_number, plan, execution_result),
     )
-    await firestore_client.update_ticket(repo, issue_number, status="pr_open", pr_url=pr_url)
+    await firestore_client.update_ticket(
+        repo, issue_number, status="pr_open", pr_url=pr_url, pr_number=pr_number
+    )
+    # Written so Gate 3 (Sprint 4) can resolve a later `pull_request` webhook straight to this
+    # ticket without a Firestore query — see firestore_client.get_ticket_by_pr.
+    await firestore_client.write_pr_pointer(repo, pr_number, issue_number)
     await jira_client.add_comment(
         jira_key,
         f"Artisan opened a PR: {pr_url}\n\n{execution_result.diff_summary}",

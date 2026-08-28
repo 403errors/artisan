@@ -54,6 +54,10 @@ class _FakeTicketStore:
             update={"escalation_history": [*self.doc.escalation_history, entry], "status": "escalated"}
         )
 
+    async def write_pr_pointer(self, repo: str, pr_number: int, issue_number: int) -> None:
+        self.pr_pointers = getattr(self, "pr_pointers", [])
+        self.pr_pointers.append((repo, pr_number, issue_number))
+
 
 @pytest.fixture
 def fake_store(monkeypatch):
@@ -62,6 +66,7 @@ def fake_store(monkeypatch):
     monkeypatch.setattr(gate2.firestore_client, "update_ticket", store.update_ticket)
     monkeypatch.setattr(gate2.firestore_client, "increment_retry_round", store.increment_retry_round)
     monkeypatch.setattr(gate2.firestore_client, "append_escalation", store.append_escalation)
+    monkeypatch.setattr(gate2.firestore_client, "write_pr_pointer", store.write_pr_pointer)
     monkeypatch.setattr(gate2.firestore_client, "ticket_doc_id", store.ticket_doc_id)
     return store
 
@@ -241,5 +246,7 @@ async def test_green_on_second_attempt_reaches_pr_open_with_retry_count_one(
     assert fake_store.doc.retry_count == 1
     assert fake_store.doc.status == "pr_open"
     assert fake_store.doc.pr_url == "https://github.com/acme/demo/pull/42"
+    assert fake_store.doc.pr_number == 42
+    assert fake_store.pr_pointers == [(REPO, 42, ISSUE_NUMBER)]
     assert len(prs) == 1
     assert len(jira_comments) == 1

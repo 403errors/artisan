@@ -22,23 +22,28 @@ from artisan_agents.config import (
     DELIVERY_CLAIM_STALE_AFTER_SECONDS,
     MAX_CLARIFICATION_ROUNDS,
     MAX_EXECUTION_RETRIES,
+    MAX_TRIVIAL_CONFLICT_ATTEMPTS,
 )
 from artisan_shared.firestore_schema import EscalationEntry, TicketDoc
-from artisan_shared.ticket_ids import ticket_doc_id
+from artisan_shared.ticket_ids import pr_pointer_doc_id, ticket_doc_id
 
 __all__ = [
     "ClarificationCapExceeded",
     "RetryCapExceeded",
+    "TrivialConflictCapExceeded",
     "append_escalation",
     "claim_delivery",
     "create_ticket",
     "get_ticket",
+    "get_ticket_by_pr",
     "increment_clarification_round",
     "increment_retry_round",
+    "increment_trivial_conflict_attempt",
     "mark_delivery_completed",
     "mark_delivery_failed",
     "ticket_doc_id",
     "update_ticket",
+    "write_pr_pointer",
 ]
 
 
@@ -50,6 +55,12 @@ class ClarificationCapExceeded(Exception):
 class RetryCapExceeded(Exception):
     """Raised when a ticket has already hit MAX_EXECUTION_RETRIES (Gate 2, SPRINT.md Phase 3.5) —
     the caller must stop retrying the plan/execute/verify loop and escalate instead."""
+
+
+class TrivialConflictCapExceeded(Exception):
+    """Raised when a ticket has already used its one allowed trivial-conflict-resolution attempt
+    (Gate 3, SPRINT.md Phase 4.3, MAX_TRIVIAL_CONFLICT_ATTEMPTS=1) — the caller must escalate
+    instead of attempting a second resolution."""
 
 
 @lru_cache(maxsize=1)
@@ -200,6 +211,64 @@ async def increment_retry_round(repo: str, issue_number: int) -> int:
             f"retry_count reached cap ({MAX_EXECUTION_RETRIES}) on this attempt"
         )
     return new_count
+
+
+@firestore.async_transactional
+async def _increment_trivial_conflict_attempt_txn(
+    transaction: firestore.AsyncTransaction, doc_ref
+) -> tuple[int, bool]:
+    # Same commit-then-raise shape as the other two cap functions above (see
+    # _increment_clarification_round_txn's NOTE) — but the comparison is deliberately `>`, not
+    # `>=`. Unlike the clarification/retry caps (which gate the *next* attempt after a failure, so
+    # attempt 1 is always free), MAX_TRIVIAL_CONFLICT_ATTEMPTS=1 is claimed *before* the one
+    # allowed attempt runs (mirroring claim_delivery's claim-before-side-effect philosophy) — the
+    # first call's new_count (1) must NOT trip the cap, or trivial-conflict resolution would never
+    # run at all.
+    snapshot = await doc_ref.get(transaction=transaction)
+    current = snapshot.get("trivial_conflict_attempts") or 0
+    new_count = current + 1
+    at_cap = new_count > MAX_TRIVIAL_CONFLICT_ATTEMPTS
+    updates: dict = {"trivial_conflict_attempts": new_count, "updated_at": _now().isoformat()}
+    if at_cap:
+        updates["status"] = "escalated"
+    transaction.update(doc_ref, updates)
+    return new_count, at_cap
+
+
+async def increment_trivial_conflict_attempt(repo: str, issue_number: int) -> int:
+    """Transactionally claims this ticket's one allowed trivial-conflict-resolution attempt (Gate
+    3, SPRINT.md Phase 4.3) BEFORE the attempt runs. Raises TrivialConflictCapExceeded, atomically
+    flipping the ticket to `escalated` in the same transaction, if the cap was already used."""
+    doc_ref = _client().collection("tickets").document(ticket_doc_id(repo, issue_number))
+    transaction = _client().transaction()
+    new_count, at_cap = await _increment_trivial_conflict_attempt_txn(transaction, doc_ref)
+    if at_cap:
+        raise TrivialConflictCapExceeded(
+            f"trivial_conflict_attempts already used the cap ({MAX_TRIVIAL_CONFLICT_ATTEMPTS})"
+        )
+    return new_count
+
+
+async def write_pr_pointer(repo: str, pr_number: int, issue_number: int) -> None:
+    """Writes `pr_index/{repo}__{pr_number} -> {ticket_doc_id}` (Gate 3, SPRINT.md Phase 4.1) —
+    called once, when a PR is opened (gate2.py's `_open_pr_and_sync`), so a later `pull_request`
+    webhook resolves straight to the owning ticket without a Firestore query."""
+    await _client().collection("pr_index").document(pr_pointer_doc_id(repo, pr_number)).set(
+        {"ticket_doc_id": ticket_doc_id(repo, issue_number)}
+    )
+
+
+async def get_ticket_by_pr(repo: str, pr_number: int) -> TicketDoc | None:
+    """Resolves a `pull_request` webhook's PR number to its ticket doc via the pr_index pointer —
+    a direct `.get()`, never a query. Returns None for any PR Artisan doesn't track (Gate 3 never
+    operates on repo state it doesn't own — PRD.md §5)."""
+    pointer = await _client().collection("pr_index").document(pr_pointer_doc_id(repo, pr_number)).get()
+    if not pointer.exists:
+        return None
+    snapshot = await _client().collection("tickets").document(pointer.get("ticket_doc_id")).get()
+    if not snapshot.exists:
+        return None
+    return TicketDoc.model_validate(snapshot.to_dict())
 
 
 async def append_escalation(repo: str, issue_number: int, entry: EscalationEntry) -> None:

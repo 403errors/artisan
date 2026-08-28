@@ -24,7 +24,16 @@ from google.cloud import run_v2
 
 from artisan_agents.config import CLOUD_RUN_REGION, EXECUTION_SANDBOX_JOB_NAME, GCP_PROJECT_ID
 from artisan_agents.gcp import firestore_client
-from artisan_shared.models import ExecutionResult, Plan
+from artisan_shared.models import ConflictDetectionResult, ExecutionResult, Plan
+
+
+class ConflictDetectionCrashed(Exception):
+    """Raised when execution-sandbox's `detect_conflict` mode never wrote a
+    `last_conflict_detection` matching this check's `head_sha`. Unlike a crashed *execution*
+    (trigger_execution's silent fallback-synthesis — a failed ExecutionResult is still safely
+    representable and flows through the normal verify/retry decision), a crashed *detection* has no
+    honest default to synthesize: neither has_conflict=True nor False can be assumed from nothing.
+    The caller must escalate directly, not guess a classification."""
 
 
 @lru_cache(maxsize=1)
@@ -87,6 +96,87 @@ async def trigger_execution(
     return ExecutionResult(
         branch=branch,
         diff_summary="execution-sandbox did not report a result for this attempt",
+        tests_passed=False,
+        logs_uri=getattr(execution, "log_uri", "") or "",
+    )
+
+
+def _build_conflict_request(
+    *, job_mode: str, repo: str, issue_number: int, base_branch: str, head_branch: str,
+    head_sha: str | None = None,
+) -> run_v2.RunJobRequest:
+    env = [
+        run_v2.EnvVar(name="JOB_MODE", value=job_mode),
+        run_v2.EnvVar(name="GITHUB_REPO", value=repo),
+        run_v2.EnvVar(name="ISSUE_NUMBER", value=str(issue_number)),
+        run_v2.EnvVar(name="BASE_BRANCH", value=base_branch),
+        run_v2.EnvVar(name="HEAD_BRANCH", value=head_branch),
+    ]
+    if head_sha is not None:
+        env.append(run_v2.EnvVar(name="HEAD_SHA", value=head_sha))
+    overrides = run_v2.RunJobRequest.Overrides(
+        container_overrides=[run_v2.RunJobRequest.Overrides.ContainerOverride(env=env)]
+    )
+    return run_v2.RunJobRequest(name=_job_path(), overrides=overrides)
+
+
+async def trigger_conflict_detection(
+    *, repo: str, issue_number: int, base_branch: str, head_branch: str, head_sha: str,
+) -> ConflictDetectionResult:
+    """Runs execution-sandbox in `detect_conflict` mode (Gate 3, SPRINT.md Phase 4.1), blocking
+    until it completes, then reads the `ConflictDetectionResult` back from Firestore."""
+    request = _build_conflict_request(
+        job_mode="detect_conflict", repo=repo, issue_number=issue_number, base_branch=base_branch,
+        head_branch=head_branch, head_sha=head_sha,
+    )
+    operation = await _jobs_client().run_job(request=request)
+    await operation.result()
+
+    ticket = await firestore_client.get_ticket(repo, issue_number)
+    fresh = (
+        ticket.last_conflict_detection
+        if ticket is not None
+        and ticket.last_conflict_detection is not None
+        and ticket.last_conflict_detection.head_sha == head_sha
+        else None
+    )
+    if fresh is not None:
+        return fresh
+
+    raise ConflictDetectionCrashed(
+        f"no conflict-detection result for {repo}#{issue_number} at head_sha={head_sha}"
+    )
+
+
+async def trigger_conflict_resolution(
+    *, repo: str, issue_number: int, base_branch: str, head_branch: str
+) -> ExecutionResult:
+    """Runs execution-sandbox in `resolve_conflict` mode (Gate 3, SPRINT.md Phase 4.3), blocking
+    until it completes, then reads the `ExecutionResult` back from Firestore, matched on `branch`
+    exactly like `trigger_execution`. Mirrors `trigger_execution`'s crash fallback (synthesizes a
+    failed result) rather than raising — a crashed resolution and a real red test run are treated
+    identically by gate3.py: escalate, no retry."""
+    request = _build_conflict_request(
+        job_mode="resolve_conflict", repo=repo, issue_number=issue_number, base_branch=base_branch,
+        head_branch=head_branch,
+    )
+    operation = await _jobs_client().run_job(request=request)
+    execution = await operation.result()
+
+    ticket = await firestore_client.get_ticket(repo, issue_number)
+    fresh_result = (
+        ticket.last_conflict_resolution
+        if ticket is not None
+        and ticket.last_conflict_resolution is not None
+        and ticket.last_conflict_resolution.branch == head_branch
+        else None
+    )
+    if fresh_result is not None:
+        return fresh_result
+
+    return ExecutionResult(
+        branch=head_branch,
+        diff_summary="execution-sandbox did not report a conflict-resolution result",
         tests_passed=False,
         logs_uri=getattr(execution, "log_uri", "") or "",
     )

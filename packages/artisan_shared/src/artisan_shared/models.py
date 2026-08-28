@@ -54,6 +54,21 @@ class ConflictVerdict(BaseModel):
     comparison: str | None = None
 
 
+class ConflictDetectionResult(BaseModel):
+    """Gate 3's detection-job output (SPRINT.md Phase 4.1/4.2) — a real trial merge's outcome, not
+    GitHub's async `mergeable_state` (frequently stale/null right when a webhook fires). `head_sha`
+    is the freshness key `cloud_run_jobs.trigger_conflict_detection` matches on, since this result
+    isn't attempt-numbered like `ExecutionResult` (which matches on `branch` instead)."""
+
+    has_conflict: bool
+    conflicted_files: list[str]
+    conflict_markers: str
+    base_branch_history: str
+    diff_summary: str
+    logs_uri: str
+    head_sha: str
+
+
 class GitHubWebhookEnvelope(BaseModel):
     """The message published to `artisan-github-events`. Per SYSTEM_DESIGN.md §6.1 — the
     ingestion route's only job is producing this typed envelope, never a raw dict."""

@@ -9,11 +9,14 @@ import pytest
 
 from artisan_agents.gcp import cloud_run_jobs
 from artisan_shared.firestore_schema import TicketDoc
-from artisan_shared.models import ExecutionResult, Plan
+from artisan_shared.models import ConflictDetectionResult, ExecutionResult, Plan
 
 REPO = "acme/demo"
 ISSUE_NUMBER = 1
 BRANCH = "artisan/ART-1-attempt-1"
+BASE_BRANCH = "main"
+HEAD_BRANCH = "artisan/ART-1-attempt-1"
+HEAD_SHA = "deadbeef"
 _PLAN = Plan(steps=["step"], touched_files=["a.py"], test_cases=["t"], doc_updates=["d"])
 
 
@@ -40,7 +43,12 @@ class _FakeJobsClient:
         return _FakeOperation(self._execution)
 
 
-def _ticket(*, last_execution_result: ExecutionResult | None) -> TicketDoc:
+def _ticket(
+    *,
+    last_execution_result: ExecutionResult | None = None,
+    last_conflict_detection: ConflictDetectionResult | None = None,
+    last_conflict_resolution: ExecutionResult | None = None,
+) -> TicketDoc:
     now = datetime.now(UTC)
     return TicketDoc(
         github_issue_number=ISSUE_NUMBER,
@@ -48,6 +56,8 @@ def _ticket(*, last_execution_result: ExecutionResult | None) -> TicketDoc:
         jira_key="ART-1",
         status="in_progress",
         last_execution_result=last_execution_result,
+        last_conflict_detection=last_conflict_detection,
+        last_conflict_resolution=last_conflict_resolution,
         created_at=now,
         updated_at=now,
     )
@@ -143,3 +153,131 @@ async def test_env_vars_carry_plan_and_feedback_for_the_attempt(monkeypatch) -> 
     assert env_by_name["ATTEMPT_NUMBER"] == "2"
     assert env_by_name["PRIOR_FEEDBACK"] == "fix the color"
     assert "step" in env_by_name["PLAN_JSON"]
+
+
+@pytest.mark.asyncio
+async def test_trigger_conflict_detection_reads_fresh_result_matched_on_head_sha(monkeypatch) -> None:
+    expected = ConflictDetectionResult(
+        has_conflict=True, conflicted_files=["shared.py"], conflict_markers="<<<<<<<",
+        base_branch_history="log", diff_summary="conflict", logs_uri="gs://x", head_sha=HEAD_SHA,
+    )
+    fake_client = _FakeJobsClient(_FakeExecution())
+    monkeypatch.setattr(cloud_run_jobs, "_jobs_client", lambda: fake_client)
+    monkeypatch.setattr(cloud_run_jobs, "_job_path", lambda: "projects/p/locations/l/jobs/j")
+
+    async def fake_get_ticket(repo, issue_number):
+        return _ticket(last_conflict_detection=expected)
+
+    monkeypatch.setattr(cloud_run_jobs.firestore_client, "get_ticket", fake_get_ticket)
+
+    result = await cloud_run_jobs.trigger_conflict_detection(
+        repo=REPO, issue_number=ISSUE_NUMBER, base_branch=BASE_BRANCH, head_branch=HEAD_BRANCH,
+        head_sha=HEAD_SHA,
+    )
+    assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_trigger_conflict_detection_ignores_a_result_for_a_different_head_sha(monkeypatch) -> None:
+    stale = ConflictDetectionResult(
+        has_conflict=False, conflicted_files=[], conflict_markers="", base_branch_history="",
+        diff_summary="", logs_uri="gs://old", head_sha="old-sha",
+    )
+    fake_client = _FakeJobsClient(_FakeExecution())
+    monkeypatch.setattr(cloud_run_jobs, "_jobs_client", lambda: fake_client)
+    monkeypatch.setattr(cloud_run_jobs, "_job_path", lambda: "projects/p/locations/l/jobs/j")
+
+    async def fake_get_ticket(repo, issue_number):
+        return _ticket(last_conflict_detection=stale)
+
+    monkeypatch.setattr(cloud_run_jobs.firestore_client, "get_ticket", fake_get_ticket)
+
+    with pytest.raises(cloud_run_jobs.ConflictDetectionCrashed):
+        await cloud_run_jobs.trigger_conflict_detection(
+            repo=REPO, issue_number=ISSUE_NUMBER, base_branch=BASE_BRANCH, head_branch=HEAD_BRANCH,
+            head_sha=HEAD_SHA,
+        )
+
+
+@pytest.mark.asyncio
+async def test_trigger_conflict_detection_raises_when_no_result_written(monkeypatch) -> None:
+    fake_client = _FakeJobsClient(_FakeExecution())
+    monkeypatch.setattr(cloud_run_jobs, "_jobs_client", lambda: fake_client)
+    monkeypatch.setattr(cloud_run_jobs, "_job_path", lambda: "projects/p/locations/l/jobs/j")
+
+    async def fake_get_ticket(repo, issue_number):
+        return _ticket()
+
+    monkeypatch.setattr(cloud_run_jobs.firestore_client, "get_ticket", fake_get_ticket)
+
+    with pytest.raises(cloud_run_jobs.ConflictDetectionCrashed):
+        await cloud_run_jobs.trigger_conflict_detection(
+            repo=REPO, issue_number=ISSUE_NUMBER, base_branch=BASE_BRANCH, head_branch=HEAD_BRANCH,
+            head_sha=HEAD_SHA,
+        )
+
+
+@pytest.mark.asyncio
+async def test_trigger_conflict_resolution_reads_fresh_result_matched_on_branch(monkeypatch) -> None:
+    expected = ExecutionResult(branch=HEAD_BRANCH, diff_summary="resolved", tests_passed=True, logs_uri="gs://x")
+    fake_client = _FakeJobsClient(_FakeExecution())
+    monkeypatch.setattr(cloud_run_jobs, "_jobs_client", lambda: fake_client)
+    monkeypatch.setattr(cloud_run_jobs, "_job_path", lambda: "projects/p/locations/l/jobs/j")
+
+    async def fake_get_ticket(repo, issue_number):
+        return _ticket(last_conflict_resolution=expected)
+
+    monkeypatch.setattr(cloud_run_jobs.firestore_client, "get_ticket", fake_get_ticket)
+
+    result = await cloud_run_jobs.trigger_conflict_resolution(
+        repo=REPO, issue_number=ISSUE_NUMBER, base_branch=BASE_BRANCH, head_branch=HEAD_BRANCH,
+    )
+    assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_trigger_conflict_resolution_synthesizes_failed_result_on_crash(monkeypatch) -> None:
+    fake_client = _FakeJobsClient(_FakeExecution(log_uri="gs://crash-logs"))
+    monkeypatch.setattr(cloud_run_jobs, "_jobs_client", lambda: fake_client)
+    monkeypatch.setattr(cloud_run_jobs, "_job_path", lambda: "projects/p/locations/l/jobs/j")
+
+    async def fake_get_ticket(repo, issue_number):
+        return _ticket()
+
+    monkeypatch.setattr(cloud_run_jobs.firestore_client, "get_ticket", fake_get_ticket)
+
+    result = await cloud_run_jobs.trigger_conflict_resolution(
+        repo=REPO, issue_number=ISSUE_NUMBER, base_branch=BASE_BRANCH, head_branch=HEAD_BRANCH,
+    )
+    assert result.tests_passed is False
+    assert result.logs_uri == "gs://crash-logs"
+
+
+@pytest.mark.asyncio
+async def test_conflict_env_vars_carry_job_mode_pr_and_branch_info(monkeypatch) -> None:
+    fake_client = _FakeJobsClient(_FakeExecution())
+    monkeypatch.setattr(cloud_run_jobs, "_jobs_client", lambda: fake_client)
+    monkeypatch.setattr(cloud_run_jobs, "_job_path", lambda: "projects/p/locations/l/jobs/j")
+
+    async def fake_get_ticket(repo, issue_number):
+        return _ticket(
+            last_conflict_detection=ConflictDetectionResult(
+                has_conflict=False, conflicted_files=[], conflict_markers="", base_branch_history="",
+                diff_summary="", logs_uri="gs://x", head_sha=HEAD_SHA,
+            )
+        )
+
+    monkeypatch.setattr(cloud_run_jobs.firestore_client, "get_ticket", fake_get_ticket)
+
+    await cloud_run_jobs.trigger_conflict_detection(
+        repo=REPO, issue_number=ISSUE_NUMBER, base_branch=BASE_BRANCH, head_branch=HEAD_BRANCH,
+        head_sha=HEAD_SHA,
+    )
+    env_by_name = {
+        e.name: e.value for e in fake_client.requests[0].overrides.container_overrides[0].env
+    }
+    assert env_by_name["JOB_MODE"] == "detect_conflict"
+    assert env_by_name["GITHUB_REPO"] == REPO
+    assert env_by_name["BASE_BRANCH"] == BASE_BRANCH
+    assert env_by_name["HEAD_BRANCH"] == HEAD_BRANCH
+    assert env_by_name["HEAD_SHA"] == HEAD_SHA

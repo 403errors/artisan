@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from artisan_shared.models import (
+    ConflictDetectionResult,
     ConflictVerdict,
     DomainExpertOutput,
     ExecutionResult,
@@ -53,6 +54,19 @@ def test_execution_result_and_verification_verdict_roundtrip() -> None:
 def test_conflict_verdict_classification_literal() -> None:
     verdict = ConflictVerdict(classification="trivial", resolution_branch="artisan/fix-1")
     assert verdict.classification in ("trivial", "semantic")
+
+
+def test_conflict_detection_result_roundtrip() -> None:
+    result = ConflictDetectionResult(
+        has_conflict=True,
+        conflicted_files=["a.py"],
+        conflict_markers="<<<<<<<",
+        base_branch_history="abc123 main: change",
+        diff_summary="1 file changed",
+        logs_uri="gs://x",
+        head_sha="deadbeef",
+    )
+    assert ConflictDetectionResult.model_validate_json(result.model_dump_json()) == result
 
 
 def test_github_webhook_envelope_roundtrip() -> None:

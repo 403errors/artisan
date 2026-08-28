@@ -210,3 +210,51 @@ async def test_sufficient_verdict_transitions_to_in_progress_and_hands_off_to_ga
     assert ticket.status == "in_progress"
     assert transitioned == [("ART-1", "In Progress")]
     assert gate2_calls == [("acme/demo", 1, "ART-1", "title", "a very well specified body")]
+
+
+def _pull_request_event(action: str, repo: str = "acme/demo") -> GitHubWebhookEnvelope:
+    return GitHubWebhookEnvelope(
+        delivery_id=f"d-pr-{action}",
+        event="pull_request",
+        action=action,
+        repo=repo,
+        payload={
+            "pull_request": {
+                "number": 5,
+                "title": "Artisan: fix",
+                "body": "Resolves #1.",
+                "base": {"ref": "main"},
+                "head": {"ref": "artisan/ART-1-attempt-1", "sha": "deadbeef"},
+            }
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_pull_request_opened_and_synchronize_dispatch_to_gate3(monkeypatch) -> None:
+    calls = []
+
+    async def fake_handle_pull_request_event(repo, payload):
+        calls.append((repo, payload["pull_request"]["number"]))
+
+    monkeypatch.setattr(dispatch.gate3, "handle_pull_request_event", fake_handle_pull_request_event)
+
+    await dispatch.handle_event(_pull_request_event("opened"))
+    await dispatch.handle_event(_pull_request_event("synchronize"))
+
+    assert calls == [("acme/demo", 5), ("acme/demo", 5)]
+
+
+@pytest.mark.asyncio
+async def test_other_pull_request_actions_are_ignored(monkeypatch) -> None:
+    calls = []
+
+    async def fake_handle_pull_request_event(repo, payload):
+        calls.append(repo)
+
+    monkeypatch.setattr(dispatch.gate3, "handle_pull_request_event", fake_handle_pull_request_event)
+
+    await dispatch.handle_event(_pull_request_event("labeled"))
+    await dispatch.handle_event(_pull_request_event("closed"))
+
+    assert calls == []

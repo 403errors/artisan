@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from artisan_shared.models import ExecutionResult, Plan
+from artisan_shared.models import ConflictDetectionResult, ExecutionResult, Plan
 
 TicketStatus = Literal[
     "intake", "in_progress", "pr_open", "escalated", "manual_pickup", "done"
@@ -31,6 +31,13 @@ class TicketDoc(BaseModel):
     plan: Plan | None = None
     last_execution_result: ExecutionResult | None = None
     pr_url: str | None = None
+    pr_number: int | None = None
+    trivial_conflict_attempts: int = 0
+    last_conflict_detection: ConflictDetectionResult | None = None
+    # Kept distinct from last_execution_result (same underlying type) so Gate 2's execution
+    # history and Gate 3's conflict-resolution history stay separable in the Sprint 5 dashboard's
+    # decision trail.
+    last_conflict_resolution: ExecutionResult | None = None
     escalation_history: list[EscalationEntry] = []
     trace_ids: list[str] = []
     processed_delivery_ids: list[str] = []

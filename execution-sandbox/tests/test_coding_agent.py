@@ -11,7 +11,7 @@ from google.adk.models.base_llm import BaseLlm
 from google.adk.models.llm_response import LlmResponse
 from google.genai import types
 
-from artisan_execution_sandbox.coding_agent import run_coding_agent
+from artisan_execution_sandbox.coding_agent import run_coding_agent, run_conflict_resolution_agent
 from artisan_execution_sandbox.config import MAX_CODING_AGENT_TOOL_CALLS
 from artisan_shared.models import Plan
 
@@ -106,6 +106,24 @@ async def test_stuck_model_terminates_at_the_tool_call_ceiling_instead_of_hangin
     # Never called `finish`, so no summary was ever recorded — but crucially, this line is
     # reached at all, proving the loop terminated rather than running forever.
     assert summary == "(coding agent did not call finish)"
+
+
+@pytest.mark.asyncio
+async def test_conflict_resolution_agent_reuses_the_bounded_agent_loop(tmp_path) -> None:
+    """`run_conflict_resolution_agent` shares `_run_bounded_agent`'s exact tool/session wiring
+    with `run_coding_agent` — this proves that reuse actually works end-to-end (same scripted LLM,
+    same tool calls succeed) with a conflict-shaped prompt/instruction instead of a Plan's. It does
+    not assert a real conflict gets resolved — that's what `_ScriptedLlm` scripting a real
+    resolution, or a live run, would need to prove."""
+    summary = await run_conflict_resolution_agent(
+        workdir=tmp_path,
+        conflicted_files=["shared.py"],
+        conflict_markers="--- shared.py ---\n<<<<<<< HEAD\nvalue = 2\n=======\nvalue = 3\n>>>>>>> main\n",
+        model=_ScriptedLlm(),
+    )
+
+    assert summary == "wrote hello.txt"
+    assert (tmp_path / "hello.txt").read_text() == "hi\n"
 
 
 @pytest.mark.asyncio
