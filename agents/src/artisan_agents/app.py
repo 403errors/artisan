@@ -16,7 +16,7 @@ from fastapi import FastAPI, Request, Response
 
 from artisan_agents import tracing
 from artisan_agents.config import SECRET_GITHUB_WEBHOOK_SECRET
-from artisan_agents.dispatch import handle_event
+from artisan_agents.dispatch import NonRetriableEventError, handle_event
 from artisan_agents.gcp.firestore_client import (
     claim_delivery,
     mark_delivery_completed,
@@ -72,6 +72,12 @@ async def pubsub_push(request: Request) -> Response:
 
     try:
         await handle_event(envelope)
+    except NonRetriableEventError:
+        # This delivery will fail identically forever (e.g. the GitHub issue it references
+        # doesn't exist) — mark it completed so Pub/Sub doesn't burn the dead-letter budget
+        # retrying something that can never succeed.
+        await mark_delivery_completed(envelope.delivery_id)
+        return Response(status_code=200)
     except Exception:
         await mark_delivery_failed(envelope.delivery_id)
         raise

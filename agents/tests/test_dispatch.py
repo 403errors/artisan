@@ -4,8 +4,10 @@ a 4th round must never be attempted. Firestore, Jira, GitHub, and the Intake Age
 here — this test is about dispatch.py's control flow, not any one integration."""
 
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
+from githubkit.exception import RequestFailed
 
 from artisan_agents import dispatch
 from artisan_agents.gcp.firestore_client import ClarificationCapExceeded
@@ -210,6 +212,49 @@ async def test_sufficient_verdict_transitions_to_in_progress_and_hands_off_to_ga
     assert ticket.status == "in_progress"
     assert transitioned == [("ART-1", "In Progress")]
     assert gate2_calls == [("acme/demo", 1, "ART-1", "title", "a very well specified body")]
+
+
+def _request_failed(status_code: int) -> RequestFailed:
+    # RequestFailed.__init__ needs a real githubkit Response wrapping an httpx one; bypassing
+    # it lets the test assert purely on the `.response.status_code` classification dispatch.py
+    # actually reads, without constructing a full HTTP round trip.
+    exc = RequestFailed.__new__(RequestFailed)
+    exc.response = SimpleNamespace(status_code=status_code)
+    return exc
+
+
+@pytest.mark.asyncio
+async def test_github_404_on_issue_thread_is_classified_non_retriable(
+    fake_store, monkeypatch
+) -> None:
+    async def fake_create_ticket(title, body, url):
+        return "ART-1"
+
+    async def fake_get_issue_thread(repo, issue_number):
+        raise _request_failed(404)
+
+    monkeypatch.setattr(dispatch.jira_client, "create_ticket", fake_create_ticket)
+    monkeypatch.setattr(dispatch.github_client, "get_issue_thread", fake_get_issue_thread)
+
+    with pytest.raises(dispatch.NonRetriableEventError):
+        await dispatch.handle_event(_issue_opened())
+
+
+@pytest.mark.asyncio
+async def test_non_404_github_failure_on_issue_thread_propagates_unchanged(
+    fake_store, monkeypatch
+) -> None:
+    async def fake_create_ticket(title, body, url):
+        return "ART-1"
+
+    async def fake_get_issue_thread(repo, issue_number):
+        raise _request_failed(500)
+
+    monkeypatch.setattr(dispatch.jira_client, "create_ticket", fake_create_ticket)
+    monkeypatch.setattr(dispatch.github_client, "get_issue_thread", fake_get_issue_thread)
+
+    with pytest.raises(RequestFailed):
+        await dispatch.handle_event(_issue_opened())
 
 
 def _pull_request_event(action: str, repo: str = "acme/demo") -> GitHubWebhookEnvelope:

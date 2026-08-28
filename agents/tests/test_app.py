@@ -173,3 +173,42 @@ def test_pubsub_push_marks_failed_and_reraises_on_handler_exception(client, monk
         )
     assert failed == ["d-3"]
     assert completed == []
+
+
+def test_pubsub_push_acks_and_does_not_retry_on_non_retriable_error(client, monkeypatch) -> None:
+    from artisan_agents.dispatch import NonRetriableEventError
+    from artisan_shared.models import GitHubWebhookEnvelope
+
+    envelope = GitHubWebhookEnvelope(
+        delivery_id="d-4", event="issues", action="opened", repo="a/b", payload={}
+    )
+    monkeypatch.setattr(app_module, "verify_push_token", lambda _header: None)
+    monkeypatch.setattr(app_module, "decode_push_message", lambda _body: envelope)
+
+    async def _claim(_delivery_id):
+        return True
+
+    async def _handle_event(_envelope):
+        raise NonRetriableEventError("issue a/b#1 not found")
+
+    failed = []
+    completed = []
+
+    async def _mark_failed(delivery_id):
+        failed.append(delivery_id)
+
+    async def _mark_completed(delivery_id):
+        completed.append(delivery_id)
+
+    monkeypatch.setattr(app_module, "claim_delivery", _claim)
+    monkeypatch.setattr(app_module, "handle_event", _handle_event)
+    monkeypatch.setattr(app_module, "mark_delivery_failed", _mark_failed)
+    monkeypatch.setattr(app_module, "mark_delivery_completed", _mark_completed)
+
+    response = client.post(
+        "/pubsub/push",
+        json={"message": {"data": base64.b64encode(b"{}").decode()}},
+    )
+    assert response.status_code == 200
+    assert completed == ["d-4"]
+    assert failed == []

@@ -145,6 +145,14 @@ async def _open_pr_and_sync(
 async def _escalate(repo: str, issue_number: int, jira_key: str, *, reason: str) -> None:
     entry = EscalationEntry(at=datetime.now(timezone.utc), reason=reason, gate="2")
     await firestore_client.append_escalation(repo, issue_number, entry)
+    # Short reporter-facing notice on the issue itself — no PR exists yet at this point in the
+    # loop, and the reporter may not have Jira access, so this is their only visibility that
+    # automation gave up. Jira gets the full diagnostic detail (see docs/SYSTEM_DESIGN.md §9).
+    await github_client.post_issue_comment(
+        repo, issue_number,
+        "Artisan couldn't resolve this automatically after multiple attempts — "
+        "it's been handed to the team.",
+    )
     await jira_client.add_comment(
         jira_key,
         f"Artisan needs manual pickup: {MAX_EXECUTION_RETRIES} execution attempts without a "

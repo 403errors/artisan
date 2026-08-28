@@ -4,6 +4,8 @@ Called from the /pubsub/push route only, after idempotency has already been chec
 verdict hands off into Gate 2 (gate2.start_gate2, Sprint 3) in the same call. `pull_request` events
 hand off into Gate 3 (gate3.handle_pull_request_event, Sprint 4)."""
 
+from githubkit.exception import RequestFailed
+
 from artisan_agents import gate2, gate3, tracing
 from artisan_agents.agents.intake_agent import run_intake
 from artisan_agents.gcp import firestore_client
@@ -11,6 +13,13 @@ from artisan_agents.gcp.firestore_client import ClarificationCapExceeded
 from artisan_agents.github import client as github_client
 from artisan_agents.jira import client as jira_client
 from artisan_shared.models import GitHubWebhookEnvelope
+
+
+class NonRetriableEventError(Exception):
+    """Raised when a webhook event can never succeed no matter how many times Pub/Sub
+    redelivers it (e.g. the referenced GitHub issue doesn't exist). Distinct from every other
+    exception in this codebase, which is domain-level (caps, crashed jobs) — this one exists
+    purely so app.py's push handler can ack instead of retrying a doomed delivery."""
 
 
 async def handle_event(envelope: GitHubWebhookEnvelope) -> None:
@@ -50,7 +59,12 @@ async def _handle_issue_comment(envelope: GitHubWebhookEnvelope) -> None:
 
 async def _evaluate_intake(repo: str, issue_number: int, jira_key: str) -> None:
     ticket_id = firestore_client.ticket_doc_id(repo, issue_number)
-    title, body, thread = await github_client.get_issue_thread(repo, issue_number)
+    try:
+        title, body, thread = await github_client.get_issue_thread(repo, issue_number)
+    except RequestFailed as exc:
+        if exc.response.status_code == 404:
+            raise NonRetriableEventError(f"issue {repo}#{issue_number} not found") from exc
+        raise
     verdict = await run_intake(
         issue_title=title, issue_body=body, thread=thread, jira_key=jira_key
     )

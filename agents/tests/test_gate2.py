@@ -75,6 +75,7 @@ def fake_store(monkeypatch):
 def stub_jira_and_github(monkeypatch):
     prs = []
     jira_comments = []
+    github_comments = []
 
     async def fake_open_pull_request(repo, *, head, base, title, body):
         prs.append((repo, head, base, title, body))
@@ -83,9 +84,13 @@ def stub_jira_and_github(monkeypatch):
     async def fake_add_comment(jira_key, body):
         jira_comments.append((jira_key, body))
 
+    async def fake_post_issue_comment(repo, issue_number, body):
+        github_comments.append((repo, issue_number, body))
+
     monkeypatch.setattr(gate2.github_client, "open_pull_request", fake_open_pull_request)
     monkeypatch.setattr(gate2.jira_client, "add_comment", fake_add_comment)
-    return prs, jira_comments
+    monkeypatch.setattr(gate2.github_client, "post_issue_comment", fake_post_issue_comment)
+    return prs, jira_comments, github_comments
 
 
 def _domain_output(domain: str) -> DomainExpertOutput:
@@ -172,6 +177,7 @@ async def test_single_domain_dispatch_runs_sequentially_with_one_call(
 async def test_n_consecutive_failures_end_in_escalated_with_no_nplus1th_attempt(
     fake_store, stub_jira_and_github, monkeypatch
 ) -> None:
+    _, jira_comments, github_comments = stub_jira_and_github
     execution_calls = []
 
     async def fake_run_routing(**kwargs):
@@ -204,13 +210,16 @@ async def test_n_consecutive_failures_end_in_escalated_with_no_nplus1th_attempt(
     assert fake_store.doc.status == "escalated"
     assert len(fake_store.doc.escalation_history) == 1
     assert fake_store.doc.escalation_history[0].gate == "2"
+    assert len(jira_comments) == 1
+    assert len(github_comments) == 1
+    assert github_comments[0][:2] == (REPO, ISSUE_NUMBER)
 
 
 @pytest.mark.asyncio
 async def test_green_on_second_attempt_reaches_pr_open_with_retry_count_one(
     fake_store, stub_jira_and_github, monkeypatch
 ) -> None:
-    prs, jira_comments = stub_jira_and_github
+    prs, jira_comments, github_comments = stub_jira_and_github
     execution_calls = []
 
     async def fake_run_routing(**kwargs):
@@ -250,3 +259,4 @@ async def test_green_on_second_attempt_reaches_pr_open_with_retry_count_one(
     assert fake_store.pr_pointers == [(REPO, 42, ISSUE_NUMBER)]
     assert len(prs) == 1
     assert len(jira_comments) == 1
+    assert len(github_comments) == 0
