@@ -45,17 +45,20 @@ Requires GCP Application Default Credentials (`gcloud auth application-default l
 |---|---|---|
 | `ARTISAN_GCP_PROJECT_ID` | GCP project for Firestore/Secret Manager/Pub/Sub | `artisan-multiagent-ai` |
 | `ARTISAN_PUBSUB_TOPIC` | Topic the ingestion route publishes to | `artisan-github-events` |
-| `ARTISAN_PUBSUB_PUSH_AUDIENCE` | Expected audience on the Pub/Sub push OIDC token | *(unset — set to the deployed orchestrator URL)* |
-| `ARTISAN_MCP_ATLASSIAN_URL` | Internal URL of the `mcp-atlassian` Cloud Run service | *(unset — required for Jira calls)* |
+| `ARTISAN_PUBSUB_PUSH_AUDIENCE` | Expected audience on the Pub/Sub push OIDC token — must be the full push endpoint URL *including* `/pubsub/push`, since that's what Cloud Run's default push OIDC audience actually is | *(unset — set at deploy time)* |
+| `ARTISAN_JIRA_URL` | Jira Cloud site base URL | `https://pieisnot22by7.atlassian.net` |
+| `ARTISAN_JIRA_USERNAME` | Jira service-account email (paired with the `jira-api-token` secret, Basic Auth) | `pieisnot22by7@gmail.com` |
 | `ARTISAN_JIRA_PROJECT_KEY` | Jira project tickets are created under | `ART` |
 | `ARTISAN_GITHUB_APP_ID` / `ARTISAN_GITHUB_INSTALLATION_ID` | GitHub App identity for installation-token auth | Sprint 1's provisioned App/installation |
+
+Jira access is a direct REST API call (Basic Auth, email + `jira-api-token` from Secret Manager) — not routed through the `mcp-atlassian` service from Sprint 1, which was deleted after being superseded (see [CONTEXT.md](./docs/CONTEXT.md) for why).
 
 Deploying to Cloud Run (`agents/Dockerfile`):
 
 ```bash
 cd agents
 gcloud run deploy orchestrator --source . --region us-central1 \
-  --set-env-vars ARTISAN_MCP_ATLASSIAN_URL=<mcp-atlassian-url>,ARTISAN_PUBSUB_PUSH_AUDIENCE=<this-service-url>
+  --set-env-vars ARTISAN_PUBSUB_PUSH_AUDIENCE=<this-service-url>/pubsub/push
 ```
 
 then point the GitHub App's webhook URL (App settings → Webhook) at `<orchestrator-url>/webhooks/github`, and create the Pub/Sub topic/push subscription targeting `<orchestrator-url>/pubsub/push` (see [CONTEXT.md](./docs/CONTEXT.md) "Known follow-up: Sprint 2 infra/deployment not yet executed" for the exact commands and required IAM grants — none of this is automated yet; Sprint 7 adds IaC).
@@ -92,4 +95,4 @@ None of this repo's code ever takes a raw secret as a literal. Everything (`gith
 
 ## Deployment
 
-Cloud Run (services: `orchestrator`, `mcp-atlassian`, `dashboard`; job: `execution-sandbox`). `orchestrator` has a Dockerfile and a manual `gcloud run deploy` path (see above) as of Sprint 2; full IaC + CI/CD automation for all services lands in Sprint 7 — see [SPRINT.md](./docs/SPRINT.md#sprint-7--deployment--cicd).
+Cloud Run (services: `orchestrator`, `dashboard`; job: `execution-sandbox`; `mcp-atlassian` was deployed in Sprint 1 and deleted in Sprint 2 after being superseded, see above). `orchestrator` has a Dockerfile and a manual `gcloud run deploy` path (see above) as of Sprint 2; full IaC + CI/CD automation for all services lands in Sprint 7 — see [SPRINT.md](./docs/SPRINT.md#sprint-7--deployment--cicd).

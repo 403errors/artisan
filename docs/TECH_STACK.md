@@ -28,10 +28,12 @@ artisan/
 | google-cloud-run | latest (for triggering `execution-sandbox` Jobs from the orchestrator) | |
 | opentelemetry-sdk + opentelemetry-exporter-gcp-trace | latest | one span per gate decision |
 | githubkit (or PyGithub) | latest | GitHub App JWT → installation token flow; do not use a static PAT |
-| mcp-atlassian | latest published container image | run as its own Cloud Run service, internal ingress only, API-token auth against Jira Cloud |
+| httpx | latest | direct Jira Cloud REST API calls (Basic Auth, API token from Secret Manager) — see note below |
 | pydantic | v2.x | all agent I/O is typed Pydantic models, never free-text dicts |
 | pytest, pytest-asyncio | latest | |
 | Package manager | `uv` | `pyproject.toml` + `uv.lock`, not bare `pip` |
+
+> **Note (Sprint 2):** originally `mcp-atlassian` (a Cloud Run MCP server) sat between the orchestrator and Jira. Dropped after live testing found an unresolved auth bug in the pinned `sooperset/mcp-atlassian:0.23.1` image — see `docs/SYSTEM_DESIGN.md` §2 and `docs/CONTEXT.md` for the full diagnosis. The orchestrator now calls Jira Cloud's REST API directly via `httpx`.
 
 ## Dashboard (`dashboard/`) — TypeScript
 
@@ -54,7 +56,7 @@ artisan/
 | Tool | Notes |
 |---|---|
 | Docker | multi-stage builds for `agents/`, `execution-sandbox/`, `dashboard/` |
-| Cloud Run (services) | `orchestrator`, `mcp-atlassian`, `dashboard` |
+| Cloud Run (services) | `orchestrator`, `dashboard` (`mcp-atlassian` deleted in Sprint 2 after being superseded, see note above) |
 | Cloud Run Jobs | `execution-sandbox` — triggered per plan-execution attempt, not long-running |
 | Pub/Sub | topic `artisan-github-events`, push subscription to `orchestrator` |
 | Firestore | native mode |
@@ -70,4 +72,4 @@ artisan/
 - Gemini model id is always pinned explicitly in code (`gemini-3.7-flash`), never resolved via a "latest" alias.
 - All inter-agent I/O is a typed Pydantic model — no raw string-passing between agents.
 - No long-lived GitHub PAT anywhere — GitHub auth is always via the GitHub App's installation-token flow.
-- Jira auth is always the single Artisan service account through `mcp-atlassian` — never a per-user Jira login.
+- Jira auth is always the single Artisan service account's API token (direct REST, Basic Auth) — never a per-user Jira login.

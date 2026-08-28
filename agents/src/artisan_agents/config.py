@@ -15,7 +15,10 @@ MAX_TRIVIAL_CONFLICT_ATTEMPTS = 1
 GCP_PROJECT_ID = os.environ.get("ARTISAN_GCP_PROJECT_ID", "artisan-multiagent-ai")
 PUBSUB_TOPIC = os.environ.get("ARTISAN_PUBSUB_TOPIC", "artisan-github-events")
 PUBSUB_PUSH_AUDIENCE = os.environ.get("ARTISAN_PUBSUB_PUSH_AUDIENCE", "")
-MCP_ATLASSIAN_URL = os.environ.get("ARTISAN_MCP_ATLASSIAN_URL", "")
+# Direct Jira Cloud REST API access (see jira/client.py docstring for why this replaced
+# mcp-atlassian: an unresolved auth bug in the pinned sooperset/mcp-atlassian:0.23.1 image itself).
+JIRA_URL = os.environ.get("ARTISAN_JIRA_URL", "https://pieisnot22by7.atlassian.net")
+JIRA_USERNAME = os.environ.get("ARTISAN_JIRA_USERNAME", "pieisnot22by7@gmail.com")
 JIRA_PROJECT_KEY = os.environ.get("ARTISAN_JIRA_PROJECT_KEY", "ART")
 GITHUB_APP_ID = os.environ.get("ARTISAN_GITHUB_APP_ID", "4744770")
 GITHUB_INSTALLATION_ID = os.environ.get("ARTISAN_GITHUB_INSTALLATION_ID", "157129507")

@@ -21,11 +21,11 @@ GitHub repo (issues, issue_comment, pull_request events)
 └───────────────────────────────────────────────────────────┘
    │              │                    │                │
    ▼              ▼                    ▼                ▼
-Firestore    Secret Manager     Cloud Run Jobs      mcp-atlassian
-(ticket       (GitHub App key,   "execution-        service (Jira
- state)       Jira token)        sandbox" — one      MCP tool, API
-                                 job per attempt:     token auth)
-                                 clone repo, run
+Firestore    Secret Manager     Cloud Run Jobs      Jira Cloud
+(ticket       (GitHub App key,   "execution-        REST API
+ state)       Jira token)        sandbox" — one      (direct,
+                                 job per attempt:     API-token
+                                 clone repo, run      Basic Auth)
                                  plan, run tests,
                                  push branch
    │
@@ -38,7 +38,7 @@ OpenTelemetry → Cloud Trace / Cloud Logging (every gate decision)
 │    user)                                                     │
 │  - Reads ticket state from Firestore (server-side)          │
 │  - Jira status shown via Artisan's own service-account       │
-│    session (mcp-atlassian) — not the dashboard user's        │
+│    credentials (Jira API token) — not the dashboard user's   │
 │    personal Jira login                                       │
 └───────────────────────────────────────────────────────────┘
 ```
@@ -49,19 +49,20 @@ OpenTelemetry → Cloud Trace / Cloud Logging (every gate decision)
 |---|---|---|
 | GitHub App | Source of truth for issues/PRs; webhook emitter; PR/comment writer | GitHub |
 | Pub/Sub (`artisan-github-events`) | Decouples webhook receipt from processing; at-least-once delivery | Google Cloud |
-| Orchestrator service | Owns all 3 gates; hosts Intake, Domain-Expert, Planning, Verification, Conflict agents (all reasoning-only) | Cloud Run (service) |
+| Orchestrator service | Owns all 3 gates; hosts Intake, Domain-Expert, Planning, Verification, Conflict agents (all reasoning-only); calls Jira Cloud REST API directly | Cloud Run (service) |
 | Execution sandbox | Ephemeral compute that actually checks out the repo, writes code, runs tests, pushes a branch | Cloud Run Jobs |
 | Firestore | Single source of truth for per-ticket state | Google Cloud (native mode) |
 | Secret Manager | GitHub App private key, webhook secret, Jira API token | Google Cloud |
-| mcp-atlassian | MCP server exposing Jira as ADK tools, authenticated as a single Artisan service account | Cloud Run (service, internal-only) |
 | OpenTelemetry → Cloud Trace/Logging | Every gate decision traced (proceed / ask / escalate) | Google Cloud |
 | Dashboard | Human-facing view of ticket state, scoped to one repo + board | Cloud Run (service) |
+
+> **Superseded (Sprint 2):** an `mcp-atlassian` MCP server (Cloud Run, internal-only ingress) originally sat between the orchestrator and Jira, per the original design. It was dropped after live testing surfaced an unresolved auth bug in the pinned `sooperset/mcp-atlassian:0.23.1` image itself — two independently-verified-valid API tokens both failed identically through it while succeeding via direct REST calls with the same credentials. The orchestrator now calls Jira Cloud's REST API directly (`agents/src/artisan_agents/jira/client.py`); see `docs/CONTEXT.md` for the full diagnosis. The `mcp-atlassian` Cloud Run service was deleted once this was confirmed (it pulled a public image, so nothing custom was lost).
 
 ## 3. Data Flow — Gate 1 (Intake)
 
 1. GitHub emits an `issues` (opened) or `issue_comment` (created) event → GitHub App webhook → Pub/Sub.
 2. Orchestrator's Pub/Sub handler deduplicates on GitHub's `X-GitHub-Delivery` header (idempotency key stored in Firestore) and loads/creates the ticket's Firestore document.
-3. If the ticket has no Jira key yet, the orchestrator creates one via mcp-atlassian and stores the mapping.
+3. If the ticket has no Jira key yet, the orchestrator creates one via a direct Jira Cloud REST API call and stores the mapping.
 4. Intake Agent reads the GitHub issue thread + Jira ticket and returns a structured verdict: `sufficient` or `insufficient` (with a specific question).
 5. **Sufficient:** Jira ticket transitions to *In Progress*; Gate 2 is triggered.
 6. **Insufficient:** Artisan posts the specific question as a GitHub issue comment, increments `clarification_rounds` in Firestore, and stops. A reply re-triggers step 4. After 3 rounds still insufficient, the ticket is flagged `manual_pickup` and Jira is annotated accordingly — no further automated attempts.
@@ -165,9 +166,9 @@ class ConflictVerdict(BaseModel):
 ## 8. Auth & Security
 
 - **GitHub → Artisan:** GitHub App installation, webhook secret verified on receipt, private key in Secret Manager, JWT-based installation tokens minted per call (never long-lived PATs).
-- **Artisan → Jira:** a single Artisan service account, API token in Secret Manager, used exclusively by the `mcp-atlassian` service — end users never authenticate to Jira through Artisan.
+- **Artisan → Jira:** a single Artisan service account, API token in Secret Manager, used exclusively by the orchestrator (direct Jira Cloud REST API calls, Basic Auth) — end users never authenticate to Jira through Artisan. (Originally routed through an `mcp-atlassian` MCP server; dropped in Sprint 2, see §2.)
 - **Dashboard → user:** GitHub OAuth (Auth.js), scoped to `read:org`/repo access so a signed-in user's dashboard access matches their actual GitHub repo permissions. Jira ticket data is shown as read-only mirrored state (via the service account above), not fetched with the user's own Jira credentials.
-- **IAM:** each Cloud Run service/job runs under its own least-privilege service account (orchestrator: Firestore + Pub/Sub + Secret Manager access; execution-sandbox: Firestore write + GitHub App token minting only; dashboard: Firestore read-only). The orchestrator additionally needs `roles/run.invoker` scoped specifically to the `mcp-atlassian` service — Cloud Run's `run.developer` role (used for managing Cloud Run resources) does not itself grant permission to invoke another private service, so this is a separate grant, not implied by the baseline roles above.
+- **IAM:** each Cloud Run service/job runs under its own least-privilege service account (orchestrator: Firestore + Pub/Sub + Secret Manager access; execution-sandbox: Firestore write + GitHub App token minting only; dashboard: Firestore read-only).
 
 ## 9. Failure Handling & Escalation
 
@@ -184,7 +185,7 @@ class ConflictVerdict(BaseModel):
 ## 11. Deployment Topology
 
 - Single GCP project, single region.
-- Cloud Run services: `orchestrator`, `mcp-atlassian` (internal-only ingress), `dashboard`.
+- Cloud Run services: `orchestrator`, `dashboard`. (`mcp-atlassian`, deployed in Sprint 1, was deleted in Sprint 2 after being superseded — see §2.)
 - Cloud Run Jobs: `execution-sandbox` (triggered per attempt, not long-running).
 - Pub/Sub: topic `artisan-github-events` with a push subscription to the orchestrator.
 - Firestore: native mode, single database.

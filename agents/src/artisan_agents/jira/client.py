@@ -1,69 +1,49 @@
-"""Jira access via the `mcp-atlassian` Cloud Run service, over the real MCP protocol
-(initialize -> tools/call) — this is Sprint 1's deferred verification, done for real here,
-Cloud-Run-to-Cloud-Run (docs/CONTEXT.md "Known follow-up").
+"""Jira access via the Jira Cloud REST API v2, direct Basic Auth (email + API token).
 
-Uses the `mcp` SDK's ClientSession directly rather than ADK's `McpToolset`: these are
-deterministic orchestration calls (create/transition/comment), not an LLM picking a tool from a
-menu, and ADK's `BaseTool.run_async` requires a full agent `ToolContext` that only exists inside a
-Runner session — unnecessary machinery for a fixed, non-agentic call sequence. `McpToolset` is the
-right tool when an *agent* needs to browse/pick MCP tools (e.g. a future domain-expert agent); it
-isn't needed just to invoke one known tool with known arguments.
+Originally implemented against `mcp-atlassian` over the real MCP protocol (per Sprint 1's
+deferred verification plan). Dropped after live Sprint 2 field-testing: two independently-verified
+API tokens (each confirmed working via a direct REST call) both failed identically —
+`401 Unauthorized` — when called through the deployed `sooperset/mcp-atlassian:0.23.1` image, which
+runs Jira calls through an SSRF-protection hook (`attach_ssrf_hook=True` in its own traceback) that
+appears to interfere with outbound Basic Auth in Cloud Run's sandboxed network. That's an
+unresolved bug inside the pinned third-party image itself, not a credentials or networking problem
+on our side — see docs/CONTEXT.md for the full diagnosis. Direct REST calls with the same
+credentials work reliably, so that's what this module does instead."""
 
-Tool names below (`jira_create_issue`, `jira_transition_issue`, `jira_add_comment`,
-`jira_get_transitions`) match the `sooperset/mcp-atlassian` image's documented tool surface as of
-the 0.23.1 pin (SPRINT.md Phase 1.2) — confirm against a live `session.list_tools()` call the
-first time this runs against the deployed service, since that's the one thing that couldn't be
-verified from this environment (no network path to the internal-ingress service)."""
+import httpx
 
-from contextlib import asynccontextmanager
-
-from google.auth.transport.requests import Request as GoogleAuthRequest
-from google.oauth2.id_token import fetch_id_token
-from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
-
-from artisan_agents.config import JIRA_PROJECT_KEY, MCP_ATLASSIAN_URL
+from artisan_agents.config import JIRA_PROJECT_KEY, JIRA_URL, JIRA_USERNAME
+from artisan_agents.gcp.secrets import get_secret
 
 
 class JiraClientError(Exception):
-    """Raised when an mcp-atlassian tool call fails or returns an error result."""
+    """Raised when a Jira REST API call fails."""
 
 
-def _id_token_header() -> dict[str, str]:
-    """Mints a Google-signed ID token scoped to the mcp-atlassian Cloud Run service, so the
-    orchestrator's own service-account identity authorizes the call (roles/run.invoker on
-    mcp-atlassian) — no separate Jira credential is ever held by the orchestrator itself."""
-    token = fetch_id_token(GoogleAuthRequest(), MCP_ATLASSIAN_URL)
-    return {"Authorization": f"Bearer {token}"}
+def _auth() -> tuple[str, str]:
+    return (JIRA_USERNAME, get_secret("jira-api-token"))
 
 
-@asynccontextmanager
-async def _session():
-    async with streamablehttp_client(
-        f"{MCP_ATLASSIAN_URL}/mcp", headers=_id_token_header()
-    ) as (read, write, _):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            yield session
-
-
-async def _call_tool(tool_name: str, arguments: dict) -> dict:
-    async with _session() as session:
-        result = await session.call_tool(tool_name, arguments)
-    if result.isError:
-        raise JiraClientError(f"{tool_name} failed: {result.content}")
-    return result.structuredContent or {}
+async def _request(method: str, path: str, **kwargs) -> dict:
+    async with httpx.AsyncClient(base_url=JIRA_URL, auth=_auth(), timeout=15) as client:
+        response = await client.request(method, path, **kwargs)
+    if response.status_code >= 400:
+        raise JiraClientError(f"{method} {path} failed ({response.status_code}): {response.text}")
+    return response.json() if response.content else {}
 
 
 async def create_ticket(issue_title: str, issue_body: str, issue_url: str) -> str:
     """Creates a Jira issue on the configured project; returns the new issue key (e.g. `ART-42`)."""
-    data = await _call_tool(
-        "jira_create_issue",
-        {
-            "project_key": JIRA_PROJECT_KEY,
-            "summary": issue_title,
-            "issue_type": "Task",
-            "description": f"{issue_body}\n\nSource: {issue_url}",
+    data = await _request(
+        "POST",
+        "/rest/api/2/issue",
+        json={
+            "fields": {
+                "project": {"key": JIRA_PROJECT_KEY},
+                "summary": issue_title,
+                "description": f"{issue_body}\n\nSource: {issue_url}",
+                "issuetype": {"name": "Task"},
+            }
         },
     )
     return data["key"]
@@ -71,7 +51,7 @@ async def create_ticket(issue_title: str, issue_body: str, issue_url: str) -> st
 
 async def transition_ticket(jira_key: str, status_name: str) -> None:
     """Transitions the ticket to the named status (e.g. `In Progress`)."""
-    transitions = await _call_tool("jira_get_transitions", {"issue_key": jira_key})
+    transitions = await _request("GET", f"/rest/api/2/issue/{jira_key}/transitions")
     match = next(
         (t for t in transitions.get("transitions", []) if t["name"] == status_name),
         None,
@@ -80,11 +60,12 @@ async def transition_ticket(jira_key: str, status_name: str) -> None:
         raise JiraClientError(
             f"no transition named {status_name!r} available for {jira_key}"
         )
-    await _call_tool(
-        "jira_transition_issue",
-        {"issue_key": jira_key, "transition_id": match["id"]},
+    await _request(
+        "POST",
+        f"/rest/api/2/issue/{jira_key}/transitions",
+        json={"transition": {"id": match["id"]}},
     )
 
 
 async def add_comment(jira_key: str, body: str) -> None:
-    await _call_tool("jira_add_comment", {"issue_key": jira_key, "comment": body})
+    await _request("POST", f"/rest/api/2/issue/{jira_key}/comment", json={"body": body})
