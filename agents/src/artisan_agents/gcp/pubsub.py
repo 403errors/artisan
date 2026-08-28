@@ -10,7 +10,7 @@ from google.cloud import pubsub_v1
 from google.oauth2 import id_token
 
 from artisan_agents.config import GCP_PROJECT_ID, PUBSUB_PUSH_AUDIENCE, PUBSUB_TOPIC
-from artisan_agents.models import GitHubWebhookEnvelope
+from artisan_shared.models import GitHubWebhookEnvelope
 
 
 class PushTokenVerificationError(Exception):

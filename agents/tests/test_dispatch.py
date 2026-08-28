@@ -8,9 +8,9 @@ from datetime import datetime, timezone
 import pytest
 
 from artisan_agents import dispatch
-from artisan_agents.firestore_schema import TicketDoc
 from artisan_agents.gcp.firestore_client import ClarificationCapExceeded
-from artisan_agents.models import GitHubWebhookEnvelope, IntakeVerdict
+from artisan_shared.firestore_schema import TicketDoc
+from artisan_shared.models import GitHubWebhookEnvelope, IntakeVerdict
 
 
 class _FakeTicketStore:
@@ -177,8 +177,11 @@ async def test_bot_comments_never_retrigger_evaluation(fake_store, stub_collabor
 
 
 @pytest.mark.asyncio
-async def test_sufficient_verdict_transitions_to_in_progress(fake_store, monkeypatch) -> None:
+async def test_sufficient_verdict_transitions_to_in_progress_and_hands_off_to_gate2(
+    fake_store, monkeypatch
+) -> None:
     transitioned = []
+    gate2_calls = []
 
     async def fake_create_ticket(title, body, url):
         return "ART-1"
@@ -192,13 +195,18 @@ async def test_sufficient_verdict_transitions_to_in_progress(fake_store, monkeyp
     async def fake_run_intake(**kwargs):
         return IntakeVerdict(sufficient=True)
 
+    async def fake_start_gate2(repo, issue_number, jira_key, *, issue_title, issue_body):
+        gate2_calls.append((repo, issue_number, jira_key, issue_title, issue_body))
+
     monkeypatch.setattr(dispatch.jira_client, "create_ticket", fake_create_ticket)
     monkeypatch.setattr(dispatch.jira_client, "transition_ticket", fake_transition_ticket)
     monkeypatch.setattr(dispatch.github_client, "get_issue_thread", fake_get_issue_thread)
     monkeypatch.setattr(dispatch, "run_intake", fake_run_intake)
+    monkeypatch.setattr(dispatch.gate2, "start_gate2", fake_start_gate2)
 
     await dispatch.handle_event(_issue_opened())
 
     ticket = await fake_store.get_ticket("acme/demo", 1)
     assert ticket.status == "in_progress"
     assert transitioned == [("ART-1", "In Progress")]
+    assert gate2_calls == [("acme/demo", 1, "ART-1", "title", "a very well specified body")]

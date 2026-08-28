@@ -76,7 +76,7 @@ def test_pubsub_push_rejects_invalid_token(client, monkeypatch) -> None:
 
 
 def test_pubsub_push_is_a_no_op_for_a_duplicate_delivery(client, monkeypatch) -> None:
-    from artisan_agents.models import GitHubWebhookEnvelope
+    from artisan_shared.models import GitHubWebhookEnvelope
 
     envelope = GitHubWebhookEnvelope(
         delivery_id="d-1", event="issues", action="opened", repo="a/b", payload={}
@@ -104,7 +104,7 @@ def test_pubsub_push_is_a_no_op_for_a_duplicate_delivery(client, monkeypatch) ->
 
 
 def test_pubsub_push_dispatches_and_marks_processed_for_a_new_delivery(client, monkeypatch) -> None:
-    from artisan_agents.models import GitHubWebhookEnvelope
+    from artisan_shared.models import GitHubWebhookEnvelope
 
     envelope = GitHubWebhookEnvelope(
         delivery_id="d-2", event="issues", action="opened", repo="a/b", payload={}

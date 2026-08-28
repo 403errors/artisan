@@ -8,12 +8,15 @@ Single monorepo, greenfield:
 
 ```
 artisan/
-  agents/           # Python — orchestrator + all ADK agents
-  execution-sandbox/# Python — Cloud Run Job image (Execution Agent runtime)
-  dashboard/        # TypeScript — Next.js app
-  infra/            # deploy config (Dockerfiles, gcloud/Terraform)
-  docs/             # PRD.md, SYSTEM_DESIGN.md, TECH_STACK.md, CONTEXT.md
+  agents/                    # Python — orchestrator + all ADK agents
+  execution-sandbox/         # Python — Cloud Run Job image (Execution Agent runtime)
+  packages/artisan_shared/   # Python — shared models/Firestore-id-scheme/GitHub-auth (Sprint 3)
+  dashboard/                 # TypeScript — Next.js app
+  infra/                     # deploy config (Dockerfiles, gcloud/Terraform)
+  docs/                      # PRD.md, SYSTEM_DESIGN.md, TECH_STACK.md, CONTEXT.md
 ```
+
+**Sprint 3:** `agents/` and `execution-sandbox/` are two `uv` workspace members (root `pyproject.toml` declares `[tool.uv.workspace] members = ["agents", "execution-sandbox", "packages/artisan_shared"]`) sharing a third member, `packages/artisan_shared/` — the typed Pydantic models (`Plan`, `ExecutionResult`, `TicketDoc`, etc.), the Firestore `ticket_doc_id` scheme, and GitHub App installation-auth construction. This exists because `execution-sandbox` (Sprint 3's execution job) needs the exact same `Plan`/`ExecutionResult` shapes and the exact same ticket-doc-id derivation as the orchestrator — duplicating that logic risked silent drift between the two sides of Gate 2's contract. Run `uv sync` from the repo root to sync all three members at once, or `uv sync --package <name>` for one; `uv run --package <name> pytest` runs a given member's tests.
 
 ## Agent backend (`agents/`, `execution-sandbox/`) — Python
 
@@ -34,6 +37,8 @@ artisan/
 | Package manager | `uv` | `pyproject.toml` + `uv.lock`, not bare `pip` |
 
 > **Note (Sprint 2):** originally `mcp-atlassian` (a Cloud Run MCP server) sat between the orchestrator and Jira. Dropped after live testing found an unresolved auth bug in the pinned `sooperset/mcp-atlassian:0.23.1` image — see `docs/SYSTEM_DESIGN.md` §2 and `docs/CONTEXT.md` for the full diagnosis. The orchestrator now calls Jira Cloud's REST API directly via `httpx`.
+
+> **Note (Sprint 3):** `execution-sandbox`'s coding step does **not** use ADK's built-in `google.adk.tools.bash_tool` (`ExecuteBashTool`) — that tool's `run_async` unconditionally calls `tool_context.request_confirmation(...)` before every command with no way to disable it, meaning it blocks forever waiting for human approval that will never come in an unattended Cloud Run Job. This wasn't discoverable from the tool's name/description alone; only reading its implementation surfaced it. `execution-sandbox/src/artisan_execution_sandbox/coding_agent.py` uses plain Python functions as tools instead (`read_file`/`write_file`/`list_directory`/`run_shell_command`/`finish`) — these are wrapped by ADK's `FunctionTool`, which defaults `require_confirmation=False`.
 
 > **Note (Sprint 2):** Gemini access is via **Vertex AI**, not the Gemini Developer API — no API key/secret needed, ADK's `Agent` picks this up automatically from env vars on the orchestrator's Cloud Run service: `GOOGLE_GENAI_USE_VERTEXAI=TRUE`, `GOOGLE_CLOUD_PROJECT=artisan-multiagent-ai`, `GOOGLE_CLOUD_LOCATION=global`. The `orchestrator@` service account needs `roles/aiplatform.user`. **`location` must be `global`, not a regional endpoint** — `gemini-3.7-flash` 404s on `us-central1` even though the project has access to it; only the `global` Vertex AI endpoint serves this model. This was undocumented before Sprint 2's live field-testing surfaced it (see `docs/CONTEXT.md`).
 

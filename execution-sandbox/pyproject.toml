@@ -1,15 +1,25 @@
 [project]
 name = "artisan-execution-sandbox"
 version = "0.1.0"
-description = "Add your description here"
+description = "Gate 2's execution job (SPRINT.md Phase 3.4): clones the repo, runs a bounded ADK coding agent against the Plan, runs the test suite, pushes a branch, and writes the ExecutionResult back to Firestore. Triggered per-attempt as a Cloud Run Job by agents/gcp/cloud_run_jobs.py."
 authors = [
     { name = "Sameer Verma", email = "na21b061@smail.iitm.ac.in" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "artisan-shared",
+    "google-adk==2.8.0",
+    "google-cloud-firestore==2.29.0",
+    "google-cloud-secret-manager==2.30.0",
+    "githubkit[auth-app]==0.16.1",
+    "pydantic==2.13.4",
+]
+
+[tool.uv.sources]
+artisan-shared = { workspace = true }
 
 [project.scripts]
-artisan-execution-sandbox = "artisan_execution_sandbox:main"
+artisan-execution-sandbox = "artisan_execution_sandbox.main:main"
 
 [build-system]
 requires = ["uv_build>=0.12.6,<0.13.0"]

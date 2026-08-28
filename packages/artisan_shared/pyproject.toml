@@ -1,0 +1,23 @@
+[project]
+name = "artisan-shared"
+version = "0.1.0"
+description = "Shared typed models, Firestore ticket-id scheme, and GitHub App auth used by both artisan-agents (orchestrator) and artisan-execution-sandbox. See docs/SYSTEM_DESIGN.md §6.2/§6.4 and Sprint 3's shared-package decision in docs/CONTEXT.md."
+authors = [
+    { name = "Sameer Verma", email = "na21b061@smail.iitm.ac.in" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "pydantic==2.13.4",
+    "githubkit[auth-app]==0.16.1",
+    "google-cloud-secret-manager==2.30.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.6,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+]

@@ -23,3 +23,16 @@ async def get_issue_thread(repo: str, issue_number: int) -> tuple[str, str, list
     comments_resp = await gh.rest.issues.async_list_comments(owner, name, issue_number)
     comment_bodies = [c.body or "" for c in comments_resp.parsed_data]
     return issue.title, issue.body or "", comment_bodies
+
+
+async def open_pull_request(
+    repo: str, *, head: str, base: str, title: str, body: str
+) -> tuple[int, str]:
+    """Opens a PR via the App's installation token (Gate 2, SPRINT.md Phase 3.6). Returns
+    (pr_number, pr_html_url)."""
+    owner, name = _split_repo(repo)
+    gh = get_installation_client()
+    response = await gh.rest.pulls.async_create(
+        owner, name, title=title, head=head, base=base, body=body
+    )
+    return response.parsed_data.number, response.parsed_data.html_url

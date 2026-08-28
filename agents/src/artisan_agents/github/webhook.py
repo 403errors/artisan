@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import json
 
-from artisan_agents.models import GitHubWebhookEnvelope
+from artisan_shared.models import GitHubWebhookEnvelope
 
 SUPPORTED_EVENTS = {"issues", "issue_comment", "pull_request"}
 

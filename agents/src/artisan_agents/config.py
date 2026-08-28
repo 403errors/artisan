@@ -22,6 +22,9 @@ JIRA_USERNAME = os.environ.get("ARTISAN_JIRA_USERNAME", "pieisnot22by7@gmail.com
 JIRA_PROJECT_KEY = os.environ.get("ARTISAN_JIRA_PROJECT_KEY", "ART")
 GITHUB_APP_ID = os.environ.get("ARTISAN_GITHUB_APP_ID", "4744770")
 GITHUB_INSTALLATION_ID = os.environ.get("ARTISAN_GITHUB_INSTALLATION_ID", "157129507")
+# Gate 2 (Sprint 3): the execution-sandbox Cloud Run Job the orchestrator triggers per attempt.
+CLOUD_RUN_REGION = os.environ.get("ARTISAN_CLOUD_RUN_REGION", "us-central1")
+EXECUTION_SANDBOX_JOB_NAME = os.environ.get("ARTISAN_EXECUTION_SANDBOX_JOB_NAME", "execution-sandbox")
 
 # Secret Manager secret names (values fetched at call time, never inlined — SYSTEM_DESIGN.md §8).
 SECRET_GITHUB_APP_PRIVATE_KEY = "github-app-private-key"

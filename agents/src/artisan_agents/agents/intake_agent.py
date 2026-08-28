@@ -8,7 +8,7 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
 from artisan_agents.config import GEMINI_MODEL_ID
-from artisan_agents.models import IntakeVerdict
+from artisan_shared.models import IntakeVerdict
 
 APP_NAME = "artisan-intake"
 _USER_ID = "artisan-orchestrator"

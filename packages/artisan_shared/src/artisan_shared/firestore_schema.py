@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from artisan_agents.models import Plan
+from artisan_shared.models import ExecutionResult, Plan
 
 TicketStatus = Literal[
     "intake", "in_progress", "pr_open", "escalated", "manual_pickup", "done"
@@ -29,6 +29,7 @@ class TicketDoc(BaseModel):
     retry_count: int = 0
     domains: list[str] = []
     plan: Plan | None = None
+    last_execution_result: ExecutionResult | None = None
     pr_url: str | None = None
     escalation_history: list[EscalationEntry] = []
     trace_ids: list[str] = []

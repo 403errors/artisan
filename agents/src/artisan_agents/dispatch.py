@@ -1,14 +1,15 @@
 """Gate 1 dispatch: routes a decoded GitHub webhook envelope through ticket bootstrap (2.2),
 the Intake Agent (2.3), and the clarification loop + caps (2.4), tracing every decision (2.5).
-Called from the /pubsub/push route only, after idempotency has already been checked."""
+Called from the /pubsub/push route only, after idempotency has already been checked. A sufficient
+verdict hands off into Gate 2 (gate2.start_gate2, Sprint 3) in the same call."""
 
-from artisan_agents import tracing
+from artisan_agents import gate2, tracing
 from artisan_agents.agents.intake_agent import run_intake
 from artisan_agents.gcp import firestore_client
 from artisan_agents.gcp.firestore_client import ClarificationCapExceeded
 from artisan_agents.github import client as github_client
 from artisan_agents.jira import client as jira_client
-from artisan_agents.models import GitHubWebhookEnvelope
+from artisan_shared.models import GitHubWebhookEnvelope
 
 
 async def handle_event(envelope: GitHubWebhookEnvelope) -> None:
@@ -57,6 +58,7 @@ async def _evaluate_intake(repo: str, issue_number: int, jira_key: str) -> None:
         await firestore_client.update_ticket(repo, issue_number, status="in_progress")
         with tracing.gate_span(ticket_id, "1", "proceed"):
             pass
+        await gate2.start_gate2(repo, issue_number, jira_key, issue_title=title, issue_body=body)
         return
 
     await github_client.post_issue_comment(

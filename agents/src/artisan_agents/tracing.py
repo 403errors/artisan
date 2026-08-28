@@ -26,7 +26,9 @@ def setup_tracing() -> None:
 
 @contextmanager
 def gate_span(
-    ticket_id: str, gate: Literal["1", "2", "3"], decision: Literal["proceed", "ask", "escalate"]
+    ticket_id: str,
+    gate: Literal["1", "2", "3"],
+    decision: Literal["proceed", "ask", "retry", "escalate"],
 ):
     tracer = trace.get_tracer("artisan.orchestrator")
     with tracer.start_as_current_span(f"gate.{gate}.{decision}") as span:

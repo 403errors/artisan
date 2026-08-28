@@ -1,13 +1,17 @@
 """Integration tests against the real `artisan-multiagent-ai` Firestore database — same
 skip-if-no-ADC convention as test_firestore_schema.py. Exercises ticket bootstrap (Phase 2.2), the
-idempotency guard (Phase 2.1), and the transactional clarification-round cap (Phase 2.4)."""
+idempotency guard (Phase 2.1), the transactional clarification-round cap (Phase 2.4), and Gate 2's
+transactional retry cap + escalation-history append (Phase 3.5, SPRINT.md)."""
+
+from datetime import UTC, datetime
 
 import pytest
 import pytest_asyncio
 from google.cloud import firestore
 
 from artisan_agents.gcp import firestore_client
-from artisan_agents.gcp.firestore_client import ClarificationCapExceeded
+from artisan_agents.gcp.firestore_client import ClarificationCapExceeded, RetryCapExceeded
+from artisan_shared.firestore_schema import EscalationEntry
 
 REPO = "403errors/artisan-demo"
 
@@ -99,3 +103,40 @@ async def test_duplicate_delivery_guard(cleanup_delivery) -> None:
     assert await firestore_client.is_duplicate_delivery(delivery_id) is False
     await firestore_client.mark_delivery_processed(delivery_id)
     assert await firestore_client.is_duplicate_delivery(delivery_id) is True
+
+
+@pytest.mark.asyncio
+async def test_retry_cap_flips_to_escalated_on_third_round(cleanup_ticket) -> None:
+    """Mirrors test_clarification_round_cap_flips_to_manual_pickup_on_third_round — Gate 2's
+    retry cap (Phase 3.5) uses the identical commit-then-raise transactional shape."""
+    _require_credentials()
+    issue_number = 900004
+    cleanup_ticket.append(issue_number)
+    await firestore_client.create_ticket(REPO, issue_number, jira_key="ART-900004")
+
+    assert await firestore_client.increment_retry_round(REPO, issue_number) == 1
+    assert await firestore_client.increment_retry_round(REPO, issue_number) == 2
+
+    with pytest.raises(RetryCapExceeded):
+        await firestore_client.increment_retry_round(REPO, issue_number)
+
+    ticket = await firestore_client.get_ticket(REPO, issue_number)
+    assert ticket.status == "escalated"
+    assert ticket.retry_count == 3
+
+
+@pytest.mark.asyncio
+async def test_append_escalation_is_atomic_and_flips_status(cleanup_ticket) -> None:
+    _require_credentials()
+    issue_number = 900005
+    cleanup_ticket.append(issue_number)
+    await firestore_client.create_ticket(REPO, issue_number, jira_key="ART-900005")
+
+    entry = EscalationEntry(at=datetime.now(UTC), reason="verification failed 3x", gate="2")
+    await firestore_client.append_escalation(REPO, issue_number, entry)
+
+    ticket = await firestore_client.get_ticket(REPO, issue_number)
+    assert ticket.status == "escalated"
+    assert len(ticket.escalation_history) == 1
+    assert ticket.escalation_history[0].reason == "verification failed 3x"
+    assert ticket.escalation_history[0].gate == "2"

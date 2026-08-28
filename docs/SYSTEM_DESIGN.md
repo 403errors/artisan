@@ -50,7 +50,7 @@ OpenTelemetry → Cloud Trace / Cloud Logging (every gate decision)
 | GitHub App | Source of truth for issues/PRs; webhook emitter; PR/comment writer | GitHub |
 | Pub/Sub (`artisan-github-events`) | Decouples webhook receipt from processing; at-least-once delivery | Google Cloud |
 | Orchestrator service | Owns all 3 gates; hosts Intake, Domain-Expert, Planning, Verification, Conflict agents (all reasoning-only); calls Jira Cloud REST API directly | Cloud Run (service) |
-| Execution sandbox | Ephemeral compute that actually checks out the repo, writes code, runs tests, pushes a branch | Cloud Run Jobs |
+| Execution sandbox | Ephemeral compute that checks out the repo, runs a bounded ADK function-calling agent to write code/tests/docs (own tools: read/write/list/shell + a `finish` signal — never ADK's built-in `bash_tool`, which requires human confirmation per call and would stall unattended), runs the test suite, pushes a branch | Cloud Run Jobs |
 | Firestore | Single source of truth for per-ticket state | Google Cloud (native mode) |
 | Secret Manager | GitHub App private key, webhook secret, Jira API token | Google Cloud |
 | OpenTelemetry → Cloud Trace/Logging | Every gate decision traced (proceed / ask / escalate) | Google Cloud |
@@ -71,11 +71,11 @@ OpenTelemetry → Cloud Trace / Cloud Logging (every gate decision)
 
 1. Orchestrator (Gemini 3.7 Flash, high-thinking) decides which domain-expert persona(s) apply (frontend / backend / infra-devops) and whether they run in parallel or in sequence.
 2. Domain-expert output (refined technical description) → Planning Agent → a plan (steps, touched files, test cases, doc updates) stored on the Firestore ticket doc.
-3. Orchestrator triggers a Cloud Run Job (`execution-sandbox`) with the plan and repo reference as job args. The job: clones the repo, creates a branch, executes the plan, writes tests/docs, runs the full test suite, and exits with a structured result (success + diff, or failure + logs).
-4. Verification Agent compares the job's result against the plan and the original issue.
-   - **Green + tests pass:** orchestrator opens the PR (via GitHub App), tagging the issue and summarizing the approach; mirrors the summary as a Jira comment; Jira ticket → *PR Open — Awaiting Review*, PR link attached.
-   - **Failed verification or failed tests:** specific feedback is appended to the ticket's Firestore doc, `retry_count` increments, and the loop returns to step 2 (Planning) with that feedback in context.
-5. On exceeding the retry cap, the ticket is flagged `escalated` with the last failure attached, and Jira/GitHub are notified — no further automated retries.
+3. Orchestrator triggers a Cloud Run Job (`execution-sandbox`) with the plan and repo reference as job args (`agents/gcp/cloud_run_jobs.py`, via env-var overrides on a synchronous `run_job(...).result()` call — Cloud Run supports request timeouts up to 60 minutes, so this needs no separate async completion signal at this scope). The job (`execution-sandbox/`): clones the repo, creates a branch, runs a bounded ADK function-calling agent against the plan to write code/tests/docs (never a shelled-out external coding CLI, per PRD §5's non-goal), runs the full test suite, pushes the branch, and writes a structured `ExecutionResult` (success + diff, or failure + logs) directly onto the ticket's Firestore doc for the orchestrator to read back.
+4. Verification Agent compares the job's result against the plan and the original issue (short-circuiting to a failed verdict without a model call when the test run itself failed — a red test run can never be verified green).
+   - **Green + tests pass:** orchestrator opens the PR (via GitHub App), tagging the issue and summarizing the approach; mirrors the summary as a Jira comment. **Jira status is not transitioned on this path** — this Jira site's real team-managed Kanban workflow only has `Backlog`/`Selected for Development`/`In Progress`/`Done` (confirmed live against `ART-8`/`ART-9` in Sprint 3), with no "PR Open — Awaiting Review" status to move into; the ticket stays *In Progress* in Jira, and the PR link/summary is communicated via the comment instead. Firestore's own `TicketDoc.status` still tracks `"pr_open"` precisely — it, not Jira's coarser workflow, is the source of truth for this state.
+   - **Failed verification or failed tests:** specific feedback is appended to the ticket's Firestore doc, `retry_count` increments transactionally (same commit-then-raise shape as Gate 1's clarification cap), and the loop returns to step 2 (Planning) with that feedback in context.
+5. On exceeding the retry cap, the ticket is flagged `escalated` with the last failure appended to `escalation_history` (an atomic `firestore.ArrayUnion`, not read-modify-write), and Jira/GitHub are notified — no further automated retries.
 
 ## 5. Data Flow — Gate 3 (Merge Conflicts)
 
@@ -169,7 +169,7 @@ class ConflictVerdict(BaseModel):
 - **Artisan → Jira:** a single Artisan service account, API token in Secret Manager, used exclusively by the orchestrator (direct Jira Cloud REST API calls, Basic Auth) — end users never authenticate to Jira through Artisan. (Originally routed through an `mcp-atlassian` MCP server; dropped in Sprint 2, see §2.)
 - **Artisan → Gemini:** Vertex AI, authenticated via the orchestrator's own service account (ADC) — no API key/secret at all. Requires `GOOGLE_GENAI_USE_VERTEXAI=TRUE` + `GOOGLE_CLOUD_PROJECT` + `GOOGLE_CLOUD_LOCATION=global` env vars on the Cloud Run service and `roles/aiplatform.user` on `orchestrator@` (added Sprint 2 — see `docs/CONTEXT.md`). `location` must be `global`; `gemini-3.7-flash` isn't served from regional endpoints like `us-central1`.
 - **Dashboard → user:** GitHub OAuth (Auth.js), scoped to `read:org`/repo access so a signed-in user's dashboard access matches their actual GitHub repo permissions. Jira ticket data is shown as read-only mirrored state (via the service account above), not fetched with the user's own Jira credentials.
-- **IAM:** each Cloud Run service/job runs under its own least-privilege service account (orchestrator: Firestore + Pub/Sub + Secret Manager + Vertex AI (`aiplatform.user`) access; execution-sandbox: Firestore write + GitHub App token minting only; dashboard: Firestore read-only).
+- **IAM:** each Cloud Run service/job runs under its own least-privilege service account (orchestrator: Firestore + Pub/Sub + Secret Manager + Vertex AI (`aiplatform.user`) + Cloud Run Jobs-trigger access; execution-sandbox: Firestore write + GitHub App token minting only — the latter means `execution-sandbox@` needs its own `secretAccessor` grant on `github-app-private-key` specifically, added in Sprint 3, since it mints its own installation token rather than being handed one by the orchestrator; dashboard: Firestore read-only).
 
 ## 9. Failure Handling & Escalation
 

@@ -7,12 +7,15 @@ Full product context lives in [`docs/`](./docs): [PRD.md](./docs/PRD.md) (what/w
 ## Repo layout
 
 ```
-agents/            Python — orchestrator + all ADK agents
-execution-sandbox/ Python — Cloud Run Job image (Execution Agent runtime)
-dashboard/         TypeScript — Next.js monitoring dashboard
-infra/             Deploy config (Dockerfiles, Terraform/gcloud)
-docs/              Living project docs
+agents/                    Python — orchestrator + all ADK agents
+execution-sandbox/         Python — Cloud Run Job image (Execution Agent runtime)
+packages/artisan_shared/   Python — shared models/Firestore-id-scheme/GitHub-auth (Sprint 3)
+dashboard/                 TypeScript — Next.js monitoring dashboard
+infra/                     Deploy config (Dockerfiles, Terraform/gcloud)
+docs/                      Living project docs
 ```
+
+`agents/`, `execution-sandbox/`, and `packages/artisan_shared/` are three members of one `uv` workspace (root `pyproject.toml`) — `packages/artisan_shared/` holds the typed models and Firestore ticket-id scheme both Python projects need to stay in sync on (see [TECH_STACK.md](./docs/TECH_STACK.md)). Run `uv sync` from the repo root to sync every member at once.
 
 ## Prerequisites
 
@@ -27,9 +30,8 @@ docs/              Living project docs
 ### Agents (`agents/`)
 
 ```bash
-cd agents
-uv sync
-uv run pytest
+uv sync                              # from the repo root — syncs the whole workspace
+uv run --package artisan-agents pytest
 ```
 
 This includes the orchestrator (the Cloud Run service handling Gate 1 intake — see [SYSTEM_DESIGN.md §3](./docs/SYSTEM_DESIGN.md#3-data-flow--gate-1-intake)). To run it locally:
@@ -53,16 +55,23 @@ Requires GCP Application Default Credentials (`gcloud auth application-default l
 | `GOOGLE_GENAI_USE_VERTEXAI` | Routes ADK's Gemini calls through Vertex AI (no API key needed — uses ADC) instead of the Gemini Developer API | `TRUE` |
 | `GOOGLE_CLOUD_PROJECT` | Vertex AI project | `artisan-multiagent-ai` |
 | `GOOGLE_CLOUD_LOCATION` | Vertex AI location — **must be `global`**, not a region; `gemini-3.7-flash` isn't served from regional endpoints like `us-central1` (see [CONTEXT.md](./docs/CONTEXT.md) Milestone 3) | `global` |
+| `ARTISAN_CLOUD_RUN_REGION` | Region of the `execution-sandbox` Cloud Run Job the orchestrator triggers (Sprint 3, Gate 2) | `us-central1` |
+| `ARTISAN_EXECUTION_SANDBOX_JOB_NAME` | Name of that Cloud Run Job | `execution-sandbox` |
 
 Jira access is a direct REST API call (Basic Auth, email + `jira-api-token` from Secret Manager) — not routed through the `mcp-atlassian` service from Sprint 1, which was deleted after being superseded (see [CONTEXT.md](./docs/CONTEXT.md) for why).
 
 Gemini access requires `aiplatform.googleapis.com` enabled on the project and `roles/aiplatform.user` granted to the orchestrator's service account — see [CONTEXT.md](./docs/CONTEXT.md) Milestone 3 for the exact commands (this wasn't a Sprint 1 default; it was missing until Sprint 2's live field-testing caught it).
 
-Deploying to Cloud Run (`agents/Dockerfile`):
+Deploying to Cloud Run (`agents/Dockerfile`) — as of Sprint 3, `agents/pyproject.toml` has a `uv`
+workspace path dependency on `packages/artisan_shared`, so the Docker build context must be the
+**repo root**, not `agents/`; `gcloud run deploy --source .` can no longer be used directly since
+it doesn't support an out-of-context Dockerfile path:
 
 ```bash
-cd agents
-gcloud run deploy orchestrator --source . --region us-central1 \
+# from the repo root
+docker build -f agents/Dockerfile -t <your-registry>/orchestrator .
+docker push <your-registry>/orchestrator
+gcloud run deploy orchestrator --image <your-registry>/orchestrator --region us-central1 \
   --set-env-vars ARTISAN_PUBSUB_PUSH_AUDIENCE=<this-service-url>/pubsub/push
 ```
 
@@ -70,10 +79,40 @@ then point the GitHub App's webhook URL (App settings → Webhook) at `<orchestr
 
 ### Execution sandbox (`execution-sandbox/`)
 
+Gate 2's per-attempt Cloud Run Job (Sprint 3) — clones the repo, runs a bounded ADK coding agent
+against the orchestrator's `Plan`, runs the test suite, pushes a branch, and writes the result back
+to Firestore. See [SYSTEM_DESIGN.md §4](./docs/SYSTEM_DESIGN.md#4-data-flow--gate-2-plan--execute--verify--pr).
+
 ```bash
-cd execution-sandbox
-uv sync
-uv run pytest
+uv sync                                          # from the repo root
+uv run --package artisan-execution-sandbox pytest
+```
+
+Env vars beyond the Sprint 1 defaults it shares with `agents/` (`ARTISAN_GCP_PROJECT_ID`,
+`ARTISAN_GITHUB_APP_ID`/`ARTISAN_GITHUB_INSTALLATION_ID`):
+
+| Var | Purpose | Default |
+|---|---|---|
+| `ARTISAN_CLOUD_RUN_REGION` | Used to build a Cloud Logging link for this execution's `ExecutionResult.logs_uri` | `us-central1` |
+| `ARTISAN_DEMO_REPO_TEST_COMMAND` | The single test command run against the checkout — v1 is scoped to one fixed demo repo ([PRD.md §5](./docs/PRD.md#5-non-goals--out-of-scope-v1)), so a hardcoded command is legitimate rather than generic multi-language test detection | `npm test` |
+
+At runtime (as a Cloud Run Job execution, not a long-running service), the orchestrator's
+`gcp/cloud_run_jobs.py::trigger_execution` sets `GITHUB_REPO`, `ISSUE_NUMBER`, `BRANCH_NAME`,
+`ATTEMPT_NUMBER`, `PLAN_JSON`, and `PRIOR_FEEDBACK` as per-execution env var overrides — these
+aren't meant to be set by hand except for a manual smoke-test trigger.
+
+Needs its own IAM grant beyond Sprint 1's `execution-sandbox@` (`datastore.user`): `secretAccessor`
+on the `github-app-private-key` secret only, since this job mints its own GitHub App installation
+token rather than being handed one by the orchestrator (see [SYSTEM_DESIGN.md §8](./docs/SYSTEM_DESIGN.md#8-auth--security)).
+
+Deploying/registering it as a Cloud Run Job (not yet done as of this writing — see
+[CONTEXT.md](./docs/CONTEXT.md)) — same repo-root build-context requirement as `agents/` above:
+
+```bash
+# from the repo root
+docker build -f execution-sandbox/Dockerfile -t <your-registry>/execution-sandbox .
+docker push <your-registry>/execution-sandbox
+gcloud run jobs deploy execution-sandbox --image <your-registry>/execution-sandbox --region us-central1
 ```
 
 ### Dashboard (`dashboard/`)
@@ -100,4 +139,4 @@ None of this repo's code ever takes a raw secret as a literal. Everything (`gith
 
 ## Deployment
 
-Cloud Run (services: `orchestrator`, `dashboard`; job: `execution-sandbox`; `mcp-atlassian` was deployed in Sprint 1 and deleted in Sprint 2 after being superseded, see above). `orchestrator` has a Dockerfile and a manual `gcloud run deploy` path (see above) as of Sprint 2; full IaC + CI/CD automation for all services lands in Sprint 7 — see [SPRINT.md](./docs/SPRINT.md#sprint-7--deployment--cicd).
+Cloud Run (services: `orchestrator`, `dashboard`; job: `execution-sandbox`; `mcp-atlassian` was deployed in Sprint 1 and deleted in Sprint 2 after being superseded, see above). `orchestrator` has a Dockerfile and a manual `docker build` + `gcloud run deploy --image` path (see above) as of Sprint 2, updated in Sprint 3 for the `uv` workspace's repo-root build context; `execution-sandbox` gets its first Dockerfile in Sprint 3 but has not yet been deployed/registered as a Cloud Run Job (see [CONTEXT.md](./docs/CONTEXT.md)). Full IaC + CI/CD automation for all services lands in Sprint 7 — see [SPRINT.md](./docs/SPRINT.md#sprint-7--deployment--cicd).
