@@ -47,6 +47,12 @@ class _FakeTicketStore:
         )
         self.trivial_conflict_attempts = self.ticket.trivial_conflict_attempts
 
+    async def claim_semantic_conflict_escalation(self, repo: str, issue_number: int) -> bool:
+        if self.ticket.semantic_conflict_escalated:
+            return False
+        self.ticket = self.ticket.model_copy(update={"semantic_conflict_escalated": True})
+        return True
+
     def ticket_doc_id(self, repo: str, issue_number: int) -> str:
         return f"{repo}__{issue_number}"
 
@@ -85,6 +91,16 @@ def fake_store(monkeypatch):
     monkeypatch.setattr(gate3.firestore_client, "append_escalation", store.append_escalation)
     monkeypatch.setattr(gate3.firestore_client, "ticket_doc_id", store.ticket_doc_id)
     monkeypatch.setattr(gate3.firestore_client, "append_trace_id", store.append_trace_id)
+    monkeypatch.setattr(
+        gate3.firestore_client,
+        "claim_semantic_conflict_escalation",
+        store.claim_semantic_conflict_escalation,
+    )
+
+    async def _instant_sleep(*_args, **_kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(gate3.asyncio, "sleep", _instant_sleep)
     return store
 
 
@@ -139,6 +155,83 @@ async def test_untracked_pr_no_ops_without_triggering_any_job(fake_store, monkey
 
 
 @pytest.mark.asyncio
+async def test_pull_request_opened_retries_pr_lookup_before_giving_up(fake_store, monkeypatch) -> None:
+    """gate2._open_pr_and_sync can only write the pr_index pointer after GitHub assigns the PR
+    number, so an `opened` webhook can race ahead of that write. A bounded retry absorbs it
+    instead of silently no-op-ing Gate 3's first check (MILESTONE.md Sprint 4 close-out gap,
+    closed Sprint 6)."""
+    lookups = [None, None, fake_store.ticket]
+    calls = []
+
+    async def flaky_get_ticket_by_pr(repo: str, pr_number: int) -> TicketDoc | None:
+        calls.append(pr_number)
+        return lookups.pop(0)
+
+    detection_calls = []
+
+    async def fake_trigger_conflict_detection(**kwargs):
+        detection_calls.append(kwargs)
+        return _NO_CONFLICT
+
+    monkeypatch.setattr(gate3.firestore_client, "get_ticket_by_pr", flaky_get_ticket_by_pr)
+    monkeypatch.setattr(gate3.cloud_run_jobs, "trigger_conflict_detection", fake_trigger_conflict_detection)
+
+    await gate3.handle_pull_request_event(
+        REPO,
+        {
+            "pull_request": {
+                "number": PR_NUMBER,
+                "title": PR_TITLE,
+                "body": PR_BODY,
+                "base": {"ref": BASE_BRANCH},
+                "head": {"ref": HEAD_BRANCH, "sha": HEAD_SHA},
+            }
+        },
+    )
+
+    assert len(calls) == 3  # gave up only after exhausting the retries, not on the first miss
+    assert len(detection_calls) == 1  # and then actually ran Gate 3, not a silent no-op
+
+
+@pytest.mark.asyncio
+async def test_pull_request_opened_still_no_ops_when_pointer_never_lands(
+    fake_store, monkeypatch
+) -> None:
+    """The untracked-PR no-op behavior must survive the retry loop: if every retry also misses,
+    it's genuinely not an Artisan-tracked PR, not just an unlucky race."""
+    calls = []
+
+    async def always_missing_get_ticket_by_pr(repo: str, pr_number: int) -> TicketDoc | None:
+        calls.append(pr_number)
+        return None
+
+    detection_calls = []
+
+    async def fake_trigger_conflict_detection(**kwargs):
+        detection_calls.append(kwargs)
+        return _NO_CONFLICT
+
+    monkeypatch.setattr(gate3.firestore_client, "get_ticket_by_pr", always_missing_get_ticket_by_pr)
+    monkeypatch.setattr(gate3.cloud_run_jobs, "trigger_conflict_detection", fake_trigger_conflict_detection)
+
+    await gate3.handle_pull_request_event(
+        REPO,
+        {
+            "pull_request": {
+                "number": 999,
+                "title": "some other PR",
+                "body": "",
+                "base": {"ref": "main"},
+                "head": {"ref": "some-branch", "sha": "abc123"},
+            }
+        },
+    )
+
+    assert len(calls) == 1 + gate3._MAX_PR_LOOKUP_RETRIES
+    assert detection_calls == []
+
+
+@pytest.mark.asyncio
 async def test_no_conflict_detected_proceeds_silently_with_no_escalation(
     fake_store, stub_jira_and_github, monkeypatch
 ) -> None:
@@ -179,6 +272,31 @@ async def test_semantic_conflict_escalates_with_dual_comments_containing_both_si
     assert comparison in pr_comments[0][2]
     assert len(jira_comments) == 1
     assert comparison in jira_comments[0][1]
+
+
+@pytest.mark.asyncio
+async def test_semantic_conflict_escalation_is_deduped_across_repeated_deliveries(
+    fake_store, stub_jira_and_github, monkeypatch
+) -> None:
+    """Sprint 4 close-out gap, closed Sprint 6: every independent opened/synchronize delivery
+    classified `semantic` must not re-post duplicate maintainer-facing comments."""
+    pr_comments, jira_comments = stub_jira_and_github
+    comparison = "Side A intent: keep it. Side B intent: remove it."
+
+    async def fake_trigger_conflict_detection(**kwargs):
+        return _CONFLICT
+
+    async def fake_run_conflict_classification(**kwargs):
+        return ConflictVerdict(classification="semantic", comparison=comparison)
+
+    monkeypatch.setattr(gate3.cloud_run_jobs, "trigger_conflict_detection", fake_trigger_conflict_detection)
+    monkeypatch.setattr(gate3, "run_conflict_classification", fake_run_conflict_classification)
+
+    await _call_start_gate3()
+    await _call_start_gate3()
+
+    assert len(pr_comments) == 1
+    assert len(jira_comments) == 1
 
 
 @pytest.mark.asyncio

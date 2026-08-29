@@ -40,11 +40,19 @@ async def gate_span(
         span.set_attribute("decision", decision)
         trace_id_hex = format(span.get_span_context().trace_id, "032x")
         yield span
+    # Sprint 6 Phase 6.1 fix: root-caused live (docs/CONTEXT.md Milestone 10) — provider
+    # registration was already correct (confirmed via a live diagnostic build: our TracerProvider
+    # wins, gate_span runs on it), so the gap was BatchSpanProcessor's async batching (default
+    # 5s schedule delay) racing Cloud Run's request-scoped/scale-to-zero lifecycle: nothing forced
+    # a flush before the instance could be frozen. force_flush() here makes each gate span export
+    # synchronously instead of trusting the batch timer to fire before the container is paused. A
+    # short timeout keeps this from blocking the gate decision if Cloud Trace is ever slow/down.
+    trace.get_tracer_provider().force_flush(timeout_millis=5000)
     # Sprint 5: trace_ids was previously write-once-dead — this closes the loop so the dashboard's
     # drill-in view can deep-link to Cloud Trace for this exact decision.
     await firestore_client.append_trace_id(ticket_id, trace_id_hex)
     # Sprint 6: every gate_span call site becomes a `gate_decision` event for free — the dashboard's
-    # activity feed reads these, not the (currently broken) Cloud Trace export.
+    # activity feed reads these directly rather than round-tripping through Cloud Trace.
     await current_sink().emit(
         type="gate_decision",
         gate=gate,

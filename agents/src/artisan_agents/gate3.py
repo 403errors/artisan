@@ -9,6 +9,7 @@ Entered from dispatch.py's `pull_request` branch. A `pull_request` event with no
 `pr_index` pointer is simply not Artisan's concern and is a no-op — Gate 3 never operates on repo
 state it doesn't own (PRD.md §5)."""
 
+import asyncio
 from datetime import datetime, timezone
 
 from artisan_agents import event_context, tracing
@@ -21,11 +22,23 @@ from artisan_agents.jira import client as jira_client
 from artisan_shared.firestore_schema import EscalationEntry
 from artisan_shared.models import ConflictVerdict
 
+# gate2._open_pr_and_sync necessarily writes the pr_index pointer *after* GitHub assigns the PR
+# number (it can't be written before the PR exists) — so a `pull_request.opened` webhook can
+# reach here before that write lands. A short bounded retry absorbs that race instead of silently
+# no-op-ing Gate 3's very first check (MILESTONE.md Sprint 4 close-out note; SPRINT.md Sprint 6).
+_MAX_PR_LOOKUP_RETRIES = 3
+_PR_LOOKUP_RETRY_DELAY_SECONDS = 1.0
+
 
 async def handle_pull_request_event(repo: str, payload: dict) -> None:
     pr = payload["pull_request"]
     pr_number = pr["number"]
     ticket = await firestore_client.get_ticket_by_pr(repo, pr_number)
+    for _ in range(_MAX_PR_LOOKUP_RETRIES):
+        if ticket is not None:
+            break
+        await asyncio.sleep(_PR_LOOKUP_RETRY_DELAY_SECONDS)
+        ticket = await firestore_client.get_ticket_by_pr(repo, pr_number)
     if ticket is None:
         return  # not an Artisan-tracked PR
     await start_gate3(
@@ -82,7 +95,8 @@ async def start_gate3(
     if verdict.classification == "semantic":
         async with tracing.gate_span(ticket_id, "3", "escalate"):
             pass
-        await _escalate_semantic(repo, issue_number, jira_key, pr_number, verdict)
+        if await firestore_client.claim_semantic_conflict_escalation(repo, issue_number):
+            await _escalate_semantic(repo, issue_number, jira_key, pr_number, verdict)
         return
 
     # trivial: span at classification time...

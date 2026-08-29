@@ -43,6 +43,11 @@ class TicketDoc(BaseModel):
     pr_url: str | None = None
     pr_number: int | None = None
     trivial_conflict_attempts: int = 0
+    # Claimed transactionally before the first semantic-conflict escalation ever posts GitHub/Jira
+    # comments (Sprint 6) — unlike trivial_conflict_attempts there's no legitimate "retry" concept
+    # here, so this is a one-shot boolean, not a counter: every independent opened/synchronize
+    # delivery classified `semantic` re-escalates from scratch without it (MILESTONE.md Sprint 4).
+    semantic_conflict_escalated: bool = False
     last_conflict_detection: ConflictDetectionResult | None = None
     # Kept distinct from last_execution_result (same underlying type) so Gate 2's execution
     # history and Gate 3's conflict-resolution history stay separable in the Sprint 5 dashboard's

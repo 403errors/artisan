@@ -37,6 +37,7 @@ __all__ = [
     "append_escalation",
     "append_trace_id",
     "claim_delivery",
+    "claim_semantic_conflict_escalation",
     "create_ticket",
     "get_ticket",
     "get_ticket_by_pr",
@@ -265,6 +266,30 @@ async def increment_trivial_conflict_attempt(repo: str, issue_number: int) -> in
             f"trivial_conflict_attempts already used the cap ({MAX_TRIVIAL_CONFLICT_ATTEMPTS})"
         )
     return new_count
+
+
+@firestore.async_transactional
+async def _claim_semantic_conflict_escalation_txn(
+    transaction: firestore.AsyncTransaction, doc_ref
+) -> bool:
+    snapshot = await doc_ref.get(transaction=transaction)
+    if snapshot.get("semantic_conflict_escalated"):
+        return False
+    transaction.update(
+        doc_ref, {"semantic_conflict_escalated": True, "updated_at": _now().isoformat()}
+    )
+    return True
+
+
+async def claim_semantic_conflict_escalation(repo: str, issue_number: int) -> bool:
+    """Transactionally claims this ticket's one-and-only semantic-conflict escalation (Gate 3,
+    MILESTONE.md Sprint 4 close-out gap, closed Sprint 6). Returns True the first time (caller
+    should post the GitHub/Jira escalation comments), False on every subsequent call for the same
+    ticket (caller must skip — a repeat `opened`/`synchronize` delivery must not re-post
+    duplicate maintainer-facing comments)."""
+    doc_ref = _client().collection("tickets").document(ticket_doc_id(repo, issue_number))
+    transaction = _client().transaction()
+    return await _claim_semantic_conflict_escalation_txn(transaction, doc_ref)
 
 
 async def write_pr_pointer(repo: str, pr_number: int, issue_number: int) -> None:
