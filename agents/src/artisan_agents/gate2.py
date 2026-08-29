@@ -34,7 +34,6 @@ from artisan_shared.models import (
 # stays "In Progress" in Jira, and the PR is communicated via a Jira comment instead (which Jira
 # does support). Firestore's own `status` field still tracks "pr_open" precisely, per
 # SYSTEM_DESIGN.md §6.4 — Firestore, not Jira's coarser workflow, is the source of truth here.
-PR_BASE_BRANCH = "main"
 
 
 async def start_gate2(
@@ -53,6 +52,10 @@ async def start_gate2(
     )
 
     repo_context = await repo_context_module.get_repo_context(repo)
+    # The PR opens against the repo's *actual* default branch, not a hardcoded `main` — a repo
+    # whose default branch is `master`/`develop`/etc. would otherwise get PRs targeted at the
+    # wrong (or non-existent) branch.
+    base_branch = await github_client.get_default_branch(repo)
 
     await firestore_client.update_ticket(repo, issue_number, current_step="routing")
     decision = await run_routing(
@@ -118,7 +121,9 @@ async def start_gate2(
             async with tracing.gate_span(ticket_id, "2", "proceed", label="Gate 2: verification passed"):
                 pass
             await firestore_client.update_ticket(repo, issue_number, current_step="opening_pr")
-            await _open_pr_and_sync(repo, issue_number, jira_key, issue_title, plan, execution_result)
+            await _open_pr_and_sync(
+                repo, issue_number, jira_key, issue_title, plan, execution_result, base_branch=base_branch
+            )
             return
 
         feedback = verdict.feedback or "Verification failed with no specific feedback."
@@ -185,6 +190,8 @@ async def _open_pr_and_sync(
     issue_title: str,
     plan: Plan,
     execution_result: ExecutionResult,
+    *,
+    base_branch: str,
 ) -> None:
     # Issue-deleted race: never open a PR for an issue that was deleted while the sandbox ran —
     # the cleanup has already closed the ticket out (`done`), so a PR referencing nothing would
@@ -196,7 +203,7 @@ async def _open_pr_and_sync(
     pr_number, pr_url = await github_client.open_pull_request(
         repo,
         head=execution_result.branch,
-        base=PR_BASE_BRANCH,
+        base=base_branch,
         title=f"Artisan: {issue_title}",
         body=_pr_body(issue_number, plan, execution_result),
     )

@@ -101,6 +101,11 @@ def stub_jira_and_github(monkeypatch):
         prs.append((repo, head, base, title, body))
         return 42, f"https://github.com/{repo}/pull/42"
 
+    async def fake_get_default_branch(repo):
+        # Default `main` keeps every existing test on today's behavior; the PR-base test below
+        # overrides this via monkeypatch to assert a non-`main` default branch is respected.
+        return "main"
+
     async def fake_add_comment(jira_key, body):
         jira_comments.append((jira_key, body))
 
@@ -114,6 +119,7 @@ def stub_jira_and_github(monkeypatch):
         jira_labels.append((jira_key, label))
 
     monkeypatch.setattr(gate2.github_client, "open_pull_request", fake_open_pull_request)
+    monkeypatch.setattr(gate2.github_client, "get_default_branch", fake_get_default_branch)
     monkeypatch.setattr(gate2.jira_client, "add_comment", fake_add_comment)
     monkeypatch.setattr(gate2.github_client, "post_issue_comment", fake_post_issue_comment)
     monkeypatch.setattr(gate2.github_client, "add_label", fake_add_github_label)
@@ -419,6 +425,50 @@ async def test_open_pr_and_sync_jira_label_failure_does_not_abort_pr_flow(
     assert len(prs) == 1
     assert len(jira_comments) == 1
     assert github_labels == [(REPO, 42, "artisan:ready-for-review")]
+
+
+@pytest.mark.asyncio
+async def test_pr_base_uses_repo_default_branch_not_hardcoded_main(
+    fake_store, stub_jira_and_github, monkeypatch
+) -> None:
+    """Gate 2 used to open PRs against a hardcoded `main` — a repo whose default branch is
+    `master`/`develop`/etc. got PRs targeted at the wrong branch. The PR base must be the repo's
+    actual default branch, resolved when Gate 2 starts."""
+    prs, *_ = stub_jira_and_github
+
+    async def fake_get_default_branch(repo):
+        return "develop"
+
+    monkeypatch.setattr(gate2.github_client, "get_default_branch", fake_get_default_branch)
+
+    async def fake_run_routing(**kwargs):
+        return RoutingDecision(domains=["backend"], parallel=False)
+
+    async def fake_run_domain_expert(*, domain, issue_title, issue_body, repo_context=None):
+        return _domain_output(domain)
+
+    async def fake_run_planning(**kwargs):
+        return _PLAN
+
+    async def fake_trigger_execution(**kwargs):
+        return ExecutionResult(branch="artisan/x-1", diff_summary="x", tests_passed=True, logs_uri="gs://x")
+
+    async def fake_run_verification(**kwargs):
+        from artisan_shared.models import VerificationVerdict
+
+        return VerificationVerdict(green=True)
+
+    monkeypatch.setattr(gate2, "run_routing", fake_run_routing)
+    monkeypatch.setattr(gate2, "run_domain_expert", fake_run_domain_expert)
+    monkeypatch.setattr(gate2, "run_planning", fake_run_planning)
+    monkeypatch.setattr(gate2.cloud_run_jobs, "trigger_execution", fake_trigger_execution)
+    monkeypatch.setattr(gate2, "run_verification", fake_run_verification)
+
+    await gate2.start_gate2(REPO, ISSUE_NUMBER, JIRA_KEY, issue_title="T", issue_body="B")
+
+    assert fake_store.doc.status == "pr_open"
+    assert len(prs) == 1
+    assert prs[0][2] == "develop"  # PR base is the repo's default branch, not `main`
 
 
 class _RecordingSink(NoOpEventSink):

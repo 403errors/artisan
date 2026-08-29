@@ -95,14 +95,23 @@ async def get_pull_request(repo: str, pr_number: int) -> tuple[str, str, str, st
     return pr.title, pr.body or "", pr.base.ref, pr.head.ref, pr.head.sha
 
 
+async def get_default_branch(repo: str) -> str:
+    """Returns the repo's default branch name — the branch Gate 2 opens its PRs against. This
+    used to be a hardcoded `main`, which silently targeted the wrong (or non-existent) branch on
+    repos whose default branch is `master`/`develop`/etc."""
+    owner, name = _split_repo(repo)
+    gh = get_installation_client()
+    repo_info = (await gh.rest.repos.async_get(owner, name)).parsed_data
+    return repo_info.default_branch
+
+
 async def get_default_branch_head_sha(repo: str) -> str:
     """Returns the SHA the repo's default branch currently points at — the freshness key
     `repo_context.get_repo_context` compares its cache against (WS3)."""
     owner, name = _split_repo(repo)
     gh = get_installation_client()
-    repo_info = (await gh.rest.repos.async_get(owner, name)).parsed_data
     ref = (
-        await gh.rest.git.async_get_ref(owner, name, ref=f"heads/{repo_info.default_branch}")
+        await gh.rest.git.async_get_ref(owner, name, ref=f"heads/{await get_default_branch(repo)}")
     ).parsed_data
     return ref.object_.sha
 

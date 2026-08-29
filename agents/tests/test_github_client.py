@@ -15,6 +15,7 @@ from artisan_agents.github.client import (
     close_pull_request,
     count_markdown_images,
     extract_and_download_images,
+    get_default_branch,
     get_default_branch_head_sha,
     get_file_content,
     get_pull_request,
@@ -239,6 +240,19 @@ async def test_get_default_branch_head_sha_resolves_default_branch_then_its_ref(
     assert sha == "abc123"
     assert fake_gh.rest.repos.get_calls == [("acme", "demo")]
     assert fake_gh.rest.git.ref_calls == [("acme", "demo", "heads/develop")]
+
+
+@pytest.mark.asyncio
+async def test_get_default_branch_returns_repo_default_branch(monkeypatch) -> None:
+    """Gate 2's PR base: the repo's actual default branch, not a hardcoded `main`."""
+    fake_gh = _FakeGitHubForContext()
+    fake_gh.rest.repos._default_branch = "develop"
+    monkeypatch.setattr(github_client_module, "get_installation_client", lambda: fake_gh)
+
+    branch = await get_default_branch("acme/demo")
+
+    assert branch == "develop"
+    assert fake_gh.rest.repos.get_calls == [("acme", "demo")]
 
 
 @pytest.mark.asyncio
