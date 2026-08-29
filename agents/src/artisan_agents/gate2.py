@@ -36,15 +36,20 @@ async def start_gate2(
 ) -> None:
     ticket_id = firestore_client.ticket_doc_id(repo, issue_number)
 
+    await firestore_client.update_ticket(repo, issue_number, current_step="routing")
     decision = await run_routing(issue_title=issue_title, issue_body=issue_body, jira_key=jira_key)
     await firestore_client.update_ticket(repo, issue_number, domains=list(decision.domains))
-    with tracing.gate_span(ticket_id, "2", "proceed"):
+    async with tracing.gate_span(ticket_id, "2", "proceed"):
         pass
 
+    await firestore_client.update_ticket(repo, issue_number, current_step="domain_expert")
     domain_outputs = await _run_domain_experts(decision, issue_title, issue_body)
 
     feedback: str | None = None
     for attempt in range(1, MAX_EXECUTION_RETRIES + 1):
+        await firestore_client.update_ticket(
+            repo, issue_number, current_step=f"planning (attempt {attempt})"
+        )
         plan = await run_planning(
             domain_outputs=domain_outputs,
             issue_title=issue_title,
@@ -54,6 +59,9 @@ async def start_gate2(
         await firestore_client.update_ticket(repo, issue_number, plan=plan.model_dump(mode="json"))
 
         branch = f"artisan/{jira_key}-attempt-{attempt}"
+        await firestore_client.update_ticket(
+            repo, issue_number, current_step=f"executing (attempt {attempt})"
+        )
         execution_result = await cloud_run_jobs.trigger_execution(
             repo=repo, issue_number=issue_number, branch=branch, plan=plan, attempt=attempt,
             feedback=feedback,
@@ -62,25 +70,27 @@ async def start_gate2(
             repo, issue_number, last_execution_result=execution_result.model_dump(mode="json")
         )
 
+        await firestore_client.update_ticket(repo, issue_number, current_step="verifying")
         verdict = await run_verification(
             plan=plan, execution_result=execution_result, issue_title=issue_title,
             issue_body=issue_body,
         )
 
         if verdict.green:
-            with tracing.gate_span(ticket_id, "2", "proceed"):
+            async with tracing.gate_span(ticket_id, "2", "proceed"):
                 pass
+            await firestore_client.update_ticket(repo, issue_number, current_step="opening_pr")
             await _open_pr_and_sync(repo, issue_number, jira_key, issue_title, plan, execution_result)
             return
 
         feedback = verdict.feedback or "Verification failed with no specific feedback."
-        with tracing.gate_span(ticket_id, "2", "retry"):
+        async with tracing.gate_span(ticket_id, "2", "retry"):
             pass
         try:
             await firestore_client.increment_retry_round(repo, issue_number)
         except RetryCapExceeded:
             await _escalate(repo, issue_number, jira_key, reason=feedback)
-            with tracing.gate_span(ticket_id, "2", "escalate"):
+            async with tracing.gate_span(ticket_id, "2", "escalate"):
                 pass
             return
 

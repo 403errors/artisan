@@ -58,6 +58,9 @@ class _FakeTicketStore:
         self.pr_pointers = getattr(self, "pr_pointers", [])
         self.pr_pointers.append((repo, pr_number, issue_number))
 
+    async def append_trace_id(self, ticket_id: str, trace_id: str) -> None:
+        self.doc = self.doc.model_copy(update={"trace_ids": [*self.doc.trace_ids, trace_id]})
+
 
 @pytest.fixture
 def fake_store(monkeypatch):
@@ -68,6 +71,7 @@ def fake_store(monkeypatch):
     monkeypatch.setattr(gate2.firestore_client, "append_escalation", store.append_escalation)
     monkeypatch.setattr(gate2.firestore_client, "write_pr_pointer", store.write_pr_pointer)
     monkeypatch.setattr(gate2.firestore_client, "ticket_doc_id", store.ticket_doc_id)
+    monkeypatch.setattr(gate2.firestore_client, "append_trace_id", store.append_trace_id)
     return store
 
 

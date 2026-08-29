@@ -32,6 +32,7 @@ __all__ = [
     "RetryCapExceeded",
     "TrivialConflictCapExceeded",
     "append_escalation",
+    "append_trace_id",
     "claim_delivery",
     "create_ticket",
     "get_ticket",
@@ -284,6 +285,21 @@ async def append_escalation(repo: str, issue_number: int, entry: EscalationEntry
         {
             "escalation_history": firestore.ArrayUnion([entry.model_dump(mode="json")]),
             "status": "escalated",
+            "updated_at": _now().isoformat(),
+        }
+    )
+
+
+async def append_trace_id(ticket_id: str, trace_id: str) -> None:
+    """Atomically appends one trace id to `trace_ids` via `firestore.ArrayUnion`, mirroring
+    append_escalation's shape. Called from tracing.gate_span on span exit, which already holds the
+    computed ticket doc id — takes it directly rather than (repo, issue_number) since every call
+    site already has it. Deliberately does NOT flip `status` — this is a pure observability
+    record, unlike append_escalation."""
+    doc_ref = _client().collection("tickets").document(ticket_id)
+    await doc_ref.update(
+        {
+            "trace_ids": firestore.ArrayUnion([trace_id]),
             "updated_at": _now().isoformat(),
         }
     )

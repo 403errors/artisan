@@ -25,6 +25,12 @@ class TicketDoc(BaseModel):
     github_repo: str
     jira_key: str
     status: TicketStatus
+    # Display-only progress hint for the Sprint 5 dashboard's live view (e.g. "planning",
+    # "executing (attempt 2)") — not a control-flow-branching value like `status`, so it's a plain
+    # str rather than a Literal enum. Written by dispatch.py/gate2.py/gate3.py at each sub-step
+    # transition; stale values after a gate completes are harmless since the dashboard only reads
+    # it while status is "intake"/"in_progress".
+    current_step: str | None = None
     clarification_rounds: int = 0
     retry_count: int = 0
     domains: list[str] = []

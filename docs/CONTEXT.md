@@ -4,7 +4,9 @@ Purpose: a single, always-current snapshot of what actually exists in this codeb
 
 ## Current Status (as of 2026-08-29)
 
-**Stage: Sprint 4 (Gate 3) closed — confirmed live, including a real bug found and fixed during close-out.** Sprint 3 (Gate 2) closed in Milestone 5, confirmed live end-to-end. Sprint 4 built the entire merge-conflict-triage pipeline — `gate3.py`'s control flow (detection → classification → trivial-resolution-or-semantic-escalation), the Conflict Agent, `execution-sandbox`'s new `detect_conflict`/`resolve_conflict` job modes reusing the same Cloud Run Job via a `JOB_MODE` env var, the new `git_ops.py` merge/conflict-inspection functions, the `pr_index` PR→ticket lookup, and the transactional trivial-conflict cap. Two real design bugs were caught and fixed *before* they could ship, during design review rather than live discovery: (1) the originally-planned merge direction (checkout base, merge head into it) would have produced a commit that isn't a fast-forward of the head branch, forcing a force-push to land the fix — forbidden by PRD.md §5; fixed by always checking out **head** and merging **base** into it. (2) The trivial-conflict cap's first draft copied the retry cap's `>=` comparison, which would have made the one allowed resolution attempt unreachable on the very first call, since MAX_TRIVIAL_CONFLICT_ATTEMPTS=1 must be claimed *before* it runs, not after a failure like the other two caps; fixed to `>`, with a dedicated regression test. **Closed out in Milestone 7**: live deploy plus two real conflicting-PR pairs run through the pipeline — the first surfaced a genuine bug in `execution-sandbox`'s trial-merge step (fixed live), the second confirmed the fix and proved the semantic-escalation path end-to-end with real conflict data. 118 tests passing across all three `uv` workspace packages (`agents/`: 78, `packages/artisan_shared/`: 13, `execution-sandbox/`: 29). See Milestone 7 for the full close-out account, including two new gaps found live and flagged for Sprint 6 (semantic-escalation has no dedup cap; a `pull_request.opened`/`write_pr_pointer` race can silently no-op Gate 3's very first check).
+**Stage: Sprint 5 (Monitoring Dashboard) closed.** Sprints 1–4 (foundations, Gate 1 intake, Gate 2 plan→execute→verify→PR, Gate 3 merge-conflict triage) are all closed and confirmed live — see Milestones 1–7 for the full account, including two real bugs each caught during Sprint 3/4 close-out (a duplicate-delivery race in the idempotency guard; a missing `cloudtrace.agent` IAM grant; a trial-merge crash on missing git identity) and two gaps flagged for Sprint 6 (semantic-escalation has no dedup cap; a `pull_request.opened`/`write_pr_pointer` race can silently no-op Gate 3's first check).
+
+Sprint 5 built `dashboard/` from its Sprint-1 scaffold into a working Next.js 15 + Auth.js v5 app: card-grid ticket overview, full gate-by-gate drill-in, an "awaiting human" filtered view, and SSE-based live updates — see Milestone 8 for the full account, including two backend fixes folded into this sprint (`trace_ids` was previously dead code; a new `current_step` field gives the dashboard a live progress signal) and two real bugs found during Playwright verification against the actual production build (a Turbopack/Auth.js middleware interaction; `trustHost` needed for any non-default host). 147 tests passing across `agents/` (79), `packages/artisan_shared/` (13), `execution-sandbox/` (29), and `dashboard/` (20 Vitest + 6 Playwright).
 
 Sprint 2/3 history:
 
@@ -164,6 +166,60 @@ Also landed two small Sprint 6-scoped fixes ahead of the close-out rebuild so th
 
 **Sprint 4 is now closed.** Next: Sprint 5 (monitoring dashboard).
 
+### Milestone 8 — Sprint 5 built: monitoring dashboard, read-only + live (2026-08-29)
+
+Built out `dashboard/` from the bare Sprint 1 scaffold into a working Next.js 15 app: Auth.js v5
+GitHub OAuth sign-in (a new, separate OAuth App from the GitHub App), a card-grid ticket overview
+(`/tickets`) with a status tag per ticket ("Being Handled by Artisan", "Needs Manual Review",
+etc.), a full gate-by-gate drill-in page (`/tickets/:id`) showing plan/execution/conflict data as
+summaries + metrics (never raw logs — `logsUri` is always an external "view full logs" link, per
+the schema's existing summary/pointer split), an "awaiting human" filtered view (`/escalations`),
+and SSE-based live updates bridging server-side Firestore `onSnapshot` listeners to the browser.
+shadcn/ui over Tailwind 4 for the component layer.
+
+Two backend gaps found during design were fixed as part of this sprint rather than deferred,
+since the dashboard's value depends on them: (1) **`trace_ids` was dead code** — `tracing.gate_span`
+opened real Cloud Trace spans but never wrote the trace id back to Firestore; it's now an
+`asynccontextmanager` that does so on exit via a new `firestore_client.append_trace_id` (mirroring
+`append_escalation`'s `ArrayUnion` shape, but deliberately not flipping `status`). All 14 call
+sites (`dispatch.py` x3, `gate2.py` x4, `gate3.py` x7) changed from `with` to `async with` —
+mechanical, since `span` was never bound with `as span` anywhere. (2) **No live "what's
+happening" signal existed** — Firestore was only written to at gate *decision* points, not
+sub-steps in between — so a new `current_step` field (plain `str | None`, e.g.
+`"planning (attempt 2)"`, `"detecting_conflict"`) is now written via the existing generic
+`update_ticket(**fields)` at each sub-step transition in `dispatch.py`/`gate2.py`/`gate3.py`.
+
+Two real bugs surfaced live, during Playwright verification against the actual production build
+(not just unit tests), both fixed: (1) `export { auth as middleware } from "@/auth"` silently
+broke Next 15's Turbopack static extraction of `config.matcher` — it fell back to matching every
+path, and combined with an `authorized` callback (which turned out to affect every `auth()` call
+app-wide, not just middleware-matched paths) turned every `/api/tickets*` 401 into an unusable
+redirect. Fixed by dropping middleware entirely in favor of explicit per-page checks
+(`dashboard/src/lib/require-session.ts`) — simpler and avoids the Turbopack/Auth.js interaction.
+(2) Auth.js v5 needs `trustHost: true` for any non-default-port/host, including local dev and
+(later) Cloud Run's dynamic `*.run.app` hostname. Also created (via `gcloud`, not yet in IaC —
+flagged for Sprint 7) the two Firestore composite indexes the dashboard's queries need: `(github_repo
+ASC, updated_at DESC)` and `(github_repo ASC, status ASC, updated_at DESC)`.
+
+Verified end-to-end against the real `artisan-multiagent-ai` Firestore data from Sprints 2–4's
+live tests (`ART-8`/`ART-9`/`ART-10`): 20 Vitest component/unit tests and all 6 Playwright e2e
+specs (unauthenticated 401 + redirect, test-provider sign-in, ticket list render, ticket detail
+render) pass against a real production build (`pnpm build && pnpm test:e2e`). 79 `agents/` pytest
+tests still green after the `trace_ids`/`current_step` changes.
+
+**Deliberately deferred, not built this sprint:** a manual "re-check/un-escalate" action on an
+already-escalated ticket (`CONTEXT.md`'s own Milestone 6 flagged this as a possible Sprint 5 item,
+but `SPRINT.md`'s actual Sprint 5 phase list and PRD F5's acceptance criteria are both read-only —
+building a mutation endpoint is a separately-scoped feature: it needs its own write-authorization
+question and a new Gate-3 re-entry point that doesn't exist today). Pick this up in Sprint 6/7
+alongside the other two flagged Gate-3 gaps (semantic-escalation dedup, the
+`pull_request.opened`/`write_pr_pointer` race).
+
+**Sprint 5 is closed.** Next: Sprint 6 (observability, security & hardening) — see
+[SPRINT.md](./SPRINT.md#sprint-6--observability-security--hardening) for the now-longer worklist
+(Cloud Trace custom-span export, semantic-escalation dedup, the PR-pointer race, plus a full
+cap/idempotency regression pass).
+
 *(Add the next milestone below as it completes — keep entries short: what shipped, what decisions it forced, what's next.)*
 
 ## External accounts & identifiers (Sprint 1, Phases 1.1–1.3 — done)
@@ -182,6 +238,8 @@ Also landed two small Sprint 6-scoped fixes ahead of the close-out rebuild so th
 - **Retry cap `N` = 3** (decided during Phase 1.5, matches the clarification-round cap).
 - **`DELIVERY_CLAIM_STALE_AFTER_SECONDS` = 4200** (decided during Sprint 3's close-out idempotency fix — deliberately *longer* than the orchestrator's own 3600s/60min max request timeout, so a claim never goes stale while the underlying request could still legitimately be running; an earlier draft of this value, 1800, was caught and corrected during this same close-out for being shorter than the timeout it needed to outlast).
 - **`MAX_TRIVIAL_CONFLICT_ATTEMPTS` = 1** (decided Phase 1.5, matches the design's stated cap; claimed via `increment_trivial_conflict_attempt`'s `>` comparison — see Milestone 6 for why `>=` would have been a bug here, unlike the other two caps).
+- **Dashboard GitHub OAuth App** (Sprint 5, Milestone 8) — separate from `artisan-bot-403errors`. Client ID/secret + `AUTH_SECRET` currently live only in `dashboard/.env.local` (local dev), not Secret Manager — move in Sprint 7.
+- **Firestore composite indexes** (Sprint 5, Milestone 8, created via `gcloud`, not yet in IaC): `tickets` on `(github_repo ASC, updated_at DESC)` and `(github_repo ASC, status ASC, updated_at DESC)`.
 
 ## Open Decisions / Risks
 
@@ -191,11 +249,11 @@ Also landed two small Sprint 6-scoped fixes ahead of the close-out rebuild so th
 - Local Node is v23.7.0, not the TECH_STACK-pinned 22 LTS — worked fine for scaffold/build; revisit if a Node-version-specific issue surfaces later.
 - Repo is git-initialized locally but nothing pushed yet — no GitHub remote chosen for the actual Artisan source repo (distinct from the throwaway `403errors/artisan-demo` target repo).
 - ~~No Docker daemon available, neither image ever built~~ **Resolved (Sprint 3 close-out).** No Docker daemon exists in this environment either, so both Dockerfiles were built for real via Cloud Build instead of local `docker build` — both succeeded on the first try (see Milestone 5). `README.md`'s `docker build`/`docker push` commands are still accurate as the *local* path for anyone who does have Docker; Cloud Build is the equivalent for anyone who doesn't. Both images are now deployed and live.
-- **Sprint 4 accepted simplifications, revised after Milestone 7's live test:** Gate 3 never auto-recovers an already-`escalated` ticket's status even if a human's manual fix makes a re-check come back clean (manual dashboard action, Sprint 5); no mechanism reacts to a *different*, unrelated PR merging into a base branch out from under an already-open PR (no such PR-side webhook exists — matches SPRINT.md Phase 4.1's literal scope, and is exactly why Milestone 7's live test needed a manual follow-up push to force a `synchronize`). The "concurrent `synchronize` deliveries aren't deduped, worst case one wasted detection job" framing turned out to be **incomplete** — Milestone 7 proved the semantic-escalation path's actual worst case is duplicate maintainer-facing GitHub+Jira comments, not just a wasted job; see the new Sprint 6 item below.
+- **Sprint 4 accepted simplifications, revised after Milestone 7's live test:** Gate 3 never auto-recovers an already-`escalated` ticket's status even if a human's manual fix makes a re-check come back clean — **deliberately deferred past Sprint 5 too** (see Milestone 8): a manual re-check/un-escalate action is a separately-scoped feature (new write-authorization question, no existing Gate-3 re-entry point), not something Sprint 5's read-only dashboard scope covers; no mechanism reacts to a *different*, unrelated PR merging into a base branch out from under an already-open PR (no such PR-side webhook exists — matches SPRINT.md Phase 4.1's literal scope, and is exactly why Milestone 7's live test needed a manual follow-up push to force a `synchronize`). The "concurrent `synchronize` deliveries aren't deduped, worst case one wasted detection job" framing turned out to be **incomplete** — Milestone 7 proved the semantic-escalation path's actual worst case is duplicate maintainer-facing GitHub+Jira comments, not just a wasted job; see the new Sprint 6 item below.
 - **New from Milestone 7, flagged for Sprint 6:** (1) semantic escalation has no dedup cap — every independent `opened`/`synchronize` delivery re-escalates from scratch, unlike the trivial path's Firestore-backed `trivial_conflict_attempts` cap; (2) a `pull_request.opened` webhook can be processed before Gate 2's own `write_pr_pointer` call lands a few lines later in the same request, silently no-op-ing Gate 3's very first check (harmless only because no conflict can exist yet at PR-open time regardless).
 - ~~Gate 2's `_escalate` only posts to Jira, not GitHub~~ **Resolved.** `gate2.py`'s `_escalate` now also posts a short reporter-facing comment on the GitHub issue (not a PR — none exists yet at that point in Gate 2's loop) alongside the existing full-detail Jira comment. Deliberately not full parity with Gate 3's dual-notify: Gate 3's audience (a PR reviewer) may have no Jira access, so both systems get full detail; Gate 2's escalation is really "handed off to the Jira board," so Jira keeps the diagnostic detail and GitHub just tells the original reporter it's been handed to the team.
 - **Sprint 8 demo-script constraint — now rehearsed twice (Milestone 7), still worth planning deliberately.** GitHub's conflict detection is always PR-vs-its-own-base, so the demo's "introduce a second, conflicting PR" needs the interfering change already merged into the base branch *before* the second PR is opened, and that second PR must itself be Artisan-opened (via Gate 2). Both live rehearsals additionally needed a manual empty-commit push onto the second PR's branch to force a `synchronize` event, since merging the first PR doesn't itself notify the second (see the new Sprint 6 item above) — the real demo recording will need the same nudge, or Gate 2 to make one more attempt/comment after the pair is chosen, chosen deliberately rather than improvised live.
 
 ## Next Milestone Target
 
-**Sprint 4 is closed (Milestone 7).** Next: **Sprint 5 — Monitoring Dashboard**, per [SPRINT.md](./SPRINT.md#sprint-5--monitoring-dashboard-full-f5-scope) — `dashboard/` is still the bare Sprint 1 scaffold, none of Phases 5.1–5.6 have started. Sprint 6 now has a longer worklist from Milestone 7's live findings, in addition to the pre-existing items: the semantic-escalation dedup gap, the `pull_request.opened`/`write_pr_pointer` race, and the Cloud Trace custom-span export issue (IAM is fine; `gate.*` spans still don't reach Cloud Trace even though ADK's own spans do) — none of these block Sprint 5 from starting.
+**Sprint 5 is closed (Milestone 8).** Next: **Sprint 6 — Observability, Security & Hardening**, per [SPRINT.md](./SPRINT.md#sprint-6--observability-security--hardening). Its worklist is now: the full trace audit including the still-unresolved Cloud Trace custom-span export issue (IAM is fine; `gate.*` spans still don't reach Cloud Trace even though ADK's own spans do — Sprint 5 confirmed `trace_ids` itself now populates correctly regardless), the IAM least-privilege audit, the Secret Manager audit (including migrating the dashboard's OAuth App credentials off `.env.local`), the semantic-escalation dedup gap, the `pull_request.opened`/`write_pr_pointer` race, and the full cap/idempotency regression pass. None of these block Sprint 7 (deployment/CI-CD) except the Secret Manager migration, which Sprint 7's live deploy needs.

@@ -213,9 +213,10 @@ class ConflictDetectionResult(BaseModel):
 ```
 
 ### 6.3 Dashboard read API (Next.js route handlers, server-side only)
-- `GET /api/tickets` → list of ticket summaries (id, Jira key, GitHub issue #, status, current gate, last decision).
+- `GET /api/tickets` → list of ticket summaries (id, Jira key, GitHub issue #, status, current gate, current step, last decision).
 - `GET /api/tickets/:id` → full ticket doc: decision trail, retry/clarification counts, PR link, trace links.
-- Both routes require an authenticated session (GitHub OAuth) and read from Firestore server-side — the browser never talks to Firestore directly.
+- `GET /api/tickets/stream` and `GET /api/tickets/:id/stream` (Sprint 5) → SSE variants of the same two reads, bridging a server-side Firestore `onSnapshot` listener to the browser via `EventSource` — additive live variants of the same data contract, not a new schema. `stream` accepts an optional `?status=a,b` filter (used by `/escalations`).
+- All routes require an authenticated session (GitHub OAuth) and read from Firestore server-side — the browser never talks to Firestore directly. Page routes (`/tickets`, `/escalations`, `/tickets/:id`) redirect an unauthenticated request to `/signin`; the `/api/tickets*` routes instead return a plain `401` — deliberately *not* middleware-based (Auth.js v5's `callbacks.authorized` affects every `auth()` call app-wide, not just requests a middleware matcher scopes it to, which would have turned every API 401 into an unusable redirect) — each page/route calls `auth()` directly instead (`dashboard/src/lib/require-session.ts` for pages).
 
 ### 6.4 Firestore document schema — `tickets/{ticketId}`
 ```
@@ -224,10 +225,12 @@ class ConflictDetectionResult(BaseModel):
   github_repo: string,
   jira_key: string,
   status: "intake" | "in_progress" | "pr_open" | "escalated" | "manual_pickup" | "done",
+  current_step: string | null,
   clarification_rounds: number,
   retry_count: number,
   domains: string[],
   plan: Plan | null,
+  last_execution_result: ExecutionResult | null,
   pr_url: string | null,
   pr_number: number | null,
   trivial_conflict_attempts: number,
@@ -235,10 +238,20 @@ class ConflictDetectionResult(BaseModel):
   last_conflict_resolution: ExecutionResult | null,
   escalation_history: [{ at: timestamp, reason: string, gate: "1"|"2"|"3" }],
   trace_ids: string[],
+  processed_delivery_ids: string[],
   created_at: timestamp,
   updated_at: timestamp
 }
 ```
+`current_step` (Sprint 5) is a display-only progress hint for the dashboard's live view — e.g.
+`"planning (attempt 2)"`, `"executing (attempt 2)"`, `"detecting_conflict"` — written by
+`dispatch.py`/`gate2.py`/`gate3.py` at each sub-step transition via the existing generic
+`update_ticket(**fields)`, not a new Firestore function. It's a plain `str | None`, not a
+`Literal` enum like `status`, since it's informational rather than control-flow-branching; a stale
+value left behind after a gate completes is harmless because the dashboard only reads it while
+`status` is `intake`/`in_progress`. `processed_delivery_ids` is a real field in the Pydantic model
+but currently unwritten/unread anywhere in the codebase — flagged here as dead code, not removed
+(out of scope for Sprint 5).
 `last_conflict_resolution` is the same `ExecutionResult` shape Gate 2 writes to
 `last_execution_result`, kept in a separate field so the two histories stay distinguishable in the
 Sprint 5 dashboard's decision trail.
@@ -262,7 +275,7 @@ resolves to its ticket via a direct `.get()`, never a query.
 - **GitHub → Artisan:** GitHub App installation, webhook secret verified on receipt, private key in Secret Manager, JWT-based installation tokens minted per call (never long-lived PATs).
 - **Artisan → Jira:** a single Artisan service account, API token in Secret Manager, used exclusively by the orchestrator (direct Jira Cloud REST API calls, Basic Auth) — end users never authenticate to Jira through Artisan. (Originally routed through an `mcp-atlassian` MCP server; dropped in Sprint 2, see §2.)
 - **Artisan → Gemini:** Vertex AI, authenticated via the orchestrator's own service account (ADC) — no API key/secret at all. Requires `GOOGLE_GENAI_USE_VERTEXAI=TRUE` + `GOOGLE_CLOUD_PROJECT` + `GOOGLE_CLOUD_LOCATION=global` env vars on the Cloud Run service and `roles/aiplatform.user` on `orchestrator@` (added Sprint 2 — see `docs/CONTEXT.md`). `location` must be `global`; `gemini-3.7-flash` isn't served from regional endpoints like `us-central1`.
-- **Dashboard → user:** GitHub OAuth (Auth.js), scoped to `read:org`/repo access so a signed-in user's dashboard access matches their actual GitHub repo permissions. Jira ticket data is shown as read-only mirrored state (via the service account above), not fetched with the user's own Jira credentials.
+- **Dashboard → user:** GitHub OAuth (Auth.js v5, a separate OAuth App from the GitHub App used for webhooks), scoped to `read:user user:email repo` (Auth.js's GitHub provider default omits `repo`, added explicitly) so a signed-in user's dashboard access matches their actual GitHub repo permissions. Enforced in the `signIn` callback via a real collaborator-permission check (`GET /repos/{owner}/{repo}/collaborators/{username}/permission`, using the signed-in user's own OAuth token) against the single target repo — sign-in is rejected (redirected to `/access-denied`) for any GitHub account that isn't at least a collaborator, not just any authenticated account. Jira ticket data is shown as read-only mirrored state (via the service account above), not fetched with the user's own Jira credentials. `trustHost: true` is required in the Auth.js config for both local dev (non-default port) and Cloud Run's dynamic `*.run.app` hostname (Sprint 7).
 - **IAM:** each Cloud Run service/job runs under its own least-privilege service account (orchestrator: Firestore + Pub/Sub + Secret Manager + Vertex AI (`aiplatform.user`) + Cloud Trace (`cloudtrace.agent`) + Cloud Run Jobs-trigger access; execution-sandbox: Firestore write + GitHub App token minting (its own `secretAccessor` grant on `github-app-private-key` specifically, since it mints its own installation token rather than being handed one by the orchestrator) + Vertex AI (`aiplatform.user`) for the coding agent's own Gemini calls — all granted at Sprint 3's live-deploy close-out; dashboard: Firestore read-only). The `cloudtrace.agent` grant on `orchestrator@` was missing from Sprint 2 through Sprint 3's initial deploy — every gate span silently failed to export (`cloudtrace.traces.patch` permission denied) until this was caught live during Sprint 3's close-out and fixed; don't assume tracing works from code review alone, verify the IAM grant is actually present.
 
 ## 9. Failure Handling & Escalation
@@ -276,7 +289,7 @@ resolves to its ticket via a direct `.get()`, never a query.
 
 - Every gate decision (proceed / ask / escalate) opens an OpenTelemetry span tagged with `ticket_id`, `gate`, and `decision`; spans export to Cloud Trace.
 - Structured logs (Cloud Logging) carry the same `ticket_id` so a full ticket's history can be reconstructed from either trace or log view.
-- The dashboard's ticket detail view links directly to the relevant Cloud Trace spans for that ticket.
+- The dashboard's ticket detail view links directly to the relevant Cloud Trace spans for that ticket, via `trace_ids` (populated as of Sprint 5 — through Sprint 4 this field was declared in the schema but never actually written to; `tracing.gate_span` is now an `asynccontextmanager` that appends the span's trace id to the ticket doc on exit, via a new `firestore_client.append_trace_id`). **Known gap, not fixed here:** Milestone 7 (Sprint 4) found that custom `gate.*` spans don't currently export to Cloud Trace at all even though IAM is correctly granted (ADK's own auto-instrumentation spans export fine) — `trace_ids` populates correctly regardless since the id is computed locally by the SDK, but the resulting Cloud Trace links may not resolve to a visible span until Sprint 6's observability audit fixes the export path.
 
 ## 11. Deployment Topology
 
@@ -284,5 +297,5 @@ resolves to its ticket via a direct `.get()`, never a query.
 - Cloud Run services: `orchestrator`, `dashboard`. (`mcp-atlassian`, deployed in Sprint 1, was deleted in Sprint 2 after being superseded — see §2.)
 - Cloud Run Jobs: `execution-sandbox` (triggered per attempt, not long-running) — shared by Gate 2 and Gate 3 via a `JOB_MODE` env var (`execute` / `detect_conflict` / `resolve_conflict`) rather than a second job resource, since `execution-sandbox@` is deliberately the only service account with GitHub-App-token-minting rights (§8).
 - Pub/Sub: topic `artisan-github-events` with a push subscription to the orchestrator.
-- Firestore: native mode, single database.
-- Secret Manager: `github-app-private-key`, `github-webhook-secret`, `jira-api-token`.
+- Firestore: native mode, single database. Two composite indexes on `tickets` (created manually via `gcloud firestore indexes composite create` in Sprint 5, not yet in IaC — must be captured in Sprint 7's Terraform/`gcloud` scripts): `(github_repo ASC, updated_at DESC)` for the dashboard's ticket list, and `(github_repo ASC, status ASC, updated_at DESC)` for the escalations filter — Firestore requires a composite index whenever a query combines an equality filter on one field with an `orderBy` on a different field.
+- Secret Manager: `github-app-private-key`, `github-webhook-secret`, `jira-api-token`. Sprint 5 adds a dashboard GitHub OAuth App (`GITHUB_ID`/`GITHUB_SECRET`) and `AUTH_SECRET`, currently local-only (`dashboard/.env.local`) — move to Secret Manager in Sprint 7's deploy.

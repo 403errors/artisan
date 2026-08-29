@@ -126,6 +126,31 @@ gcloud run jobs deploy execution-sandbox --image <your-registry>/execution-sandb
 
 ### Dashboard (`dashboard/`)
 
+**External prerequisite: a GitHub OAuth App** (separate from the GitHub App used for webhooks —
+that one authenticates Artisan *to* GitHub; this one authenticates a maintainer *into* the
+dashboard). Create it at GitHub → Settings → Developer settings → OAuth Apps → New OAuth App:
+- Homepage URL: `http://localhost:3000`
+- Authorization callback URL: `http://localhost:3000/api/auth/callback/github`
+
+Then create `dashboard/.env.local` (gitignored):
+
+```
+GITHUB_ID=<OAuth App client id>
+GITHUB_SECRET=<OAuth App client secret>
+AUTH_SECRET=<run: npx auth secret>
+```
+
+Firestore access uses plain Application Default Credentials, exactly like `agents/` — no service
+account key file, no extra env var:
+
+```bash
+gcloud auth application-default login
+```
+
+Sign-in itself is gated beyond "any GitHub account": the `signIn` callback checks the signed-in
+user's real collaborator permission on the target repo via the GitHub API, so dashboard access
+matches actual repo access (see [SYSTEM_DESIGN.md §8](./docs/SYSTEM_DESIGN.md#8-auth--security)).
+
 ```bash
 cd dashboard
 pnpm install
@@ -134,17 +159,21 @@ pnpm build
 pnpm dev          # http://localhost:3000
 ```
 
-End-to-end tests (requires a running build):
+End-to-end tests (requires a running build). Real GitHub OAuth can't be driven headlessly, so
+Playwright signs in via a test-only Credentials provider gated behind `AUTH_E2E_TEST_MODE=1`
+(set automatically for the test run in `playwright.config.ts` — never set this in real local dev
+or in a real deployment):
 
 ```bash
 cd dashboard
 pnpm exec playwright install   # first run only
+pnpm build
 pnpm test:e2e
 ```
 
 ## Secrets
 
-None of this repo's code ever takes a raw secret as a literal. Everything (`github-app-private-key`, `github-webhook-secret`, `jira-api-token`) lives in Google Secret Manager, scoped per-secret to the service account that needs it. See [SYSTEM_DESIGN.md §8](./docs/SYSTEM_DESIGN.md#8-auth--security).
+None of this repo's code ever takes a raw secret as a literal. Everything (`github-app-private-key`, `github-webhook-secret`, `jira-api-token`) lives in Google Secret Manager, scoped per-secret to the service account that needs it. See [SYSTEM_DESIGN.md §8](./docs/SYSTEM_DESIGN.md#8-auth--security). The dashboard's OAuth App credentials (`GITHUB_ID`/`GITHUB_SECRET`/`AUTH_SECRET`, Sprint 5) are the one deliberate exception for now — local-only, in `dashboard/.env.local` (gitignored) — moving them to Secret Manager is Sprint 7 deploy scope.
 
 ## Deployment
 

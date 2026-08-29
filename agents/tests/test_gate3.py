@@ -69,6 +69,9 @@ class _FakeTicketStore:
             update={"escalation_history": [*self.ticket.escalation_history, entry], "status": "escalated"}
         )
 
+    async def append_trace_id(self, ticket_id: str, trace_id: str) -> None:
+        self.ticket = self.ticket.model_copy(update={"trace_ids": [*self.ticket.trace_ids, trace_id]})
+
 
 @pytest.fixture
 def fake_store(monkeypatch):
@@ -80,6 +83,7 @@ def fake_store(monkeypatch):
     )
     monkeypatch.setattr(gate3.firestore_client, "append_escalation", store.append_escalation)
     monkeypatch.setattr(gate3.firestore_client, "ticket_doc_id", store.ticket_doc_id)
+    monkeypatch.setattr(gate3.firestore_client, "append_trace_id", store.append_trace_id)
     return store
 
 

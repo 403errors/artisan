@@ -65,6 +65,7 @@ async def _evaluate_intake(repo: str, issue_number: int, jira_key: str) -> None:
         if exc.response.status_code == 404:
             raise NonRetriableEventError(f"issue {repo}#{issue_number} not found") from exc
         raise
+    await firestore_client.update_ticket(repo, issue_number, current_step="evaluating_intake")
     verdict = await run_intake(
         issue_title=title, issue_body=body, thread=thread, jira_key=jira_key
     )
@@ -72,7 +73,7 @@ async def _evaluate_intake(repo: str, issue_number: int, jira_key: str) -> None:
     if verdict.sufficient:
         await jira_client.transition_ticket(jira_key, "In Progress")
         await firestore_client.update_ticket(repo, issue_number, status="in_progress")
-        with tracing.gate_span(ticket_id, "1", "proceed"):
+        async with tracing.gate_span(ticket_id, "1", "proceed"):
             pass
         await gate2.start_gate2(repo, issue_number, jira_key, issue_title=title, issue_body=body)
         return
@@ -82,12 +83,12 @@ async def _evaluate_intake(repo: str, issue_number: int, jira_key: str) -> None:
     )
     try:
         await firestore_client.increment_clarification_round(repo, issue_number)
-        with tracing.gate_span(ticket_id, "1", "ask"):
+        async with tracing.gate_span(ticket_id, "1", "ask"):
             pass
     except ClarificationCapExceeded:
         await jira_client.add_comment(
             jira_key,
             "Artisan needs manual pickup: 3 clarification rounds without sufficient context.",
         )
-        with tracing.gate_span(ticket_id, "1", "escalate"):
+        async with tracing.gate_span(ticket_id, "1", "escalate"):
             pass

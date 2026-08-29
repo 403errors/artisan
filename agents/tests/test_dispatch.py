@@ -57,6 +57,10 @@ class _FakeTicketStore:
         self.tickets[key] = doc.model_copy(update={"clarification_rounds": new_count})
         return new_count
 
+    async def append_trace_id(self, ticket_id: str, trace_id: str) -> None:
+        doc = self.tickets[ticket_id]
+        self.tickets[ticket_id] = doc.model_copy(update={"trace_ids": [*doc.trace_ids, trace_id]})
+
 
 @pytest.fixture
 def fake_store(monkeypatch):
@@ -70,6 +74,7 @@ def fake_store(monkeypatch):
         store.increment_clarification_round,
     )
     monkeypatch.setattr(dispatch.firestore_client, "ticket_doc_id", store.ticket_doc_id)
+    monkeypatch.setattr(dispatch.firestore_client, "append_trace_id", store.append_trace_id)
     return store
 
 

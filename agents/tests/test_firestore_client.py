@@ -201,6 +201,21 @@ async def test_append_escalation_is_atomic_and_flips_status(cleanup_ticket) -> N
 
 
 @pytest.mark.asyncio
+async def test_append_trace_id_is_atomic_and_does_not_flip_status(cleanup_ticket) -> None:
+    _require_credentials()
+    issue_number = 900013
+    cleanup_ticket.append(issue_number)
+    await firestore_client.create_ticket(REPO, issue_number, jira_key="ART-900013")
+    doc_id = firestore_client.ticket_doc_id(REPO, issue_number)
+
+    await firestore_client.append_trace_id(doc_id, "a" * 32)
+
+    ticket = await firestore_client.get_ticket(REPO, issue_number)
+    assert ticket.trace_ids == ["a" * 32]
+    assert ticket.status == "intake"  # unlike append_escalation, must NOT flip to escalated
+
+
+@pytest.mark.asyncio
 async def test_trivial_conflict_attempt_first_call_succeeds_even_though_new_count_equals_cap(
     cleanup_ticket,
 ) -> None:

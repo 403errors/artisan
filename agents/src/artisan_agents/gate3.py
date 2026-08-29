@@ -55,37 +55,39 @@ async def start_gate3(
 ) -> None:
     ticket_id = firestore_client.ticket_doc_id(repo, issue_number)
 
+    await firestore_client.update_ticket(repo, issue_number, current_step="detecting_conflict")
     try:
         detection = await cloud_run_jobs.trigger_conflict_detection(
             repo=repo, issue_number=issue_number, base_branch=base_branch,
             head_branch=head_branch, head_sha=head_sha,
         )
     except ConflictDetectionCrashed as exc:
-        with tracing.gate_span(ticket_id, "3", "escalate"):
+        async with tracing.gate_span(ticket_id, "3", "escalate"):
             pass
         await _escalate(repo, issue_number, jira_key, pr_number, reason=f"conflict check crashed: {exc}")
         return
 
     if not detection.has_conflict:
-        with tracing.gate_span(ticket_id, "3", "proceed"):
+        async with tracing.gate_span(ticket_id, "3", "proceed"):
             pass
         return
 
+    await firestore_client.update_ticket(repo, issue_number, current_step="classifying_conflict")
     verdict = await run_conflict_classification(pr_title=pr_title, pr_body=pr_body, detection=detection)
 
     if verdict.classification == "semantic":
-        with tracing.gate_span(ticket_id, "3", "escalate"):
+        async with tracing.gate_span(ticket_id, "3", "escalate"):
             pass
         await _escalate_semantic(repo, issue_number, jira_key, pr_number, verdict)
         return
 
     # trivial: span at classification time...
-    with tracing.gate_span(ticket_id, "3", "proceed"):
+    async with tracing.gate_span(ticket_id, "3", "proceed"):
         pass
     try:
         await firestore_client.increment_trivial_conflict_attempt(repo, issue_number)
     except TrivialConflictCapExceeded:
-        with tracing.gate_span(ticket_id, "3", "escalate"):
+        async with tracing.gate_span(ticket_id, "3", "escalate"):
             pass
         await _escalate(
             repo, issue_number, jira_key, pr_number,
@@ -93,6 +95,7 @@ async def start_gate3(
         )
         return
 
+    await firestore_client.update_ticket(repo, issue_number, current_step="resolving_conflict")
     resolution = await cloud_run_jobs.trigger_conflict_resolution(
         repo=repo, issue_number=issue_number, base_branch=base_branch, head_branch=head_branch,
     )
@@ -102,7 +105,7 @@ async def start_gate3(
 
     # ...and a second span for the resolution outcome, per Phase 4.5.
     if resolution.tests_passed:
-        with tracing.gate_span(ticket_id, "3", "proceed"):
+        async with tracing.gate_span(ticket_id, "3", "proceed"):
             pass
         await github_client.post_issue_comment(
             repo, pr_number,
@@ -114,7 +117,7 @@ async def start_gate3(
         )
         return
 
-    with tracing.gate_span(ticket_id, "3", "escalate"):
+    async with tracing.gate_span(ticket_id, "3", "escalate"):
         pass
     await _escalate(
         repo, issue_number, jira_key, pr_number,
