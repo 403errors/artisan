@@ -20,6 +20,16 @@ def stub_token(monkeypatch):
     monkeypatch.setattr(main_module, "get_installation_token", fake_get_installation_token)
 
 
+@pytest.fixture(autouse=True)
+def stub_security_scan_clean(monkeypatch):
+    """WS6's scan gate runs between commit_all and push in both run_attempt and
+    run_conflict_resolution. Default every test to a clean/no-op scan so pre-WS6 tests keep their
+    original behavior; individual tests below override these to exercise the gate itself."""
+    monkeypatch.setattr(main_module.security_scan, "scan_secrets", lambda repo_dir: (True, ""))
+    monkeypatch.setattr(main_module.security_scan, "scan_static", lambda repo_dir: (True, ""))
+    monkeypatch.setattr(main_module.security_scan, "scan_new_dependencies", lambda repo_dir: [])
+
+
 @pytest.mark.asyncio
 async def test_happy_path_returns_passed_result(monkeypatch) -> None:
     monkeypatch.setattr(main_module.git_ops, "clone", lambda *a, **k: None)
@@ -315,3 +325,152 @@ async def test_run_attempt_passes_no_sink_when_issue_number_is_omitted(monkeypat
     await main_module.run_attempt(repo="acme/demo", branch="artisan/x-1", plan=_PLAN, prior_feedback=None)
 
     assert received_sink == [None]
+
+
+def _stub_happy_path_up_to_push(monkeypatch, *, push_calls: list) -> None:
+    monkeypatch.setattr(main_module.git_ops, "clone", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.git_ops, "create_branch", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.git_ops, "stage_all_and_diff_stat", lambda repo_dir: "1 file changed")
+    monkeypatch.setattr(main_module.git_ops, "has_staged_changes", lambda repo_dir: True)
+    monkeypatch.setattr(main_module.git_ops, "commit_all", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.git_ops, "push", lambda *a, **k: push_calls.append((a, k)))
+    monkeypatch.setattr(main_module.test_runner, "run_tests", lambda repo_dir: (True, "ok"))
+
+    async def fake_run_coding_agent(**kwargs):
+        return "did the thing"
+
+    monkeypatch.setattr(main_module, "run_coding_agent", fake_run_coding_agent)
+
+
+@pytest.mark.asyncio
+async def test_run_attempt_blocks_push_on_secret_detected(monkeypatch) -> None:
+    push_calls: list = []
+    _stub_happy_path_up_to_push(monkeypatch, push_calls=push_calls)
+    monkeypatch.setattr(
+        main_module.security_scan, "scan_secrets", lambda repo_dir: (False, "aws-key in a.py:1")
+    )
+
+    result = await main_module.run_attempt(
+        repo="acme/demo", branch="artisan/x-1", plan=_PLAN, prior_feedback=None
+    )
+
+    assert push_calls == []
+    assert result.tests_passed is False
+    assert "security scan blocked: secret detected" in result.logs_uri
+    assert "aws-key in a.py:1" in result.logs_uri
+
+
+@pytest.mark.asyncio
+async def test_run_attempt_blocks_push_on_static_error_finding(monkeypatch) -> None:
+    push_calls: list = []
+    _stub_happy_path_up_to_push(monkeypatch, push_calls=push_calls)
+    monkeypatch.setattr(
+        main_module.security_scan, "scan_static", lambda repo_dir: (False, "sql-injection in b.py:2")
+    )
+
+    result = await main_module.run_attempt(
+        repo="acme/demo", branch="artisan/x-1", plan=_PLAN, prior_feedback=None
+    )
+
+    assert push_calls == []
+    assert result.tests_passed is False
+    assert "security scan blocked: static analysis finding" in result.logs_uri
+    assert "sql-injection in b.py:2" in result.logs_uri
+
+
+@pytest.mark.asyncio
+async def test_run_attempt_appends_non_blocking_findings_and_still_pushes(monkeypatch) -> None:
+    push_calls: list = []
+    _stub_happy_path_up_to_push(monkeypatch, push_calls=push_calls)
+    monkeypatch.setattr(
+        main_module.security_scan, "scan_static", lambda repo_dir: (True, "minor-warning in c.py:3")
+    )
+    monkeypatch.setattr(
+        main_module.security_scan,
+        "scan_new_dependencies",
+        lambda repo_dir: ["added dependency: lodash (package.json)"],
+    )
+
+    result = await main_module.run_attempt(
+        repo="acme/demo", branch="artisan/x-1", plan=_PLAN, prior_feedback=None
+    )
+
+    assert len(push_calls) == 1
+    assert result.tests_passed is True
+    assert "New dependencies detected" in result.diff_summary
+    assert "lodash" in result.diff_summary
+    assert "Static analysis notes (non-blocking)" in result.diff_summary
+    assert "minor-warning in c.py:3" in result.diff_summary
+
+
+def _stub_conflict_resolution_happy_path(monkeypatch, *, push_calls: list) -> None:
+    _stub_conflicted_merge(monkeypatch)
+    monkeypatch.setattr(main_module.git_ops, "stage_all_and_diff_stat", lambda repo_dir: "1 file changed")
+    monkeypatch.setattr(main_module.git_ops, "has_staged_changes", lambda repo_dir: True)
+    monkeypatch.setattr(main_module.git_ops, "commit_all", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.test_runner, "run_tests", lambda repo_dir: (True, "ok"))
+    monkeypatch.setattr(main_module.git_ops, "push", lambda *a, **k: push_calls.append((a, k)))
+
+    async def fake_run_conflict_resolution_agent(**kwargs):
+        return "resolved shared.py"
+
+    monkeypatch.setattr(main_module, "run_conflict_resolution_agent", fake_run_conflict_resolution_agent)
+
+
+@pytest.mark.asyncio
+async def test_run_conflict_resolution_blocks_push_on_secret_detected(monkeypatch) -> None:
+    push_calls: list = []
+    _stub_conflict_resolution_happy_path(monkeypatch, push_calls=push_calls)
+    monkeypatch.setattr(
+        main_module.security_scan, "scan_secrets", lambda repo_dir: (False, "aws-key in a.py:1")
+    )
+
+    result = await main_module.run_conflict_resolution(
+        repo="acme/demo", base_branch="main", head_branch="feature"
+    )
+
+    assert push_calls == []
+    assert result.tests_passed is False
+    assert "security scan blocked: secret detected" in result.logs_uri
+
+
+@pytest.mark.asyncio
+async def test_run_conflict_resolution_blocks_push_on_static_error_finding(monkeypatch) -> None:
+    push_calls: list = []
+    _stub_conflict_resolution_happy_path(monkeypatch, push_calls=push_calls)
+    monkeypatch.setattr(
+        main_module.security_scan, "scan_static", lambda repo_dir: (False, "sql-injection in b.py:2")
+    )
+
+    result = await main_module.run_conflict_resolution(
+        repo="acme/demo", base_branch="main", head_branch="feature"
+    )
+
+    assert push_calls == []
+    assert result.tests_passed is False
+    assert "security scan blocked: static analysis finding" in result.logs_uri
+
+
+@pytest.mark.asyncio
+async def test_run_conflict_resolution_appends_non_blocking_findings_and_still_pushes(
+    monkeypatch,
+) -> None:
+    push_calls: list = []
+    _stub_conflict_resolution_happy_path(monkeypatch, push_calls=push_calls)
+    monkeypatch.setattr(
+        main_module.security_scan, "scan_static", lambda repo_dir: (True, "minor-warning in c.py:3")
+    )
+    monkeypatch.setattr(
+        main_module.security_scan,
+        "scan_new_dependencies",
+        lambda repo_dir: ["added dependency: lodash (package.json)"],
+    )
+
+    result = await main_module.run_conflict_resolution(
+        repo="acme/demo", base_branch="main", head_branch="feature"
+    )
+
+    assert len(push_calls) == 1
+    assert result.tests_passed is True
+    assert "New dependencies detected" in result.diff_summary
+    assert "Static analysis notes (non-blocking)" in result.diff_summary

@@ -278,3 +278,85 @@ async def test_write_and_read_pr_pointer_roundtrips_to_ticket(
 async def test_get_ticket_by_pr_returns_none_for_untracked_pr() -> None:
     _require_credentials()
     assert await firestore_client.get_ticket_by_pr(REPO, 999999999) is None
+
+
+@pytest_asyncio.fixture
+async def cleanup_repo_context():
+    repos: list[str] = []
+    yield repos
+    client = firestore_client._client()
+    for repo in repos:
+        await client.collection("repo_context").document(
+            firestore_client.repo_context_doc_id(repo)
+        ).delete()
+
+
+@pytest.mark.asyncio
+async def test_get_cached_repo_context_returns_none_when_absent(cleanup_repo_context) -> None:
+    _require_credentials()
+    repo = "403errors/artisan-demo-repo-context-absent"
+    cleanup_repo_context.append(repo)
+    assert await firestore_client.get_cached_repo_context(repo) is None
+
+
+@pytest.mark.asyncio
+async def test_set_and_get_cached_repo_context_roundtrips(cleanup_repo_context) -> None:
+    _require_credentials()
+    from artisan_shared.models import RepoContext
+
+    repo = "403errors/artisan-demo-repo-context-roundtrip"
+    cleanup_repo_context.append(repo)
+    context = RepoContext(
+        repo=repo,
+        head_sha="deadbeef",
+        file_tree=["a.py", "package.json"],
+        manifests={"package.json": '{"name": "demo"}'},
+        languages={".py": 1, ".json": 1},
+        fetched_at=datetime.now(UTC),
+    )
+
+    await firestore_client.set_repo_context(repo, context)
+
+    fetched = await firestore_client.get_cached_repo_context(repo)
+    assert fetched is not None
+    assert fetched.head_sha == "deadbeef"
+    assert fetched.manifests == {"package.json": '{"name": "demo"}'}
+
+
+# --- WS1: mark_needs_human_review / mark_manual_pickup_directly ------------------------------
+# Pure unit tests (monkeypatch update_ticket) rather than real-Firestore integration tests, since
+# these two are trivial one-line delegations to update_ticket, already covered end-to-end here.
+
+
+@pytest.mark.asyncio
+async def test_mark_needs_human_review_updates_status(monkeypatch) -> None:
+    calls = []
+
+    async def fake_update_ticket(repo, issue_number, **fields):
+        calls.append((repo, issue_number, fields))
+
+    monkeypatch.setattr(firestore_client, "update_ticket", fake_update_ticket)
+
+    await firestore_client.mark_needs_human_review("acme/demo", 7)
+
+    assert calls == [("acme/demo", 7, {"status": "needs_human_review"})]
+
+
+@pytest.mark.asyncio
+async def test_mark_manual_pickup_directly_updates_status_and_records_reason(monkeypatch) -> None:
+    calls = []
+
+    async def fake_update_ticket(repo, issue_number, **fields):
+        calls.append((repo, issue_number, fields))
+
+    monkeypatch.setattr(firestore_client, "update_ticket", fake_update_ticket)
+
+    await firestore_client.mark_manual_pickup_directly("acme/demo", 7, reason="not_actionable")
+
+    assert calls == [
+        (
+            "acme/demo",
+            7,
+            {"status": "manual_pickup", "current_step": "manual_pickup:not_actionable"},
+        )
+    ]

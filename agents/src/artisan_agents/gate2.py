@@ -8,7 +8,7 @@ clarification loop (which re-enters via a new webhook event)."""
 import asyncio
 from datetime import datetime, timezone
 
-from artisan_agents import event_context, tracing
+from artisan_agents import event_context, repo_context as repo_context_module, tracing
 from artisan_agents.agents.domain_expert_agent import run_domain_expert
 from artisan_agents.agents.planning_agent import run_planning
 from artisan_agents.agents.routing_agent import run_routing
@@ -19,7 +19,13 @@ from artisan_agents.gcp.firestore_client import RetryCapExceeded
 from artisan_agents.github import client as github_client
 from artisan_agents.jira import client as jira_client
 from artisan_shared.firestore_schema import EscalationEntry
-from artisan_shared.models import DomainExpertOutput, ExecutionResult, Plan, RoutingDecision
+from artisan_shared.models import (
+    DomainExpertOutput,
+    ExecutionResult,
+    Plan,
+    RepoContext,
+    RoutingDecision,
+)
 
 # Jira's real team-managed Kanban workflow (verified live against ART-8/ART-9, see
 # docs/CONTEXT.md) only has Backlog / Selected for Development / In Progress / Done — there is no
@@ -46,14 +52,18 @@ async def start_gate2(
         type="gate_started", summary="Gate 2: plan -> execute -> verify"
     )
 
+    repo_context = await repo_context_module.get_repo_context(repo)
+
     await firestore_client.update_ticket(repo, issue_number, current_step="routing")
-    decision = await run_routing(issue_title=issue_title, issue_body=issue_body, jira_key=jira_key)
+    decision = await run_routing(
+        issue_title=issue_title, issue_body=issue_body, jira_key=jira_key, repo_context=repo_context
+    )
     await firestore_client.update_ticket(repo, issue_number, domains=list(decision.domains))
     async with tracing.gate_span(ticket_id, "2", "proceed"):
         pass
 
     await firestore_client.update_ticket(repo, issue_number, current_step="domain_expert")
-    domain_outputs = await _run_domain_experts(decision, issue_title, issue_body)
+    domain_outputs = await _run_domain_experts(decision, issue_title, issue_body, repo_context)
 
     feedback: str | None = None
     for attempt in range(1, MAX_EXECUTION_RETRIES + 1):
@@ -65,6 +75,7 @@ async def start_gate2(
             issue_title=issue_title,
             issue_body=issue_body,
             prior_feedback=feedback,
+            repo_context=repo_context,
         )
         await firestore_client.update_ticket(repo, issue_number, plan=plan.model_dump(mode="json"))
 
@@ -115,13 +126,21 @@ async def start_gate2(
 
 
 async def _run_domain_experts(
-    decision: RoutingDecision, issue_title: str, issue_body: str
+    decision: RoutingDecision,
+    issue_title: str,
+    issue_body: str,
+    repo_context: RepoContext | None = None,
 ) -> list[DomainExpertOutput]:
     if decision.parallel:
         return list(
             await asyncio.gather(
                 *(
-                    run_domain_expert(domain=d, issue_title=issue_title, issue_body=issue_body)
+                    run_domain_expert(
+                        domain=d,
+                        issue_title=issue_title,
+                        issue_body=issue_body,
+                        repo_context=repo_context,
+                    )
                     for d in decision.domains
                 )
             )
@@ -129,7 +148,12 @@ async def _run_domain_experts(
     outputs: list[DomainExpertOutput] = []
     for domain in decision.domains:
         outputs.append(
-            await run_domain_expert(domain=domain, issue_title=issue_title, issue_body=issue_body)
+            await run_domain_expert(
+                domain=domain,
+                issue_title=issue_title,
+                issue_body=issue_body,
+                repo_context=repo_context,
+            )
         )
     return outputs
 
@@ -166,6 +190,14 @@ async def _open_pr_and_sync(
     # Written so Gate 3 (Sprint 4) can resolve a later `pull_request` webhook straight to this
     # ticket without a Firestore query — see firestore_client.get_ticket_by_pr.
     await firestore_client.write_pr_pointer(repo, pr_number, issue_number)
+    # WS6 ready-for-review labels — a nice-to-have signal, not load-bearing: a labeling failure
+    # must never abort the PR-opening flow that already succeeded.
+    try:
+        await github_client.add_label(repo, pr_number, "artisan:ready-for-review")
+    except Exception as exc:
+        await event_context.current_sink().emit(
+            type="label_failed", summary=f"Failed to label GitHub PR #{pr_number}: {exc}"
+        )
     await jira_client.add_comment(
         jira_key,
         f"Artisan opened a PR: {pr_url}\n\n{execution_result.diff_summary}",
@@ -173,6 +205,12 @@ async def _open_pr_and_sync(
     await event_context.current_sink().emit(
         type="jira_synced", summary=f"Commented PR link on {jira_key}"
     )
+    try:
+        await jira_client.add_label(jira_key, "artisan-pr-open")
+    except Exception as exc:
+        await event_context.current_sink().emit(
+            type="label_failed", summary=f"Failed to label Jira {jira_key}: {exc}"
+        )
 
 
 async def _escalate(repo: str, issue_number: int, jira_key: str, *, reason: str) -> None:

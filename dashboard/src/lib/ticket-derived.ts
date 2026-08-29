@@ -33,7 +33,11 @@ export function currentGate(doc: TicketDoc): "1" | "2" | "3" {
 
 export function lastDecision(doc: TicketDoc): string {
   const lastEscalation = doc.escalationHistory.at(-1);
-  if (doc.status === "escalated" || doc.status === "manual_pickup") {
+  if (
+    doc.status === "escalated" ||
+    doc.status === "manual_pickup" ||
+    doc.status === "needs_human_review"
+  ) {
     return lastEscalation?.reason ?? "awaiting manual pickup";
   }
   if (doc.status === "pr_open") return `PR opened: ${doc.prUrl}`;

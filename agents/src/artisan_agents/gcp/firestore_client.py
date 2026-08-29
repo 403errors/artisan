@@ -28,7 +28,8 @@ from artisan_agents.config import (
 from artisan_agents.event_context import current_sink
 from artisan_shared.event_log import EventSink
 from artisan_shared.firestore_schema import EscalationEntry, TicketDoc
-from artisan_shared.ticket_ids import pr_pointer_doc_id, ticket_doc_id
+from artisan_shared.models import RepoContext
+from artisan_shared.ticket_ids import pr_pointer_doc_id, repo_context_doc_id, ticket_doc_id
 
 __all__ = [
     "ClarificationCapExceeded",
@@ -39,6 +40,7 @@ __all__ = [
     "claim_delivery",
     "claim_semantic_conflict_escalation",
     "create_ticket",
+    "get_cached_repo_context",
     "get_ticket",
     "get_ticket_by_pr",
     "increment_clarification_round",
@@ -46,7 +48,10 @@ __all__ = [
     "increment_trivial_conflict_attempt",
     "mark_delivery_completed",
     "mark_delivery_failed",
+    "mark_manual_pickup_directly",
+    "mark_needs_human_review",
     "new_event_sink",
+    "set_repo_context",
     "ticket_doc_id",
     "update_ticket",
     "write_pr_pointer",
@@ -120,6 +125,24 @@ async def update_ticket(repo: str, issue_number: int, **fields) -> None:
         await current_sink().emit(type="step_changed", summary=str(fields["current_step"]))
     fields["updated_at"] = _now().isoformat()
     await _client().collection("tickets").document(ticket_doc_id(repo, issue_number)).update(fields)
+
+
+async def mark_needs_human_review(repo: str, issue_number: int) -> None:
+    """Flags a ticket `needs_human_review` (WS1's sus-image gate, dispatch.py's evaluate_intake) —
+    a plain (non-transactional) write, since this is a one-shot classification made before the
+    Intake Agent ever runs, not a racing-caps scenario like the increment_* helpers below."""
+    await update_ticket(repo, issue_number, status="needs_human_review")
+
+
+async def mark_manual_pickup_directly(repo: str, issue_number: int, reason: str) -> None:
+    """Flags a ticket `manual_pickup` directly (WS1's not_actionable intake verdict,
+    dispatch.py's evaluate_intake) — bypasses the clarification-round cap entirely since there's no
+    round to count here. `reason` is recorded on the existing `current_step` field (prefixed) rather
+    than a new schema field, mirroring `update_ticket`'s existing "display-only progress hint"
+    convention (see TicketDoc.current_step's docstring)."""
+    await update_ticket(
+        repo, issue_number, status="manual_pickup", current_step=f"manual_pickup:{reason}"
+    )
 
 
 @firestore.async_transactional
@@ -331,6 +354,25 @@ async def append_escalation(repo: str, issue_number: int, entry: EscalationEntry
         }
     )
     await current_sink().emit(type="escalated", gate=entry.gate, summary=entry.reason)
+
+
+async def get_cached_repo_context(repo: str) -> RepoContext | None:
+    """Reads the top-level `repo_context/{repo_sanitized}` doc (WS3) — mirrors `get_ticket_by_pr`'s
+    "small top-level collection, direct `.get()`" shape rather than a per-ticket subcollection,
+    since a repo's context is shared across every ticket in that repo."""
+    snapshot = await _client().collection("repo_context").document(repo_context_doc_id(repo)).get()
+    if not snapshot.exists:
+        return None
+    return RepoContext.model_validate(snapshot.to_dict())
+
+
+async def set_repo_context(repo: str, context: RepoContext) -> None:
+    """Overwrites the cached `RepoContext` for `repo` (WS3) — same `mode="json"` dict-write
+    convention as `create_ticket`/`update_ticket` above, so datetimes/etc. round-trip through
+    Firestore the same way ticket docs do."""
+    await _client().collection("repo_context").document(repo_context_doc_id(repo)).set(
+        context.model_dump(mode="json")
+    )
 
 
 async def append_trace_id(ticket_id: str, trace_id: str) -> None:

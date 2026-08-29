@@ -10,6 +10,7 @@ export const STATUS_BUCKET: Record<TicketStatus, StatusBucket> = {
   in_progress: "active",
   pr_open: "review",
   manual_pickup: "review",
+  needs_human_review: "review",
   escalated: "urgent",
   done: "resolved",
 };

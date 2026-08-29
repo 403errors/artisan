@@ -7,7 +7,13 @@ import httpx
 import pytest
 
 from artisan_agents.jira import client as jira_client_module
-from artisan_agents.jira.client import JiraClientError, add_comment, create_ticket, transition_ticket
+from artisan_agents.jira.client import (
+    JiraClientError,
+    add_comment,
+    add_label,
+    create_ticket,
+    transition_ticket,
+)
 
 
 _RealAsyncClient = httpx.AsyncClient
@@ -89,3 +95,25 @@ async def test_add_comment_posts_plain_text_body(monkeypatch) -> None:
 
     monkeypatch.setattr(jira_client_module.httpx, "AsyncClient", _client_factory(handler))
     await add_comment("ART-1", "hello")
+
+
+@pytest.mark.asyncio
+async def test_add_label_puts_the_label_add_update(monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "PUT"
+        assert request.url.path == "/rest/api/2/issue/ART-1"
+        assert json.loads(request.read()) == {"update": {"labels": [{"add": "artisan-pr-open"}]}}
+        return httpx.Response(204)
+
+    monkeypatch.setattr(jira_client_module.httpx, "AsyncClient", _client_factory(handler))
+    await add_label("ART-1", "artisan-pr-open")
+
+
+@pytest.mark.asyncio
+async def test_add_label_raises_on_error_response(monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, text="bad request")
+
+    monkeypatch.setattr(jira_client_module.httpx, "AsyncClient", _client_factory(handler))
+    with pytest.raises(JiraClientError):
+        await add_label("ART-1", "artisan-pr-open")

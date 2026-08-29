@@ -74,3 +74,7 @@ async def transition_ticket(jira_key: str, status_name: str) -> None:
 
 async def add_comment(jira_key: str, body: str) -> None:
     await _request("POST", f"/rest/api/2/issue/{jira_key}/comment", json={"body": body})
+
+
+async def add_label(jira_key: str, label: str) -> None:
+    await _request("PUT", f"/rest/api/2/issue/{jira_key}", json={"update": {"labels": [{"add": label}]}})

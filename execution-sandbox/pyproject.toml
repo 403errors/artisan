@@ -13,6 +13,7 @@ dependencies = [
     "google-cloud-secret-manager==2.30.0",
     "githubkit[auth-app]==0.16.1",
     "pydantic==2.13.4",
+    "semgrep==1.79.0",
 ]
 
 [tool.uv.sources]

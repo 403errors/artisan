@@ -8,6 +8,7 @@ export type TicketStatus =
   | "pr_open"
   | "escalated"
   | "manual_pickup"
+  | "needs_human_review"
   | "done";
 
 export interface Plan {

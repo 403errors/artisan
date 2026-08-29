@@ -181,11 +181,17 @@ class DomainExpertOutput(BaseModel):
     technical_summary: str
     relevant_files: list[str]
 
+class RemovedCodeItem(BaseModel):
+    file: str
+    symbol: str
+    reason: str
+
 class Plan(BaseModel):
     steps: list[str]
     touched_files: list[str]
     test_cases: list[str]
     doc_updates: list[str]
+    removed_code: list[RemovedCodeItem] = []
 
 class ExecutionResult(BaseModel):
     branch: str

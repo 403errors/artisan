@@ -22,7 +22,17 @@ COPY execution-sandbox/src execution-sandbox/src
 RUN uv sync --frozen --no-dev --package artisan-execution-sandbox
 
 FROM python:3.13-slim
-RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends git curl && rm -rf /var/lib/apt/lists/*
+
+# Pre-push secrets scan (Workstream 6, security_scan.py's scan_secrets) — a specific pinned
+# gitleaks release binary, installed straight from its GitHub release tarball rather than an apt
+# package (Debian doesn't ship one).
+RUN curl -sSL -o /tmp/gitleaks.tar.gz \
+        https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz \
+    && tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks \
+    && chmod +x /usr/local/bin/gitleaks \
+    && rm /tmp/gitleaks.tar.gz
+
 WORKDIR /app
 COPY --from=builder /app /app
 ENV PATH="/app/.venv/bin:$PATH"

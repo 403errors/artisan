@@ -150,7 +150,7 @@ export async function listEscalatedTickets(): Promise<TicketSummary[]> {
   const snapshot = await getFirestore()
     .collection("tickets")
     .where("github_repo", "==", TARGET_REPO)
-    .where("status", "in", ["escalated", "manual_pickup"])
+    .where("status", "in", ["escalated", "manual_pickup", "needs_human_review"])
     .orderBy("updated_at", "desc")
     .get();
   return snapshot.docs.map((d) => toTicketSummary(toTicketDoc(d.id, d.data() as RawTicketDoc)));

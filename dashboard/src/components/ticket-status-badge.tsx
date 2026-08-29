@@ -10,6 +10,7 @@ const STATUS_LABEL: Record<TicketStatus, string> = {
   pr_open: "PR Open — Awaiting Review",
   escalated: "Needs Manual Review",
   manual_pickup: "Needs Manual Review",
+  needs_human_review: "Needs Human Review",
   done: "Done",
 };
 

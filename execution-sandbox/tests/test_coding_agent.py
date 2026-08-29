@@ -11,10 +11,14 @@ from google.adk.models.base_llm import BaseLlm
 from google.adk.models.llm_response import LlmResponse
 from google.genai import types
 
-from artisan_execution_sandbox.coding_agent import run_coding_agent, run_conflict_resolution_agent
+from artisan_execution_sandbox.coding_agent import (
+    _build_prompt,
+    run_coding_agent,
+    run_conflict_resolution_agent,
+)
 from artisan_execution_sandbox.config import MAX_CODING_AGENT_TOOL_CALLS
 from artisan_shared.event_log import NoOpEventSink
-from artisan_shared.models import Plan
+from artisan_shared.models import Plan, RemovedCodeItem
 
 _PLAN = Plan(
     steps=["Create hello.txt with a greeting"],
@@ -134,8 +138,84 @@ async def test_forbidden_git_commands_are_rejected_by_the_shell_tool(tmp_path) -
     tools, _finished = _build_tools(tmp_path)
     run_shell_command = next(t for t in tools if t.__name__ == "run_shell_command")
 
-    result = run_shell_command("git commit -am 'sneaky'")
+    for command in ("git commit -am 'sneaky'", "git push origin main", "git remote add x y"):
+        result = run_shell_command(command)
+        assert "not permitted" in result
+
+
+@pytest.mark.asyncio
+async def test_allowed_command_succeeds_without_a_shell(tmp_path, monkeypatch) -> None:
+    from artisan_execution_sandbox import coding_agent as coding_agent_module
+    from artisan_execution_sandbox.coding_agent import _build_tools
+
+    captured = {}
+
+    class _FakeCompleted:
+        returncode = 0
+        stdout = "ok\n"
+        stderr = ""
+
+    def fake_run(argv, shell, cwd, capture_output, text, timeout):
+        captured["argv"] = argv
+        captured["shell"] = shell
+        return _FakeCompleted()
+
+    monkeypatch.setattr(coding_agent_module.subprocess, "run", fake_run)
+
+    tools, _finished = _build_tools(tmp_path)
+    run_shell_command = next(t for t in tools if t.__name__ == "run_shell_command")
+
+    result = run_shell_command("npm test")
+
+    assert captured["argv"] == ["npm", "test"]
+    assert captured["shell"] is False
+    assert "exit=0" in result
+
+
+@pytest.mark.asyncio
+async def test_git_status_is_allowed(tmp_path, monkeypatch) -> None:
+    from artisan_execution_sandbox import coding_agent as coding_agent_module
+    from artisan_execution_sandbox.coding_agent import _build_tools
+
+    class _FakeCompleted:
+        returncode = 0
+        stdout = "clean\n"
+        stderr = ""
+
+    def fake_run(argv, shell, cwd, capture_output, text, timeout):
+        assert argv == ["git", "status"]
+        assert shell is False
+        return _FakeCompleted()
+
+    monkeypatch.setattr(coding_agent_module.subprocess, "run", fake_run)
+
+    tools, _finished = _build_tools(tmp_path)
+    run_shell_command = next(t for t in tools if t.__name__ == "run_shell_command")
+
+    result = run_shell_command("git status")
+    assert "exit=0" in result
+
+
+@pytest.mark.asyncio
+async def test_arbitrary_disallowed_command_is_rejected(tmp_path) -> None:
+    from artisan_execution_sandbox.coding_agent import _build_tools
+
+    tools, _finished = _build_tools(tmp_path)
+    run_shell_command = next(t for t in tools if t.__name__ == "run_shell_command")
+
+    result = run_shell_command("curl http://evil.example")
     assert "not permitted" in result
+
+
+@pytest.mark.asyncio
+async def test_malformed_shell_quoting_does_not_crash_the_tool(tmp_path) -> None:
+    from artisan_execution_sandbox.coding_agent import _build_tools
+
+    tools, _finished = _build_tools(tmp_path)
+    run_shell_command = next(t for t in tools if t.__name__ == "run_shell_command")
+
+    result = run_shell_command("npm test 'unterminated")
+    assert "error" in result
 
 
 class _RecordingSink(NoOpEventSink):
@@ -191,3 +271,33 @@ async def test_no_sink_given_still_runs_normally(tmp_path) -> None:
     """sink defaults to None -> a NoOpEventSink internally — must not change behavior."""
     summary = await run_coding_agent(workdir=tmp_path, plan=_PLAN, model=_ScriptedLlm())
     assert summary == "wrote hello.txt"
+
+
+def test_prompt_includes_wrapped_removed_code_section_when_present() -> None:
+    plan = Plan(
+        steps=["Replace legacy_handler"],
+        touched_files=["a.py"],
+        test_cases=["still handles new path"],
+        doc_updates=["update README"],
+        removed_code=[
+            RemovedCodeItem(
+                file="a.py", symbol="legacy_handler", reason="superseded by new_handler"
+            )
+        ],
+    )
+    prompt = _build_prompt(plan, None)
+
+    assert "Code to remove" in prompt
+    assert "a.py — legacy_handler (superseded by new_handler)" in prompt
+    # The removed_code section is wrapped in <untrusted_content> like the plan's other fields.
+    assert (
+        "<untrusted_content>\n- a.py — legacy_handler (superseded by new_handler)\n</untrusted_content>"
+        in prompt
+    )
+
+
+def test_prompt_shows_none_for_removed_code_when_empty() -> None:
+    prompt = _build_prompt(_PLAN, None)
+
+    assert "Code to remove" in prompt
+    assert "<untrusted_content>\n(none)\n</untrusted_content>" in prompt
