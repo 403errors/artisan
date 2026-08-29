@@ -85,9 +85,27 @@ export function availableActions(ticket: TicketForActions, now: number | null): 
     stalled
   ) {
     actions.push({ kind: "retry", enabled: true });
+  } else if (ticket.status === "duplicate_review") {
+    // A duplicate flag is waiting on the reporter's reply; here "retry" means a maintainer
+    // forcing the issue past the duplicate hold and straight into Gate 1 intake.
+    actions.push({
+      kind: "retry",
+      enabled: true,
+      label: "Proceed without confirmation",
+      confirm: {
+        title: "Proceed without duplicate confirmation?",
+        body: "This re-runs Gate 1 intake on the issue without waiting for the reporter's duplicate confirmation. If it is actually a duplicate, Artisan may implement it redundantly.",
+        confirmLabel: "Proceed",
+        destructive: false,
+      },
+    });
   }
 
-  if (ticket.status === "intake" || ticket.status === "in_progress") {
+  if (
+    ticket.status === "intake" ||
+    ticket.status === "in_progress" ||
+    ticket.status === "duplicate_review"
+  ) {
     actions.push({ kind: "escalate", enabled: true });
   } else if (ticket.status === "pr_open") {
     // A PR is already open — this isn't "Artisan is stuck", it's "this PR has gone quiet and a

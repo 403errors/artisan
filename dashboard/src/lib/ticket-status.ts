@@ -11,6 +11,7 @@ export const STATUS_BUCKET: Record<TicketStatus, StatusBucket> = {
   pr_open: "review",
   manual_pickup: "review",
   needs_human_review: "review",
+  duplicate_review: "review",
   escalated: "urgent",
   done: "resolved",
 };

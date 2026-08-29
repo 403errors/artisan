@@ -1,5 +1,5 @@
 """Idempotent terminal transitions shared by multiple callers, so distinct triggers never race
-each other and disagree. Two functions:
+each other and disagree. Three functions:
 
 - `mark_ticket_done` — the *success* terminal state. Callers: a real GitHub merge webhook
   (`dispatch.handle_event`'s `pull_request.closed && merged` branch) and a manual dashboard action
@@ -7,8 +7,12 @@ each other and disagree. Two functions:
 - `handle_issue_deleted` — the *withdrawn* terminal state, when the issuer deletes the GitHub
   issue itself. Callers: the `issues.deleted` webhook branch and the 404 race path (an issue
   deleted mid-flight shows up to in-flight gates as a 404 on the issue).
+- `mark_ticket_duplicate` — the *duplicate* terminal state, when the reporter confirms a flagged
+  issue is a duplicate of an existing one (Gate 1 duplicate check, `dispatch._flag_duplicates`).
+  Caller: `dispatch._handle_duplicate_review_comment`. The issue is closed as a duplicate only
+  after that human confirmation — never on Artisan's own initiative.
 
-Both: no-op if the ticket is already `done`, write Firestore first (single source of truth per
+All three: no-op if the ticket is already `done`, write Firestore first (single source of truth per
 docs/PRD.md §5 — "merge by a human is the only trigger for that transition" and its siblings), and
 treat Jira as best-effort — a Jira failure never rolls back the Firestore write.
 
@@ -91,6 +95,51 @@ async def handle_issue_deleted(
             jira_key,
             f"GitHub issue #{issue_number} was deleted by its author — Artisan closed this "
             "ticket out.",
+        )
+        await jira_client.transition_ticket(jira_key, "Done")
+        await current_sink().emit(type="jira_synced", summary=f"Transitioned {jira_key} to Done")
+    except JiraClientError as exc:
+        await current_sink().emit(type="error", summary=f"Jira Done transition failed: {exc}")
+
+
+async def mark_ticket_duplicate(
+    repo: str,
+    issue_number: int,
+    jira_key: str,
+    *,
+    duplicate_of: int,
+    actor: str | None = None,
+) -> None:
+    """Terminal transition when the reporter confirms a flagged issue is a duplicate (Gate 1
+    duplicate check). Same shape as `mark_ticket_done`/`handle_issue_deleted` — idempotent no-op if
+    already `done`, Firestore first (single source of truth), then the GitHub close and Jira move
+    are best-effort.
+
+    The GitHub issue is closed as a duplicate (explanatory comment + `state_reason="not_planned"`)
+    and Jira moves to Done with an explanatory comment. Only ever called after the reporter
+    confirmed — Artisan never closes an issue on its own initiative (PRD.md §5)."""
+    ticket = await firestore_client.get_ticket(repo, issue_number)
+    if ticket is not None and ticket.status == "done":
+        return
+
+    await firestore_client.update_ticket(repo, issue_number, status="done", current_step=None)
+    summary = f"Closed #{issue_number} as a duplicate of #{duplicate_of}"
+    if actor:
+        summary += f", actor={actor}"
+    await current_sink().emit(type="duplicate_confirmed", summary=summary)
+
+    try:
+        await github_client.close_issue_as_duplicate(repo, issue_number, duplicate_of)
+    except Exception as exc:
+        await current_sink().emit(
+            type="error", summary=f"Failed to close #{issue_number} as duplicate: {exc}"
+        )
+
+    try:
+        await jira_client.add_comment(
+            jira_key,
+            f"GitHub issue #{issue_number} was confirmed a duplicate of #{duplicate_of} — "
+            "Artisan closed this ticket out.",
         )
         await jira_client.transition_ticket(jira_key, "Done")
         await current_sink().emit(type="jira_synced", summary=f"Transitioned {jira_key} to Done")

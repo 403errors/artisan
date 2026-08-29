@@ -6,17 +6,22 @@ hand off into Gate 3 (gate3.handle_pull_request_event, Sprint 4). The two termin
 here too: `pull_request.closed && merged` -> completion.mark_ticket_done (Sprint 6) and
 `issues.deleted` -> completion.handle_issue_deleted (Sprint 7/8)."""
 
+from datetime import datetime, timezone
+
 from githubkit.exception import RequestFailed
 
 from artisan_agents import completion, event_context, gate2, gate3, tracing
+from artisan_agents.agents.duplicate_agent import run_duplicate_check
+from artisan_agents.agents.duplicate_confirm_agent import run_duplicate_confirm
 from artisan_agents.agents.intake_agent import run_intake
+from artisan_agents.config import MAX_DUPLICATE_FOLLOWUPS
 from artisan_agents.gcp import firestore_client
 from artisan_agents.gcp.firestore_client import ClarificationCapExceeded
 from artisan_agents.github import client as github_client
 from artisan_agents.jira import client as jira_client
 from artisan_shared import prompt_safety
 from artisan_shared.firestore_schema import TicketDoc
-from artisan_shared.models import GitHubWebhookEnvelope
+from artisan_shared.models import DuplicateCandidate, GitHubWebhookEnvelope
 
 
 class NonRetriableEventError(Exception):
@@ -121,14 +126,142 @@ async def _handle_issue_opened(envelope: GitHubWebhookEnvelope) -> None:
 async def _handle_issue_comment(envelope: GitHubWebhookEnvelope) -> None:
     comment_author_type = envelope.payload.get("comment", {}).get("user", {}).get("type")
     if comment_author_type == "Bot":
-        # Never re-trigger on Artisan's own clarifying comment (or any other bot's) — only a
-        # human reply should re-enter the clarification loop.
+        # Never re-trigger on Artisan's own comments (or any other bot's) — only a human reply
+        # should re-enter the clarification loop or answer a duplicate flag.
         return
     issue = envelope.payload["issue"]
     issue_number = issue["number"]
     ticket = await firestore_client.get_ticket(envelope.repo, issue_number)
-    if ticket is not None and ticket.status == "intake":
+    if ticket is None:
+        return
+    if ticket.status == "duplicate_review":
+        await _handle_duplicate_review_comment(envelope, ticket)
+        return
+    if ticket.status == "intake":
         await evaluate_intake(envelope.repo, issue_number, ticket.jira_key)
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def build_duplicate_flag_comment(candidates: list[DuplicateCandidate]) -> str:
+    """The body Artisan posts when it flags a new issue as a likely duplicate (Gate 1) — with a
+    link to every candidate so the reporter can check each one manually. Also reconstructed by
+    `_handle_duplicate_review_comment` so the Duplicate Confirm Agent sees exactly what was asked.
+    The @-mention of the reporter is added by `_flag_duplicates`, which has the login."""
+    links = "\n".join(f"- #{c.issue_number}: {c.title} — {c.html_url}" for c in candidates)
+    return (
+        "Artisan found existing issues that look like they may cover the same request:\n\n"
+        f"{links}\n\n"
+        "If this is the same issue, reply confirming and Artisan will close this one out. "
+        "If it's actually different, reply explaining how it differs and Artisan will proceed "
+        "automatically."
+    )
+
+
+async def _flag_duplicates(
+    repo: str, issue_number: int, author_login: str, candidates: list[DuplicateCandidate]
+) -> None:
+    """Posts the duplicate-flag comment (@-mentioning the reporter, linking every candidate), moves
+    the ticket to `duplicate_review`, and records the candidates + check time on the doc. The
+    ticket now waits on a human reply (`_handle_duplicate_review_comment`) — nothing is ever
+    auto-closed (PRD.md §5)."""
+    await github_client.post_issue_comment(
+        repo, issue_number, f"@{author_login} {build_duplicate_flag_comment(candidates)}"
+    )
+    await firestore_client.update_ticket(
+        repo,
+        issue_number,
+        status="duplicate_review",
+        current_step="duplicate_review",
+        duplicate_checked_at=_utcnow(),
+        duplicate_candidates=[c.model_dump(mode="json") for c in candidates],
+    )
+    await event_context.current_sink().emit(
+        type="duplicate_flagged",
+        summary="Flagged #"
+        + str(issue_number)
+        + " as a possible duplicate of "
+        + ", ".join(f"#{c.issue_number}" for c in candidates),
+    )
+    async with tracing.gate_span(
+        firestore_client.ticket_doc_id(repo, issue_number),
+        "1",
+        "ask",
+        label="Gate 1: duplicate flag posted",
+    ):
+        pass
+
+
+#: How many "please confirm" follow-ups Artisan posts when the reply to a duplicate flag is
+#: ambiguous — after this, the issue proceeds to normal intake rather than blocking forever.
+_DUPLICATE_FOLLOWUP_COMMENT = (
+    "Could you confirm whether this is the same as the issue(s) above, or a different one? "
+    "If it's the same, reply 'duplicate'; if it's different, describe what's different and "
+    "Artisan will proceed."
+)
+
+
+async def _handle_duplicate_review_comment(
+    envelope: GitHubWebhookEnvelope, ticket: TicketDoc
+) -> None:
+    """A human replied to Artisan's duplicate-flag comment while the ticket is in
+    `duplicate_review` (Gate 1). Classify the reply:
+    - `confirm_duplicate` -> close the issue as a duplicate + neutralize the ticket
+      (`completion.mark_ticket_duplicate`).
+    - `not_duplicate` -> clear the candidates, return to `intake`, and run normal intake.
+    - `needs_clarification` -> one follow-up comment (capped by MAX_DUPLICATE_FOLLOWUPS), then
+      treat as not_duplicate so an unresolved thread never blocks the issue forever."""
+    repo = envelope.repo
+    issue_number = envelope.payload["issue"]["number"]
+    reply = envelope.payload.get("comment", {}).get("body") or ""
+    ticket_id = firestore_client.ticket_doc_id(repo, issue_number)
+    verdict = await run_duplicate_confirm(
+        candidates=ticket.duplicate_candidates,
+        flag_comment=build_duplicate_flag_comment(ticket.duplicate_candidates),
+        reply=reply,
+    )
+
+    if verdict.intent == "confirm_duplicate":
+        duplicate_of = verdict.target_issue_number or (
+            ticket.duplicate_candidates[0].issue_number if ticket.duplicate_candidates else None
+        )
+        if duplicate_of is not None:
+            await completion.mark_ticket_duplicate(
+                repo, issue_number, ticket.jira_key, duplicate_of=duplicate_of
+            )
+            return
+        # No candidate to point at (shouldn't happen while in duplicate_review) — proceed below
+        # rather than dead-ending.
+
+    if verdict.intent == "not_duplicate" or ticket.duplicate_followups >= MAX_DUPLICATE_FOLLOWUPS:
+        await firestore_client.update_ticket(
+            repo,
+            issue_number,
+            status="intake",
+            duplicate_candidates=[],
+        )
+        await event_context.current_sink().emit(
+            type="duplicate_rejected",
+            summary="Confirmed not a duplicate — proceeding with intake",
+        )
+        async with tracing.gate_span(
+            ticket_id, "1", "proceed", label="Gate 1: duplicate rejected, proceeding to intake"
+        ):
+            pass
+        await evaluate_intake(repo, issue_number, ticket.jira_key)
+        return
+
+    # needs_clarification, with follow-up budget left — ask once more.
+    await github_client.post_issue_comment(repo, issue_number, _DUPLICATE_FOLLOWUP_COMMENT)
+    await firestore_client.update_ticket(
+        repo, issue_number, duplicate_followups=ticket.duplicate_followups + 1
+    )
+    await event_context.current_sink().emit(
+        type="clarification_asked",
+        summary="Duplicate confirmation reply was ambiguous — asked once more",
+    )
 
 
 #: Above this many raw markdown image URLs on an issue thread, dispatch.py routes the ticket to a
@@ -182,6 +315,27 @@ async def evaluate_intake(repo: str, issue_number: int, jira_key: str) -> None:
         return
 
     await firestore_client.update_ticket(repo, issue_number, current_step="evaluating_intake")
+
+    # Gate 1 duplicate check (SYSTEM_DESIGN.md §3): runs at most once per issue, guarded by
+    # `duplicate_checked_at` so re-delivered webhooks and manual Gate 1 retries never re-run it
+    # (nor re-flag an already-confirmed issue). If strong candidates exist, flag the issue and ask
+    # the reporter to confirm instead of automating immediately.
+    ticket = await firestore_client.get_ticket(repo, issue_number)
+    if ticket is not None and ticket.duplicate_checked_at is None:
+        candidates = await run_duplicate_check(
+            repo=repo,
+            issue_number=issue_number,
+            issue_title=title,
+            issue_body=body,
+            jira_key=jira_key,
+        )
+        if candidates:
+            await _flag_duplicates(repo, issue_number, author_login, candidates)
+            return
+        await firestore_client.update_ticket(
+            repo, issue_number, duplicate_checked_at=datetime.now(timezone.utc)
+        )
+
     images = await github_client.extract_and_download_images(title, body, thread)
     verdict = await run_intake(
         issue_title=title,

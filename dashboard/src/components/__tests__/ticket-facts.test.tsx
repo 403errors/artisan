@@ -12,6 +12,8 @@ const TICKET: TicketDoc = {
   status: "pr_open",
   currentStep: null,
   clarificationRounds: 1,
+  duplicateFollowups: 0,
+  duplicateCandidates: [],
   retryCount: 2,
   domains: ["frontend"],
   plan: null,

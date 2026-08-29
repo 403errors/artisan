@@ -5,6 +5,7 @@ import { TARGET_REPO } from "@/lib/config";
 import { currentGate, lastDecision } from "@/lib/ticket-derived";
 import type {
   ConflictDetectionResult,
+  DuplicateCandidate,
   EscalationEntry,
   ExecutionResult,
   Plan,
@@ -21,6 +22,16 @@ type RawTraceEntry = string | { trace_id: string; label: string };
 
 // Raw wire shape as Firestore actually stores it — Pydantic dumps field names verbatim, no
 // alias_generator configured anywhere in firestore_schema.py, so this is genuinely snake_case.
+// Mirrors artisan_shared.models.DuplicateCandidate (Gate 1 duplicate check) — snake_case as
+// Pydantic dumps it.
+interface RawDuplicateCandidate {
+  issue_number: number;
+  title: string;
+  html_url: string;
+  score: number;
+  reason: string;
+}
+
 interface RawTicketDoc {
   github_issue_number: number;
   github_repo: string;
@@ -29,6 +40,8 @@ interface RawTicketDoc {
   status: TicketStatus;
   current_step: string | null;
   clarification_rounds: number;
+  duplicate_followups: number;
+  duplicate_candidates: RawDuplicateCandidate[];
   retry_count: number;
   domains: string[];
   plan: RawPlan | null;
@@ -107,6 +120,16 @@ function toConflictDetectionResult(
   };
 }
 
+function toDuplicateCandidate(raw: RawDuplicateCandidate): DuplicateCandidate {
+  return {
+    issueNumber: raw.issue_number,
+    title: raw.title,
+    htmlUrl: raw.html_url,
+    score: raw.score,
+    reason: raw.reason,
+  };
+}
+
 function toTicketDoc(id: string, raw: RawTicketDoc): TicketDoc {
   return {
     id,
@@ -117,6 +140,8 @@ function toTicketDoc(id: string, raw: RawTicketDoc): TicketDoc {
     status: raw.status,
     currentStep: raw.current_step ?? null,
     clarificationRounds: raw.clarification_rounds,
+    duplicateFollowups: raw.duplicate_followups,
+    duplicateCandidates: (raw.duplicate_candidates ?? []).map(toDuplicateCandidate),
     retryCount: raw.retry_count,
     domains: raw.domains ?? [],
     plan: toPlan(raw.plan),

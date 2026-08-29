@@ -7,7 +7,12 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from artisan_shared.models import ConflictDetectionResult, ExecutionResult, Plan
+from artisan_shared.models import (
+    ConflictDetectionResult,
+    DuplicateCandidate,
+    ExecutionResult,
+    Plan,
+)
 
 TicketStatus = Literal[
     "intake",
@@ -16,6 +21,7 @@ TicketStatus = Literal[
     "escalated",
     "manual_pickup",
     "needs_human_review",
+    "duplicate_review",
     "done",
 ]
 
@@ -49,6 +55,14 @@ class TicketDoc(BaseModel):
     # it while status is "intake"/"in_progress".
     current_step: str | None = None
     clarification_rounds: int = 0
+    # Gate 1 duplicate check (SYSTEM_DESIGN.md §3): `duplicate_checked_at` is set the first time the
+    # check runs so re-delivered webhooks / manual Gate 1 retries never re-run it (non-None is the
+    # "already checked" guard). `duplicate_candidates` is populated only while the ticket waits on
+    # the issuer in `duplicate_review`, and cleared again once resolved. `duplicate_followups` caps
+    # how many "please confirm" comments Artisan posts when the issuer's reply is ambiguous.
+    duplicate_checked_at: datetime | None = None
+    duplicate_candidates: list[DuplicateCandidate] = []
+    duplicate_followups: int = 0
     retry_count: int = 0
     # Bumped by a manual "retry" action re-entering Gate 2 for a ticket that already executed once
     # — folded into the execution branch name (gate2.py) so a retry's branch never collides with a

@@ -23,7 +23,7 @@ export function currentGate(doc: TicketDoc): "1" | "2" | "3" {
   const prefix = stepPrefix(doc.currentStep);
   if (prefix && GATE3_STEPS.has(prefix)) return "3";
   if (prefix && GATE2_STEPS.has(prefix)) return "2";
-  if (doc.status === "intake") return "1";
+  if (doc.status === "intake" || doc.status === "duplicate_review") return "1";
   const lastGate = doc.escalationHistory.at(-1)?.gate;
   if (lastGate) return lastGate;
   if (doc.lastConflictDetection) return "3";
@@ -40,6 +40,7 @@ export function lastDecision(doc: TicketDoc): string {
   ) {
     return lastEscalation?.reason ?? "awaiting manual pickup";
   }
+  if (doc.status === "duplicate_review") return "awaiting duplicate confirmation";
   if (doc.status === "pr_open") return `PR opened: ${doc.prUrl}`;
   if (doc.status === "done") return "merged";
   return doc.status;

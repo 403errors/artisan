@@ -9,7 +9,17 @@ export type TicketStatus =
   | "escalated"
   | "manual_pickup"
   | "needs_human_review"
+  | "duplicate_review"
   | "done";
+
+// Mirrors artisan_shared.models.DuplicateCandidate (Gate 1 duplicate check).
+export interface DuplicateCandidate {
+  issueNumber: number;
+  title: string;
+  htmlUrl: string;
+  score: number;
+  reason: string;
+}
 
 export interface Plan {
   steps: string[];
@@ -57,6 +67,8 @@ export interface TicketDoc {
   status: TicketStatus;
   currentStep: string | null;
   clarificationRounds: number;
+  duplicateFollowups: number;
+  duplicateCandidates: DuplicateCandidate[];
   retryCount: number;
   domains: string[];
   plan: Plan | null;

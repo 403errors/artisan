@@ -204,3 +204,81 @@ async def test_issue_deleted_pr_close_failure_is_best_effort(fake_store, monkeyp
     assert fake_store.doc.status == "done"
     assert jira_calls == ["Done"]
     assert any(e["type"] == "error" for e in sink.events)
+
+
+@pytest.mark.asyncio
+async def test_mark_ticket_duplicate_closes_issue_and_transitions_jira(
+    fake_store, monkeypatch
+) -> None:
+    sink = _RecordingSink()
+    monkeypatch.setattr(completion, "current_sink", lambda: sink)
+    jira_calls: list[tuple] = []
+    jira_comments: list[tuple] = []
+    closed: list[tuple] = []
+
+    async def fake_close_dup(repo, issue_number, duplicate_of):
+        closed.append((repo, issue_number, duplicate_of))
+
+    async def fake_transition(jira_key, status_name):
+        jira_calls.append((jira_key, status_name))
+
+    async def fake_add_comment(jira_key, body):
+        jira_comments.append((jira_key, body))
+
+    monkeypatch.setattr(completion.github_client, "close_issue_as_duplicate", fake_close_dup)
+    monkeypatch.setattr(completion.jira_client, "transition_ticket", fake_transition)
+    monkeypatch.setattr(completion.jira_client, "add_comment", fake_add_comment)
+
+    await completion.mark_ticket_duplicate(REPO, ISSUE_NUMBER, JIRA_KEY, duplicate_of=12)
+
+    assert fake_store.doc.status == "done"
+    assert fake_store.doc.current_step is None
+    assert closed == [(REPO, ISSUE_NUMBER, 12)]
+    assert jira_calls == [(JIRA_KEY, "Done")]
+    assert "duplicate of #12" in jira_comments[0][1]
+    assert [e["type"] for e in sink.events] == ["duplicate_confirmed", "jira_synced"]
+
+
+@pytest.mark.asyncio
+async def test_mark_ticket_duplicate_noop_when_already_done(fake_store, monkeypatch) -> None:
+    fake_store.doc = fake_store.doc.model_copy(update={"status": "done"})
+    closed: list[tuple] = []
+    jira_calls: list[tuple] = []
+
+    async def fake_close_dup(repo, issue_number, duplicate_of):
+        closed.append((repo, issue_number, duplicate_of))
+
+    async def fake_transition(jira_key, status_name):
+        jira_calls.append(status_name)
+
+    monkeypatch.setattr(completion.github_client, "close_issue_as_duplicate", fake_close_dup)
+    monkeypatch.setattr(completion.jira_client, "transition_ticket", fake_transition)
+
+    await completion.mark_ticket_duplicate(REPO, ISSUE_NUMBER, JIRA_KEY, duplicate_of=12)
+
+    assert closed == []  # short-circuited before any GitHub/Jira side effects
+    assert jira_calls == []
+
+
+@pytest.mark.asyncio
+async def test_mark_ticket_duplicate_firestore_first_when_github_fails(
+    fake_store, monkeypatch
+) -> None:
+    sink = _RecordingSink()
+    monkeypatch.setattr(completion, "current_sink", lambda: sink)
+
+    async def fake_close_dup(repo, issue_number, duplicate_of):
+        raise RuntimeError("github is down")
+
+    async def fake_transition(jira_key, status_name):
+        pass
+
+    monkeypatch.setattr(completion.github_client, "close_issue_as_duplicate", fake_close_dup)
+    monkeypatch.setattr(completion.jira_client, "transition_ticket", fake_transition)
+
+    await completion.mark_ticket_duplicate(REPO, ISSUE_NUMBER, JIRA_KEY, duplicate_of=12)
+
+    # The GitHub close is best-effort — a hiccup neither aborts the terminal transition nor rolls
+    # back the Firestore write (Firestore is the source of truth, per SYSTEM_DESIGN.md §7).
+    assert fake_store.doc.status == "done"
+    assert any(e["type"] == "error" for e in sink.events)

@@ -8,7 +8,9 @@ import re
 import httpx
 from githubkit.exception import RequestFailed
 
+from artisan_agents.config import DUPLICATE_SEARCH_LIMIT
 from artisan_agents.github.auth import get_installation_client
+from artisan_shared.models import DuplicateSearchHit
 
 # Repo Context (WS3): cheap file-tree snapshot cap — see artisan_agents.repo_context.
 REPO_TREE_MAX_ENTRIES = 500
@@ -44,6 +46,99 @@ async def get_issue_thread(repo: str, issue_number: int) -> tuple[str, str, str,
     comment_bodies = [c.body or "" for c in comments_resp.parsed_data]
     author_login = issue.user.login if issue.user else "there"
     return issue.title, issue.body or "", author_login, comment_bodies
+
+
+# Gate 1 duplicate check (SYSTEM_DESIGN.md §3): words too common to be useful as GitHub Search
+# API keywords — the title-token pre-filter feeds the Duplicate Detector Agent's semantic scoring.
+_SEARCH_STOPWORDS = frozenset({
+    "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with", "is", "are",
+    "it", "this", "that", "i", "we", "you", "my", "me", "be", "as", "at", "by", "from",
+    "have", "has", "not", "but", "was", "were", "will", "would", "can", "could", "should",
+    "please", "help", "bug", "issue", "fix", "error", "problem",
+})
+
+
+def _search_tokens(text: str) -> list[str]:
+    seen: dict[str, None] = {}
+    for word in re.split(r"[^a-z0-9]+", (text or "").lower()):
+        if len(word) >= 3 and word not in _SEARCH_STOPWORDS and word not in seen:
+            seen[word] = None
+    return list(seen)
+
+
+def build_issue_search_query(repo: str, title: str, body: str, *, max_tokens: int = 5) -> str:
+    """Builds the GitHub Search API query finding open issues in `repo` similar to this one — the
+    keyword pre-filter the Duplicate Detector Agent then scores semantically (Gate 1 duplicate
+    check). Title tokens dominate; body tokens backfill a sparse title. Capped at GitHub's 256-char
+    query limit."""
+    tokens = _search_tokens(title)
+    if len(tokens) < 3:
+        tokens += _search_tokens(body or "")
+    query = f"repo:{repo} is:issue is:open in:title,body {' '.join(tokens[:max_tokens])}".strip()
+    return query[:256]
+
+
+async def search_similar_issues(
+    repo: str,
+    title: str,
+    body: str,
+    *,
+    exclude_number: int,
+    limit: int = DUPLICATE_SEARCH_LIMIT,
+) -> list[DuplicateSearchHit]:
+    """Returns up to `limit` open issues in `repo` the Search API considers keyword-similar to this
+    issue (excluding the issue itself) — the raw candidate set the Duplicate Detector Agent scores
+    (Gate 1 duplicate check). A 422 (over-heavy query) or 403 (search rate limit) is treated as no
+    candidates rather than failing intake; the Search API has its own 30 req/min rate bucket,
+    separate from the REST core limit."""
+    owner, name = _split_repo(repo)
+    gh = get_installation_client()
+    query = build_issue_search_query(repo, title, body)
+    if not query:
+        return []
+    try:
+        resp = await gh.rest.search.async_search_issues(
+            q=query, per_page=limit, sort="best_match", order="desc"
+        )
+    except RequestFailed as exc:
+        if exc.response.status_code in {422, 403}:
+            return []
+        raise
+    hits: list[DuplicateSearchHit] = []
+    for item in resp.parsed_data.items:
+        if item.number == exclude_number:
+            continue
+        hits.append(
+            DuplicateSearchHit(
+                issue_number=item.number,
+                title=item.title or "",
+                html_url=item.html_url or "",
+                body=(item.body or "")[:500],
+            )
+        )
+    return hits
+
+
+async def close_issue_as_duplicate(repo: str, issue_number: int, duplicate_of: int) -> None:
+    """Closes `issue_number` as a duplicate of `duplicate_of`, after posting an explanatory comment
+    (Gate 1 duplicate check — only ever called once the issuer confirmed). Closing with
+    `state_reason="not_planned"` is the documented replacement for GitHub's undocumented "mark as
+    duplicate" endpoint, which githubkit 0.16.1 has no typed method for; the comment carries the
+    cross-reference + link."""
+    owner, name = _split_repo(repo)
+    gh = get_installation_client()
+    await gh.rest.issues.async_create_comment(
+        owner,
+        name,
+        issue_number,
+        body=(
+            f"Closing this as a duplicate of #{duplicate_of} — the reporter confirmed it covers "
+            f"the same request as https://github.com/{repo}/issues/{duplicate_of}."
+        ),
+    )
+    await gh.rest.issues.async_update(
+        owner, name, issue_number, state="closed", state_reason="not_planned"
+    )
 
 
 async def open_pull_request(

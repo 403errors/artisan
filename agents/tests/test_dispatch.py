@@ -13,7 +13,12 @@ from artisan_agents import dispatch
 from artisan_agents.gcp.firestore_client import ClarificationCapExceeded
 from artisan_shared.event_log import NoOpEventSink
 from artisan_shared.firestore_schema import TicketDoc
-from artisan_shared.models import GitHubWebhookEnvelope, IntakeVerdict
+from artisan_shared.models import (
+    DuplicateCandidate,
+    DuplicateConfirmVerdict,
+    GitHubWebhookEnvelope,
+    IntakeVerdict,
+)
 
 
 class _FakeTicketStore:
@@ -44,8 +49,13 @@ class _FakeTicketStore:
         return doc
 
     async def update_ticket(self, repo: str, issue_number: int, **fields) -> None:
-        doc = self.tickets[self._key(repo, issue_number)]
-        self.tickets[self._key(repo, issue_number)] = doc.model_copy(update=fields)
+        key = self._key(repo, issue_number)
+        doc = self.tickets[key]
+        # Re-validate the merged doc through the schema so dict-encoded fields (e.g.
+        # duplicate_candidates stored via model_dump) come back as proper model instances,
+        # mirroring real Firestore behavior without a pydantic round-trip warning.
+        merged = {**doc.model_dump(mode="json"), **fields}
+        self.tickets[key] = TicketDoc.model_validate(merged)
 
     async def increment_clarification_round(self, repo: str, issue_number: int) -> int:
         key = self._key(repo, issue_number)
@@ -899,3 +909,213 @@ async def test_non_injection_body_does_not_emit_injection_flagged_event(
         dispatch_module.firestore_client.new_event_sink = original_new_sink
 
     assert [e for e in sink.events if e["type"] == "injection_flagged"] == []
+
+
+# --- Gate 1 duplicate check (SYSTEM_DESIGN.md §3) ---
+
+
+def _candidate(number: int = 12) -> DuplicateCandidate:
+    return DuplicateCandidate(
+        issue_number=number,
+        title="Existing issue",
+        html_url=f"https://github.com/acme/demo/issues/{number}",
+        score=0.9,
+        reason="same request",
+    )
+
+
+@pytest.fixture
+def stub_duplicate_flow(monkeypatch):
+    """Gate 1 duplicate-flow scaffolding: ticket/Jira/GitHub stubs plus a duplicate check that flags
+    one candidate by default (override via `set_duplicate_check`/`set_duplicate_confirm`)."""
+    posted_comments: list[str] = []
+    intake_calls: list[dict] = []
+    check_calls: list[dict] = []
+
+    async def fake_create_ticket(issue_number, title, body, url):
+        return "ART-1", f"[GH#{issue_number}] {title}"
+
+    async def fake_get_issue_thread(repo, issue_number):
+        return "title", "body", "octocat", []
+
+    def fake_count_markdown_images(body, comments):
+        return 0
+
+    async def fake_extract_and_download_images(title, body, comments):
+        return []
+
+    async def fake_post_issue_comment(repo, issue_number, body):
+        posted_comments.append(body)
+
+    async def fake_run_intake(**kwargs):
+        intake_calls.append(kwargs)
+        return IntakeVerdict(verdict="needs_info", missing_context_questions=["which endpoint?"])
+
+    async def fake_run_duplicate_check(**kwargs):
+        check_calls.append(kwargs)
+        return [_candidate()]
+
+    monkeypatch.setattr(dispatch.jira_client, "create_ticket", fake_create_ticket)
+    monkeypatch.setattr(dispatch.github_client, "get_issue_thread", fake_get_issue_thread)
+    monkeypatch.setattr(dispatch.github_client, "post_issue_comment", fake_post_issue_comment)
+    monkeypatch.setattr(dispatch.github_client, "count_markdown_images", fake_count_markdown_images)
+    monkeypatch.setattr(
+        dispatch.github_client, "extract_and_download_images", fake_extract_and_download_images
+    )
+    monkeypatch.setattr(dispatch, "run_intake", fake_run_intake)
+    monkeypatch.setattr(dispatch, "run_duplicate_check", fake_run_duplicate_check)
+    return SimpleNamespace(
+        posted_comments=posted_comments,
+        intake_calls=intake_calls,
+        check_calls=check_calls,
+        set_duplicate_check=lambda fn: monkeypatch.setattr(dispatch, "run_duplicate_check", fn),
+        set_duplicate_confirm=lambda fn: monkeypatch.setattr(dispatch, "run_duplicate_confirm", fn),
+    )
+
+
+def _comment_with_body(delivery_id: str, body: str) -> GitHubWebhookEnvelope:
+    envelope = _issue_comment(delivery_id=delivery_id)
+    envelope.payload["comment"]["body"] = body
+    return envelope
+
+
+@pytest.mark.asyncio
+async def test_duplicate_candidates_flag_issue_and_skip_intake(
+    fake_store, stub_duplicate_flow
+) -> None:
+    flow = stub_duplicate_flow
+
+    await dispatch.handle_event(_issue_opened())
+
+    ticket = await fake_store.get_ticket("acme/demo", 1)
+    assert ticket.status == "duplicate_review"
+    assert ticket.duplicate_checked_at is not None
+    assert [c.issue_number for c in ticket.duplicate_candidates] == [12]
+    assert flow.intake_calls == []  # never reached the Intake Agent
+    assert len(flow.posted_comments) == 1
+    assert "@octocat" in flow.posted_comments[0]
+    assert "https://github.com/acme/demo/issues/12" in flow.posted_comments[0]  # link for manual check
+
+
+@pytest.mark.asyncio
+async def test_duplicate_check_no_candidates_proceeds_to_intake(fake_store, stub_duplicate_flow) -> None:
+    flow = stub_duplicate_flow
+
+    async def _no_candidates(**kwargs):
+        return []
+
+    flow.set_duplicate_check(_no_candidates)
+
+    await dispatch.handle_event(_issue_opened())
+
+    ticket = await fake_store.get_ticket("acme/demo", 1)
+    assert ticket.status == "intake"  # needs_info keeps it in intake
+    assert ticket.duplicate_checked_at is not None
+    assert len(flow.intake_calls) == 1  # proceeded straight to the Intake Agent
+    assert len(flow.posted_comments) == 1  # just the clarification question, no flag
+
+
+@pytest.mark.asyncio
+async def test_redelivered_opened_event_does_not_re_flag(fake_store, stub_duplicate_flow) -> None:
+    flow = stub_duplicate_flow
+
+    await dispatch.handle_event(_issue_opened())
+    await dispatch.handle_event(_issue_opened())  # Pub/Sub redelivery while in duplicate_review
+
+    assert len(flow.check_calls) == 1
+    assert len(flow.posted_comments) == 1
+
+
+@pytest.mark.asyncio
+async def test_duplicate_review_confirmation_closes_issue_and_marks_done(
+    fake_store, stub_duplicate_flow, monkeypatch
+) -> None:
+    flow = stub_duplicate_flow
+    await dispatch.handle_event(_issue_opened())  # -> duplicate_review
+
+    closed: list[tuple] = []
+
+    async def fake_mark_duplicate(repo, issue_number, jira_key, *, duplicate_of, actor=None):
+        closed.append((repo, issue_number, jira_key, duplicate_of))
+
+    monkeypatch.setattr(dispatch.completion, "mark_ticket_duplicate", fake_mark_duplicate)
+
+    async def _confirm_duplicate(**kwargs):
+        return DuplicateConfirmVerdict(intent="confirm_duplicate", target_issue_number=12)
+
+    flow.set_duplicate_confirm(_confirm_duplicate)
+
+    await dispatch.handle_event(_comment_with_body("d-2", "yes it's the same as #12"))
+
+    assert closed == [("acme/demo", 1, "ART-1", 12)]
+    # no new comments beyond the original flag
+    assert len(flow.posted_comments) == 1
+
+
+@pytest.mark.asyncio
+async def test_duplicate_review_rejected_proceeds_to_intake(fake_store, stub_duplicate_flow) -> None:
+    flow = stub_duplicate_flow
+    await dispatch.handle_event(_issue_opened())  # -> duplicate_review
+
+    async def _not_duplicate(**kwargs):
+        return DuplicateConfirmVerdict(intent="not_duplicate")
+
+    flow.set_duplicate_confirm(_not_duplicate)
+    await dispatch.handle_event(_comment_with_body("d-2", "no, this is about the export flow"))
+
+    ticket = await fake_store.get_ticket("acme/demo", 1)
+    assert ticket.status == "intake"
+    assert ticket.duplicate_candidates == []
+    assert len(flow.intake_calls) == 1  # normal intake ran after rejection
+
+    # A redelivered `opened` must not re-run the duplicate check (duplicate_checked_at guard).
+    await dispatch.handle_event(_issue_opened())
+    assert len(flow.check_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_duplicate_review_ambiguous_reply_asks_once_then_proceeds(
+    fake_store, stub_duplicate_flow
+) -> None:
+    flow = stub_duplicate_flow
+    await dispatch.handle_event(_issue_opened())  # -> duplicate_review
+
+    async def _needs_clarification(**kwargs):
+        return DuplicateConfirmVerdict(intent="needs_clarification")
+
+    flow.set_duplicate_confirm(_needs_clarification)
+    await dispatch.handle_event(_comment_with_body("d-2", "huh?"))
+
+    ticket = await fake_store.get_ticket("acme/demo", 1)
+    assert ticket.status == "duplicate_review"  # still waiting
+    assert ticket.duplicate_followups == 1
+    assert len(flow.posted_comments) == 2  # original flag + one follow-up
+
+    # Second ambiguous reply hits the cap (MAX_DUPLICATE_FOLLOWUPS=1) -> treat as not_duplicate.
+    await dispatch.handle_event(_comment_with_body("d-3", "still not sure"))
+    ticket = await fake_store.get_ticket("acme/demo", 1)
+    assert ticket.status == "intake"
+    assert ticket.duplicate_candidates == []
+    assert len(flow.intake_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_bot_comment_ignored_while_in_duplicate_review(fake_store, stub_duplicate_flow) -> None:
+    flow = stub_duplicate_flow
+    await dispatch.handle_event(_issue_opened())  # -> duplicate_review
+
+    bot_comment = GitHubWebhookEnvelope(
+        delivery_id="d-bot",
+        event="issue_comment",
+        action="created",
+        repo="acme/demo",
+        payload={
+            "issue": {"number": 1},
+            "comment": {"user": {"type": "Bot"}, "body": "yes duplicate"},
+        },
+    )
+    await dispatch.handle_event(bot_comment)
+
+    ticket = await fake_store.get_ticket("acme/demo", 1)
+    assert ticket.status == "duplicate_review"  # untouched
+    assert len(flow.posted_comments) == 1

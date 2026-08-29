@@ -24,6 +24,24 @@ def _no_real_event_sink(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_duplicate_check(monkeypatch):
+    """Gate 1's duplicate check (dispatch.evaluate_intake) would hit the live GitHub Search API +
+    Gemini on every issue-opened test — stub it to return no candidates by default so no test
+    performs live calls. Duplicate-flow tests override `dispatch.run_duplicate_check` /
+    `dispatch.run_duplicate_confirm` with their own fakes."""
+    from artisan_agents import dispatch
+
+    async def _no_candidates(**kwargs):
+        return []
+
+    async def _must_stub_confirm(**kwargs):
+        raise AssertionError("run_duplicate_confirm must be stubbed in duplicate-review tests")
+
+    monkeypatch.setattr(dispatch, "run_duplicate_check", _no_candidates)
+    monkeypatch.setattr(dispatch, "run_duplicate_confirm", _must_stub_confirm)
+
+
+@pytest.fixture(autouse=True)
 def _reset_ambient_event_sink():
     """The event-sink ContextVar isn't reset between sync pytest test functions on its own — a
     test that installs its own sink (e.g. to record emitted events) would otherwise leak it into

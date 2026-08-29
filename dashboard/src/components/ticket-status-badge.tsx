@@ -11,6 +11,7 @@ const STATUS_LABEL: Record<TicketStatus, string> = {
   escalated: "Needs Manual Review",
   manual_pickup: "Needs Manual Review",
   needs_human_review: "Needs Human Review",
+  duplicate_review: "Duplicate Check",
   done: "Done",
 };
 

@@ -12,6 +12,8 @@ function ticket(overrides: Partial<TicketDoc>): TicketDoc {
     status: "intake",
     currentStep: null,
     clarificationRounds: 0,
+    duplicateFollowups: 0,
+    duplicateCandidates: [],
     retryCount: 0,
     domains: [],
     plan: null,

@@ -32,6 +32,8 @@ const TICKET: TicketDoc = {
   status: "done",
   currentStep: null,
   clarificationRounds: 0,
+  duplicateFollowups: 0,
+  duplicateCandidates: [],
   retryCount: 0,
   domains: [],
   plan: null,

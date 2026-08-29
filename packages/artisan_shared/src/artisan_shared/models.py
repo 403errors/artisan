@@ -17,6 +17,47 @@ class IntakeVerdict(BaseModel):
     missing_context_questions: list[str] = []
 
 
+class DuplicateSearchHit(BaseModel):
+    """One open issue returned by the GitHub Search API pre-filter (Gate 1 duplicate check) — the
+    raw candidate fed to the Duplicate Detector Agent, before any semantic scoring. `body` is a
+    truncated excerpt (not the full text) to bound prompt cost."""
+
+    issue_number: int
+    title: str
+    html_url: str
+    body: str
+
+
+class DuplicateCandidate(BaseModel):
+    """One existing open issue the Duplicate Detector Agent judged a likely duplicate of the new
+    issue (Gate 1 duplicate check). `score` is the agent's 0-1 similarity confidence; `reason` is
+    a one-line human-readable justification shown to the issuer in the flag comment."""
+
+    issue_number: int
+    title: str
+    html_url: str
+    score: float
+    reason: str
+
+
+class DuplicateVerdict(BaseModel):
+    """The Duplicate Detector Agent's output (Gate 1 duplicate check). Empty `candidates` means no
+    existing issue is a true duplicate — proceed to normal intake. Non-empty means Artisan should
+    flag the new issue and ask the issuer to confirm."""
+
+    candidates: list[DuplicateCandidate] = []
+
+
+class DuplicateConfirmVerdict(BaseModel):
+    """The Duplicate Confirm Agent's classification of the issuer's reply to Artisan's duplicate
+    flag. `confirm_duplicate` -> close the new issue as a duplicate of `target_issue_number`
+    (falls back to the top candidate when None); `not_duplicate` -> proceed to normal intake;
+    `needs_clarification` -> the reply was ambiguous, ask once more (capped)."""
+
+    intent: Literal["confirm_duplicate", "not_duplicate", "needs_clarification"]
+    target_issue_number: int | None = None
+
+
 class RoutingDecision(BaseModel):
     """Gate 2's orchestrator-routing output (MILESTONE.md Phase 3.1). `parallel` is explicit rather
     than inferred from `len(domains) > 1` — the routing decision is a real judgment call (e.g. two

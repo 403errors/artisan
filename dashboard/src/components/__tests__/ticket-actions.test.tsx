@@ -14,6 +14,8 @@ function ticket(overrides: Partial<TicketDoc>): TicketDoc {
     status: "escalated",
     currentStep: null,
     clarificationRounds: 0,
+    duplicateFollowups: 0,
+    duplicateCandidates: [],
     retryCount: 1,
     domains: [],
     plan: null,

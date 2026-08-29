@@ -8,6 +8,13 @@ GEMINI_MODEL_ID = "gemini-3.7-flash"
 MAX_CLARIFICATION_ROUNDS = 3
 MAX_EXECUTION_RETRIES = 3
 MAX_TRIVIAL_CONFLICT_ATTEMPTS = 1
+# Gate 1 duplicate check (SYSTEM_DESIGN.md §3): how many open issues the GitHub Search API returns
+# as keyword candidates, how many of those the Duplicate Detector Agent may flag as true
+# duplicates, and how many follow-up "please confirm" comments Artisan posts when the issuer's
+# reply to a duplicate flag is ambiguous.
+DUPLICATE_SEARCH_LIMIT = 10
+MAX_DUPLICATE_CANDIDATES = 5
+MAX_DUPLICATE_FOLLOWUPS = 1
 # A claimed-but-still-"in_progress" delivery older than this is assumed to belong to a Cloud Run
 # instance that died mid-request (never reached the except/mark_delivery_failed path) and is
 # reclaimable rather than blocking that delivery forever. Must stay longer than the orchestrator's

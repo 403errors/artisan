@@ -1,5 +1,6 @@
 """Unit test for github/client.py's `open_pull_request`/`close_pull_request` (Gate 2 Phase 3.6 +
-the issue-deleted cleanup), plus WS3's repo-context helpers
+the issue-deleted cleanup), the Gate 1 duplicate check (`search_similar_issues`/
+`close_issue_as_duplicate`), plus WS3's repo-context helpers
 (`get_default_branch_head_sha`/`get_repo_tree`/`get_file_content`). Fakes the installation client
 so no real GitHub call is made."""
 
@@ -12,6 +13,8 @@ from githubkit.exception import RequestFailed
 from artisan_agents.github import client as github_client_module
 from artisan_agents.github.client import (
     add_label,
+    build_issue_search_query,
+    close_issue_as_duplicate,
     close_pull_request,
     count_markdown_images,
     extract_and_download_images,
@@ -21,6 +24,7 @@ from artisan_agents.github.client import (
     get_pull_request,
     get_repo_tree,
     open_pull_request,
+    search_similar_issues,
 )
 
 
@@ -71,15 +75,57 @@ class _FakePulls:
 class _FakeIssues:
     def __init__(self) -> None:
         self.comment_calls = []
+        self.update_calls = []
 
     async def async_create_comment(self, owner, repo, issue_number, *, body):
         self.comment_calls.append((owner, repo, issue_number, body))
+
+    async def async_update(self, owner, repo, issue_number, *, state, state_reason=None):
+        self.update_calls.append((owner, repo, issue_number, state, state_reason))
+
+
+class _FakeSearchItem:
+    def __init__(self, number: int, title: str, html_url: str, body: str) -> None:
+        self.number = number
+        self.title = title
+        self.html_url = html_url
+        self.body = body
+
+
+class _FakeSearchResults:
+    def __init__(self, items: list[_FakeSearchItem]) -> None:
+        self.items = items
+
+
+class _FakeSearch:
+    def __init__(self) -> None:
+        self.calls = []
+        self._results: list[_FakeSearchItem] = []
+        self._error: RequestFailed | None = None
+
+    async def async_search_issues(self, *, q, per_page, sort, order):
+        self.calls.append((q, per_page, sort, order))
+        if self._error is not None:
+            raise self._error
+        return _FakeResponse(_FakeSearchResults(self._results))
+
+
+class _FakeGithubkitResponse:
+    """Minimal stand-in for githubkit's `Response` — `RequestFailed.__init__` only reads
+    `raw_request`/`raw_response`, and client code reads `status_code`."""
+
+    def __init__(self, status_code: int) -> None:
+        request = httpx.Request("GET", "https://api.github.com/search/issues")
+        self.raw_request = request
+        self.raw_response = httpx.Response(status_code, request=request)
+        self.status_code = status_code
 
 
 class _FakeRest:
     def __init__(self) -> None:
         self.pulls = _FakePulls()
         self.issues = _FakeIssues()
+        self.search = _FakeSearch()
 
 
 class _FakeGitHub:
@@ -117,6 +163,70 @@ async def test_close_pull_request_comments_then_closes(monkeypatch) -> None:
         ("acme", "demo", 42, "closing because the issue was deleted")
     ]
     assert fake_gh.rest.pulls.update_calls == [("acme", "demo", 42, "closed")]
+
+
+def test_build_issue_search_query_scopes_to_repo_and_open_issues() -> None:
+    query = build_issue_search_query("acme/demo", "Password reset link returns a blank page", "")
+
+    assert query.startswith("repo:acme/demo is:issue is:open in:title,body ")
+    assert "password" in query
+    assert "reset" in query
+
+
+def test_build_issue_search_query_backfills_body_when_title_sparse() -> None:
+    query = build_issue_search_query("acme/demo", "crash", "the app crashes when exporting a large CSV")
+
+    assert "exporting" in query
+
+
+def test_build_issue_search_query_drops_stopwords_and_short_tokens() -> None:
+    query = build_issue_search_query("acme/demo", "The bug fix for the API please", "")
+
+    assert "the" not in query
+    assert "bug" not in query  # stopword
+    assert "api" in query
+
+
+@pytest.mark.asyncio
+async def test_search_similar_issues_excludes_self_and_maps_hits(monkeypatch) -> None:
+    fake_gh = _FakeGitHub()
+    fake_gh.rest.search._results = [
+        _FakeSearchItem(1, "same", "https://github.com/acme/demo/issues/1", "body one"),
+        _FakeSearchItem(12, "other", "https://github.com/acme/demo/issues/12", "body twelve"),
+    ]
+    monkeypatch.setattr(github_client_module, "get_installation_client", lambda: fake_gh)
+
+    hits = await search_similar_issues("acme/demo", "Password reset", "body", exclude_number=1)
+
+    assert [h.issue_number for h in hits] == [12]
+    assert hits[0].html_url == "https://github.com/acme/demo/issues/12"
+    assert fake_gh.rest.search.calls[0][0].startswith("repo:acme/demo is:issue is:open")
+    assert fake_gh.rest.search.calls[0][1] == 10  # per_page == DUPLICATE_SEARCH_LIMIT
+
+
+@pytest.mark.asyncio
+async def test_search_similar_issues_treats_422_and_403_as_no_candidates(monkeypatch) -> None:
+    fake_gh = _FakeGitHub()
+    monkeypatch.setattr(github_client_module, "get_installation_client", lambda: fake_gh)
+
+    for status in (422, 403):
+        fake_gh.rest.search._error = RequestFailed(_FakeGithubkitResponse(status))
+        hits = await search_similar_issues("acme/demo", "Password reset", "body", exclude_number=1)
+        assert hits == []
+
+
+@pytest.mark.asyncio
+async def test_close_issue_as_duplicate_comments_then_closes(monkeypatch) -> None:
+    fake_gh = _FakeGitHub()
+    monkeypatch.setattr(github_client_module, "get_installation_client", lambda: fake_gh)
+
+    await close_issue_as_duplicate("acme/demo", 7, 12)
+
+    assert fake_gh.rest.issues.comment_calls == [
+        ("acme", "demo", 7, "Closing this as a duplicate of #12 — the reporter confirmed it "
+         "covers the same request as https://github.com/acme/demo/issues/12.")
+    ]
+    assert fake_gh.rest.issues.update_calls == [("acme", "demo", 7, "closed", "not_planned")]
 
 
 @pytest.mark.asyncio
