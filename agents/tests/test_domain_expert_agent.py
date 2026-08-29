@@ -5,10 +5,10 @@ model — never calls live Gemini."""
 from datetime import datetime, timezone
 
 import pytest
-
 from artisan_agents.agents import domain_expert_agent as domain_expert_agent_module
 from artisan_agents.agents.domain_expert_agent import _build_prompt, run_domain_expert
 from artisan_shared.models import RepoContext
+
 from tests.conftest import FakeLlm
 
 

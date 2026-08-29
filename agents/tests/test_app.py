@@ -7,9 +7,8 @@ import hmac
 import json
 
 import pytest
-from fastapi.testclient import TestClient
-
 from artisan_agents import app as app_module
+from fastapi.testclient import TestClient
 
 SECRET = "test-webhook-secret"
 

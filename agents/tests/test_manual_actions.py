@@ -5,7 +5,6 @@ branch-generation increment that feeds gate2's collision fix."""
 from datetime import datetime, timedelta, timezone
 
 import pytest
-
 from artisan_agents import manual_actions
 from artisan_shared.event_log import NoOpEventSink
 from artisan_shared.firestore_schema import TicketDoc
@@ -18,14 +17,14 @@ JIRA_KEY = "ART-1"
 
 def _ticket(**overrides) -> TicketDoc:
     now = datetime.now(timezone.utc)
-    defaults: dict = dict(
-        github_issue_number=ISSUE_NUMBER,
-        github_repo=REPO,
-        jira_key=JIRA_KEY,
-        status="escalated",
-        created_at=now - timedelta(hours=1),
-        updated_at=now - timedelta(hours=1),
-    )
+    defaults: dict = {
+        "github_issue_number": ISSUE_NUMBER,
+        "github_repo": REPO,
+        "jira_key": JIRA_KEY,
+        "status": "escalated",
+        "created_at": now - timedelta(hours=1),
+        "updated_at": now - timedelta(hours=1),
+    }
     defaults.update(overrides)
     return TicketDoc(**defaults)
 
@@ -72,9 +71,13 @@ def fake_firestore(monkeypatch):
 
 
 def _envelope(action: str, **overrides) -> ManualActionEnvelope:
-    defaults: dict = dict(
-        action_id="action-1", action=action, repo=REPO, issue_number=ISSUE_NUMBER, actor="octocat"
-    )
+    defaults: dict = {
+        "action_id": "action-1",
+        "action": action,
+        "repo": REPO,
+        "issue_number": ISSUE_NUMBER,
+        "actor": "octocat",
+    }
     defaults.update(overrides)
     return ManualActionEnvelope(**defaults)
 
@@ -91,7 +94,7 @@ async def test_unknown_ticket_is_a_noop(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_manual_action_event_is_emitted_before_the_action_runs(fake_firestore, monkeypatch) -> None:
-    state, sink, _escalations = fake_firestore
+    _, sink, _escalations = fake_firestore
 
     async def fake_mark_done(*args, **kwargs):
         raise RuntimeError("boom — the audit event must already be recorded by now")

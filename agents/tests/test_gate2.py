@@ -7,12 +7,16 @@ import asyncio
 from datetime import datetime, timezone
 
 import pytest
-
 from artisan_agents import gate2
 from artisan_agents.gcp.firestore_client import RetryCapExceeded
 from artisan_shared.event_log import NoOpEventSink
 from artisan_shared.firestore_schema import TicketDoc
-from artisan_shared.models import DomainExpertOutput, ExecutionResult, Plan, RoutingDecision
+from artisan_shared.models import (
+    DomainExpertOutput,
+    ExecutionResult,
+    Plan,
+    RoutingDecision,
+)
 
 REPO = "acme/demo"
 ISSUE_NUMBER = 1
@@ -347,7 +351,7 @@ async def test_open_pr_and_sync_github_label_failure_does_not_abort_pr_flow(
 ) -> None:
     """Labeling is a nice-to-have signal, not load-bearing — a label API hiccup must never prevent
     the PR/Jira-comment work that already succeeded from being reported as done."""
-    prs, jira_comments, github_comments, github_labels, jira_labels = stub_jira_and_github
+    prs, jira_comments, _, _, jira_labels = stub_jira_and_github
 
     async def failing_add_github_label(repo, issue_number, label):
         raise RuntimeError("github label API is down")
@@ -389,7 +393,7 @@ async def test_open_pr_and_sync_github_label_failure_does_not_abort_pr_flow(
 async def test_open_pr_and_sync_jira_label_failure_does_not_abort_pr_flow(
     fake_store, stub_jira_and_github, monkeypatch
 ) -> None:
-    prs, jira_comments, github_comments, github_labels, jira_labels = stub_jira_and_github
+    prs, jira_comments, _, github_labels, _ = stub_jira_and_github
 
     async def failing_add_jira_label(jira_key, label):
         raise RuntimeError("jira label API is down")

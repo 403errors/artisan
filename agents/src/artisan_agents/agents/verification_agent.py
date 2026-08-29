@@ -1,12 +1,12 @@
 """Gate 2's Verification Agent (SYSTEM_DESIGN.md §4 step 4, MILESTONE.md Phase 3.5). Compares an
 `ExecutionResult` against the `Plan` and original issue, and emits a `VerificationVerdict`."""
 
+from artisan_shared.models import ExecutionResult, Plan, VerificationVerdict
 from google.adk import Agent
 
 from artisan_agents.agents._run_agent import run_structured
 from artisan_agents.config import GEMINI_MODEL_ID
 from artisan_agents.event_context import current_sink
-from artisan_shared.models import ExecutionResult, Plan, VerificationVerdict
 
 APP_NAME = "artisan-verification"
 

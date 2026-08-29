@@ -8,8 +8,6 @@ import base64
 
 import httpx
 import pytest
-from githubkit.exception import RequestFailed
-
 from artisan_agents.github import client as github_client_module
 from artisan_agents.github.client import (
     add_label,
@@ -26,6 +24,7 @@ from artisan_agents.github.client import (
     open_pull_request,
     search_similar_issues,
 )
+from githubkit.exception import RequestFailed
 
 
 class _FakePullRequest:
@@ -223,8 +222,8 @@ async def test_close_issue_as_duplicate_comments_then_closes(monkeypatch) -> Non
     await close_issue_as_duplicate("acme/demo", 7, 12)
 
     assert fake_gh.rest.issues.comment_calls == [
-        ("acme", "demo", 7, "Closing this as a duplicate of #12 — the reporter confirmed it "
-         "covers the same request as https://github.com/acme/demo/issues/12.")
+        ("acme", "demo", 7, ("Closing this as a duplicate of #12 — the reporter confirmed it "
+                              "covers the same request as https://github.com/acme/demo/issues/12."))
     ]
     assert fake_gh.rest.issues.update_calls == [("acme", "demo", 7, "closed", "not_planned")]
 

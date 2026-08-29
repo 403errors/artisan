@@ -6,7 +6,6 @@ terminal state, with an Artisan PR close and Jira comment on top."""
 from datetime import datetime, timezone
 
 import pytest
-
 from artisan_agents import completion
 from artisan_agents.jira.client import JiraClientError
 from artisan_shared.firestore_schema import TicketDoc
@@ -123,8 +122,8 @@ async def test_issue_deleted_marks_done_closes_pr_and_transitions_jira(
 
     assert fake_store.doc.status == "done"
     assert fake_store.doc.current_step is None
-    assert pr_closed == [(REPO, 42, "Closing this PR — the issue it resolves (#1) was deleted by "
-                         "its author, so there's nothing left to merge.")]
+    assert pr_closed == [(REPO, 42, ("Closing this PR — the issue it resolves (#1) was deleted by "
+                                     "its author, so there's nothing left to merge."))]
     assert jira_calls == [(JIRA_KEY, "Done")]
     assert "deleted by its author" in jira_comments[0][1]
     assert [e["type"] for e in sink.events] == ["issue_deleted", "pr_closed", "jira_synced"]

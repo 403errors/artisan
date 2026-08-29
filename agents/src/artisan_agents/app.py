@@ -12,6 +12,7 @@
 
 from contextlib import asynccontextmanager
 
+from artisan_shared.models import ManualActionEnvelope
 from fastapi import FastAPI, Request, Response
 
 from artisan_agents import manual_actions, tracing
@@ -30,7 +31,6 @@ from artisan_agents.gcp.pubsub import (
 )
 from artisan_agents.gcp.secrets import get_secret
 from artisan_agents.github.webhook import parse_envelope, verify_signature
-from artisan_shared.models import ManualActionEnvelope
 
 
 @asynccontextmanager

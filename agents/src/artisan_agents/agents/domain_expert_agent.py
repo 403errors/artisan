@@ -7,12 +7,12 @@ true extensible entries in `_PERSONA_LENS` (a prompt-content change, not a new a
 per the "extensible, not exhaustive" scope note in docs/SPRINT.md's risk register — `_DEFAULT_LENS`
 is the generic fallback for a domain that hasn't earned a bespoke entry yet."""
 
+from artisan_shared.models import DomainExpertOutput, RepoContext
+from artisan_shared.prompt_safety import UNTRUSTED_CONTENT_NOTICE, wrap_untrusted
 from google.adk import Agent
 
 from artisan_agents.agents._run_agent import run_structured
 from artisan_agents.config import GEMINI_MODEL_ID
-from artisan_shared.models import DomainExpertOutput, RepoContext
-from artisan_shared.prompt_safety import UNTRUSTED_CONTENT_NOTICE, wrap_untrusted
 
 APP_NAME = "artisan-domain-expert"
 

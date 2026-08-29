@@ -21,8 +21,19 @@ import os
 import tempfile
 from pathlib import Path
 
-from artisan_execution_sandbox import firestore_write, git_ops, security_scan, test_runner
-from artisan_execution_sandbox.coding_agent import run_coding_agent, run_conflict_resolution_agent
+from artisan_shared.models import ConflictDetectionResult, ExecutionResult, Plan
+from artisan_shared.ticket_ids import ticket_doc_id
+
+from artisan_execution_sandbox import (
+    firestore_write,
+    git_ops,
+    security_scan,
+    test_runner,
+)
+from artisan_execution_sandbox.coding_agent import (
+    run_coding_agent,
+    run_conflict_resolution_agent,
+)
 from artisan_execution_sandbox.config import CLOUD_RUN_REGION, GCP_PROJECT_ID
 from artisan_execution_sandbox.firestore_write import (
     write_conflict_detection_result,
@@ -30,8 +41,6 @@ from artisan_execution_sandbox.firestore_write import (
     write_execution_result,
 )
 from artisan_execution_sandbox.github_auth import get_installation_token
-from artisan_shared.models import ConflictDetectionResult, ExecutionResult, Plan
-from artisan_shared.ticket_ids import ticket_doc_id
 
 JOB_MODE_EXECUTE = "execute"
 JOB_MODE_DETECT_CONFLICT = "detect_conflict"
@@ -262,7 +271,7 @@ async def run_conflict_resolution(
             git_ops.fetch(str(workdir), head_branch, redact=token)
             git_ops.checkout(str(workdir), head_branch)
             git_ops.fetch(str(workdir), base_branch, redact=token)
-            merged_clean, merge_output = git_ops.merge(str(workdir), base_branch)
+            merged_clean, _ = git_ops.merge(str(workdir), base_branch)
         except git_ops.GitCommandError as exc:
             return ExecutionResult(
                 branch=head_branch, diff_summary=f"clone/merge failed: {exc}", tests_passed=False,

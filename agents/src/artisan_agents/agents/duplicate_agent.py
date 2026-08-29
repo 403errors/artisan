@@ -4,13 +4,17 @@ issue — returning typed `DuplicateCandidate`s, never free text. Empty candidat
 normal intake. Mirrors the Intake Agent's stateless shape (fresh session per call; Firestore, not
 agent memory, is the source of truth)."""
 
+from artisan_shared.models import (
+    DuplicateCandidate,
+    DuplicateSearchHit,
+    DuplicateVerdict,
+)
+from artisan_shared.prompt_safety import UNTRUSTED_CONTENT_NOTICE, wrap_untrusted
 from google.adk import Agent
 
 from artisan_agents.agents._run_agent import run_structured
 from artisan_agents.config import GEMINI_MODEL_ID, MAX_DUPLICATE_CANDIDATES
 from artisan_agents.github import client as github_client
-from artisan_shared.models import DuplicateCandidate, DuplicateSearchHit, DuplicateVerdict
-from artisan_shared.prompt_safety import UNTRUSTED_CONTENT_NOTICE, wrap_untrusted
 
 APP_NAME = "artisan-duplicate"
 

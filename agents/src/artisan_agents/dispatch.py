@@ -8,6 +8,9 @@ here too: `pull_request.closed && merged` -> completion.mark_ticket_done (Sprint
 
 from datetime import datetime, timezone
 
+from artisan_shared import prompt_safety
+from artisan_shared.firestore_schema import TicketDoc
+from artisan_shared.models import DuplicateCandidate, GitHubWebhookEnvelope
 from githubkit.exception import RequestFailed
 
 from artisan_agents import completion, event_context, gate2, gate3, tracing
@@ -19,9 +22,6 @@ from artisan_agents.gcp import firestore_client
 from artisan_agents.gcp.firestore_client import ClarificationCapExceeded
 from artisan_agents.github import client as github_client
 from artisan_agents.jira import client as jira_client
-from artisan_shared import prompt_safety
-from artisan_shared.firestore_schema import TicketDoc
-from artisan_shared.models import DuplicateCandidate, GitHubWebhookEnvelope
 
 
 class NonRetriableEventError(Exception):

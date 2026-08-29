@@ -171,6 +171,7 @@ once.
 
 ```bash
 uv sync                              # from the repo root — syncs the whole workspace
+uv run ruff check agents execution-sandbox packages   # ruff lint across the workspace
 uv run --package artisan-agents pytest
 cd agents && uv run artisan-agents   # serves on :8080 (or $PORT)
 ```

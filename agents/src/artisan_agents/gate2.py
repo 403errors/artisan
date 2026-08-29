@@ -8,7 +8,17 @@ clarification loop (which re-enters via a new webhook event)."""
 import asyncio
 from datetime import datetime, timezone
 
-from artisan_agents import event_context, repo_context as repo_context_module, tracing
+from artisan_shared.firestore_schema import EscalationEntry
+from artisan_shared.models import (
+    DomainExpertOutput,
+    ExecutionResult,
+    Plan,
+    RepoContext,
+    RoutingDecision,
+)
+
+from artisan_agents import event_context, tracing
+from artisan_agents import repo_context as repo_context_module
 from artisan_agents.agents.domain_expert_agent import run_domain_expert
 from artisan_agents.agents.planning_agent import run_planning
 from artisan_agents.agents.routing_agent import run_routing
@@ -18,14 +28,6 @@ from artisan_agents.gcp import cloud_run_jobs, firestore_client
 from artisan_agents.gcp.firestore_client import RetryCapExceeded
 from artisan_agents.github import client as github_client
 from artisan_agents.jira import client as jira_client
-from artisan_shared.firestore_schema import EscalationEntry
-from artisan_shared.models import (
-    DomainExpertOutput,
-    ExecutionResult,
-    Plan,
-    RepoContext,
-    RoutingDecision,
-)
 
 # Jira's real team-managed Kanban workflow (verified live against ART-8/ART-9, see
 # docs/CONTEXT.md) only has Backlog / Selected for Development / In Progress / Done — there is no
@@ -218,7 +220,7 @@ async def _open_pr_and_sync(
     # must never abort the PR-opening flow that already succeeded.
     try:
         await github_client.add_label(repo, pr_number, "artisan:ready-for-review")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - labeling is nice-to-have; must not abort the PR flow
         await event_context.current_sink().emit(
             type="label_failed", summary=f"Failed to label GitHub PR #{pr_number}: {exc}"
         )
@@ -231,7 +233,7 @@ async def _open_pr_and_sync(
     )
     try:
         await jira_client.add_label(jira_key, "artisan-pr-open")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - labeling is nice-to-have; must not abort the PR flow
         await event_context.current_sink().emit(
             type="label_failed", summary=f"Failed to label Jira {jira_key}: {exc}"
         )

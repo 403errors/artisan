@@ -5,13 +5,12 @@ underlying model without ever calling live Gemini."""
 from collections.abc import AsyncGenerator
 
 import pytest
-from google.adk.models.base_llm import BaseLlm
-from google.adk.models.llm_response import LlmResponse
-from google.genai import types
-
 from artisan_agents import event_context
 from artisan_agents.gcp import firestore_client
 from artisan_shared.event_log import NoOpEventSink
+from google.adk.models.base_llm import BaseLlm
+from google.adk.models.llm_response import LlmResponse
+from google.genai import types
 
 
 @pytest.fixture(autouse=True)

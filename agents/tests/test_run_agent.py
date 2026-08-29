@@ -3,13 +3,13 @@
 agent since its Sprint 6 refactor) funnels through this one function."""
 
 import pytest
-from google.adk import Agent
-from pydantic import BaseModel
-
 from artisan_agents import event_context
 from artisan_agents.agents._run_agent import run_structured
 from artisan_agents.config import GEMINI_MODEL_ID
 from artisan_shared.event_log import NoOpEventSink
+from google.adk import Agent
+from pydantic import BaseModel
+
 from tests.conftest import FakeLlm
 
 
@@ -22,7 +22,7 @@ class _RecordingSink(NoOpEventSink):
         super().__init__()
         self._enabled = True
         self.events: list[dict] = []
-        self.children: list["_RecordingSink"] = []
+        self.children: list[_RecordingSink] = []
 
     async def emit(self, **kwargs):
         self.events.append(kwargs)

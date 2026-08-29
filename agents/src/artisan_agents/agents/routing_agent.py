@@ -2,10 +2,11 @@
 Decides which domain-expert persona(s) apply to a sufficiently-specified ticket, and whether they
 should be dispatched in parallel or sequentially."""
 
-from artisan_agents.agents._run_agent import run_structured
-from artisan_agents.config import GEMINI_MODEL_ID
 from artisan_shared.models import RepoContext, RoutingDecision
 from google.adk import Agent
+
+from artisan_agents.agents._run_agent import run_structured
+from artisan_agents.config import GEMINI_MODEL_ID
 
 APP_NAME = "artisan-routing"
 

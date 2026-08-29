@@ -1,2 +1,7 @@
 [tool.uv.workspace]
 members = ["agents", "execution-sandbox", "packages/artisan_shared"]
+
+[dependency-groups]
+dev = [
+    "ruff==0.16.5",
+]

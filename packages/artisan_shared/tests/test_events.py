@@ -1,9 +1,8 @@
 """Unit tests for the event-log truncation/redaction helpers and `TicketEvent` schema."""
 
 import pytest
-from pydantic import ValidationError
-
 from artisan_shared.events import TicketEvent, redact_secrets, truncate, truncate_middle
+from pydantic import ValidationError
 
 
 def test_truncate_leaves_short_text_untouched() -> None:

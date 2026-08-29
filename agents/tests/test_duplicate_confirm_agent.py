@@ -4,7 +4,6 @@ typed DuplicateConfirmVerdict. Model is a fake `FakeLlm` — no live Gemini call
 import json
 
 import pytest
-
 from artisan_agents.agents import duplicate_confirm_agent as dca_module
 from artisan_agents.agents.duplicate_confirm_agent import (
     DUPLICATE_CONFIRM_INSTRUCTION,
@@ -12,6 +11,7 @@ from artisan_agents.agents.duplicate_confirm_agent import (
     run_duplicate_confirm,
 )
 from artisan_shared.models import DuplicateCandidate
+
 from tests.conftest import FakeLlm
 
 

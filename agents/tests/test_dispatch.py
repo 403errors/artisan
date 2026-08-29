@@ -7,8 +7,6 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
-from githubkit.exception import RequestFailed
-
 from artisan_agents import dispatch
 from artisan_agents.gcp.firestore_client import ClarificationCapExceeded
 from artisan_shared.event_log import NoOpEventSink
@@ -19,6 +17,7 @@ from artisan_shared.models import (
     GitHubWebhookEnvelope,
     IntakeVerdict,
 )
+from githubkit.exception import RequestFailed
 
 
 class _FakeTicketStore:
@@ -261,10 +260,10 @@ async def test_needs_info_verdict_posts_a_numbered_list_of_multiple_questions(
     await dispatch.handle_event(_issue_opened())
 
     assert posted_comments == [
-        "@octocat could you help clarify a few things?\n\n"
-        "1. What page were you on when this happened?\n"
-        "2. What did you expect to see instead?\n"
-        "3. Does this happen every time, or only sometimes?"
+        ("@octocat could you help clarify a few things?\n\n"
+         "1. What page were you on when this happened?\n"
+         "2. What did you expect to see instead?\n"
+         "3. Does this happen every time, or only sometimes?")
     ]
     ticket = await fake_store.get_ticket("acme/demo", 1)
     assert ticket.status == "intake"
@@ -440,8 +439,8 @@ async def test_sufficient_on_first_pass_posts_taking_over_comment(fake_store, mo
     await dispatch.handle_event(_issue_opened())
 
     assert posted_comments == [
-        "@octocat Thanks for the details — Artisan has everything it needs and "
-        "is taking over to resolve this issue."
+        ("@octocat Thanks for the details — Artisan has everything it needs and "
+         "is taking over to resolve this issue.")
     ]
     ticket = await fake_store.get_ticket("acme/demo", 1)
     assert ticket.status == "in_progress"
@@ -507,8 +506,8 @@ async def test_sufficient_after_clarification_round_posts_a_taking_over_comment(
         "from here to resolve this issue."
     )
     assert jira_descriptions == [
-        ("ART-1", "body\n\n---\nClarifications (from GitHub issue thread):\n"
-         "the endpoint is /api/widgets")
+        ("ART-1", ("body\n\n---\nClarifications (from GitHub issue thread):\n"
+                   "the endpoint is /api/widgets"))
     ]
     ticket = await fake_store.get_ticket("acme/demo", 1)
     assert ticket.status == "in_progress"

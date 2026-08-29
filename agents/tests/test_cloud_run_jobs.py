@@ -6,7 +6,6 @@ something a unit test can cover by definition."""
 from datetime import UTC, datetime
 
 import pytest
-
 from artisan_agents.gcp import cloud_run_jobs
 from artisan_shared.firestore_schema import TicketDoc
 from artisan_shared.models import ConflictDetectionResult, ExecutionResult, Plan

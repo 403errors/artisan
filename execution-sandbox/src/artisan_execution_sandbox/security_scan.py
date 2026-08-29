@@ -31,6 +31,7 @@ def scan_secrets(repo_dir: str) -> tuple[bool, str]:
             ["gitleaks", "detect", "--source", repo_dir, "--no-git", "-f", "json", "--exit-code", "0"],
             capture_output=True,
             text=True,
+            check=False,
         )
     except FileNotFoundError:
         return True, "gitleaks unavailable, scan skipped"
@@ -65,6 +66,7 @@ def scan_static(repo_dir: str) -> tuple[bool, str]:
             ["semgrep", "--config=p/security-audit", "--json", "--quiet", repo_dir],
             capture_output=True,
             text=True,
+            check=False,
         )
     except FileNotFoundError:
         return True, "semgrep unavailable, scan skipped"
@@ -99,7 +101,7 @@ def scan_new_dependencies(repo_dir: str) -> list[str]:
     root of `repo_dir`. Purely informational — never blocks anything."""
     try:
         return _scan_new_dependencies(repo_dir)
-    except Exception:
+    except Exception:  # noqa: BLE001 - documented best-effort contract ("never raises")
         return []
 
 
@@ -110,9 +112,10 @@ def _scan_new_dependencies(repo_dir: str) -> list[str]:
             cwd=repo_dir,
             capture_output=True,
             text=True,
+            check=False,
         )
         changed_files = set(changed.stdout.splitlines()) if changed.returncode == 0 else set()
-    except Exception:
+    except Exception:  # noqa: BLE001 - fail open on git tooling issues
         changed_files = set()
 
     findings: list[str] = []
@@ -135,9 +138,10 @@ def _scan_new_dependencies(repo_dir: str) -> list[str]:
                 cwd=repo_dir,
                 capture_output=True,
                 text=True,
+                check=False,
             )
             old_content = old.stdout if old.returncode == 0 else ""
-        except Exception:
+        except Exception:  # noqa: BLE001 - fail open on git tooling issues
             old_content = ""
 
         old_lines = set(old_content.splitlines())
@@ -173,7 +177,7 @@ def _added_dependency_lines(manifest: str, lines: list[str]) -> list[str]:
         # that isn't an obvious section header.
         for line in lines:
             stripped = line.strip()
-            if not stripped or stripped.startswith("[") or stripped.startswith("#"):
+            if not stripped or stripped.startswith(("[", "#")):
                 continue
             names.append(stripped)
     return names

@@ -5,7 +5,6 @@ chain, since these are pure translation/plumbing tests, not integration tests.""
 import itertools
 
 import pytest
-
 from artisan_shared.event_log import EventSink, NoOpEventSink
 
 

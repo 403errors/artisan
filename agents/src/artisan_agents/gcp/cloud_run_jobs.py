@@ -20,12 +20,16 @@ attempt is never confused with a stale one from a previous attempt on the same t
 
 from functools import lru_cache
 
+from artisan_shared.models import ConflictDetectionResult, ExecutionResult, Plan
 from google.cloud import run_v2
 
-from artisan_agents.config import CLOUD_RUN_REGION, EXECUTION_SANDBOX_JOB_NAME, GCP_PROJECT_ID
+from artisan_agents.config import (
+    CLOUD_RUN_REGION,
+    EXECUTION_SANDBOX_JOB_NAME,
+    GCP_PROJECT_ID,
+)
 from artisan_agents.event_context import current_sink
 from artisan_agents.gcp import firestore_client
-from artisan_shared.models import ConflictDetectionResult, ExecutionResult, Plan
 
 
 class ConflictDetectionCrashed(Exception):

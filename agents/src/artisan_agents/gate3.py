@@ -12,6 +12,9 @@ state it doesn't own (PRD.md §5)."""
 import asyncio
 from datetime import datetime, timezone
 
+from artisan_shared.firestore_schema import EscalationEntry
+from artisan_shared.models import ConflictVerdict
+
 from artisan_agents import event_context, tracing
 from artisan_agents.agents.conflict_agent import run_conflict_classification
 from artisan_agents.gcp import cloud_run_jobs, firestore_client
@@ -19,8 +22,6 @@ from artisan_agents.gcp.cloud_run_jobs import ConflictDetectionCrashed
 from artisan_agents.gcp.firestore_client import TrivialConflictCapExceeded
 from artisan_agents.github import client as github_client
 from artisan_agents.jira import client as jira_client
-from artisan_shared.firestore_schema import EscalationEntry
-from artisan_shared.models import ConflictVerdict
 
 # gate2._open_pr_and_sync necessarily writes the pr_index pointer *after* GitHub assigns the PR
 # number (it can't be written before the PR exists) — so a `pull_request.opened` webhook can

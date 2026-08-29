@@ -6,7 +6,6 @@ never touches a real GitHub App installation or Firestore."""
 from datetime import datetime, timedelta, timezone
 
 import pytest
-
 from artisan_agents import repo_context as repo_context_module
 from artisan_shared.models import RepoContext
 

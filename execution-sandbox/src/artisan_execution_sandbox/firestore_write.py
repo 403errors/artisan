@@ -6,12 +6,12 @@ orchestrator (`artisan_shared.ticket_ids`) so the orchestrator's later read
 from datetime import datetime, timezone
 from functools import lru_cache
 
-from google.cloud import firestore
-
-from artisan_execution_sandbox.config import EVENT_LOG_ENABLED, GCP_PROJECT_ID
 from artisan_shared.event_log import EventSink
 from artisan_shared.models import ConflictDetectionResult, ExecutionResult
 from artisan_shared.ticket_ids import ticket_doc_id
+from google.cloud import firestore
+
+from artisan_execution_sandbox.config import EVENT_LOG_ENABLED, GCP_PROJECT_ID
 
 
 @lru_cache(maxsize=1)

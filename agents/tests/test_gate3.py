@@ -5,13 +5,16 @@ gate3.py's control flow, not any one integration, mirroring test_gate2.py's styl
 from datetime import datetime, timezone
 
 import pytest
-
 from artisan_agents import gate3
 from artisan_agents.gcp.cloud_run_jobs import ConflictDetectionCrashed
 from artisan_agents.gcp.firestore_client import TrivialConflictCapExceeded
 from artisan_shared.event_log import NoOpEventSink
 from artisan_shared.firestore_schema import TicketDoc
-from artisan_shared.models import ConflictDetectionResult, ConflictVerdict, ExecutionResult
+from artisan_shared.models import (
+    ConflictDetectionResult,
+    ConflictVerdict,
+    ExecutionResult,
+)
 
 REPO = "acme/demo"
 ISSUE_NUMBER = 1

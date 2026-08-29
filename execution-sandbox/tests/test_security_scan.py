@@ -4,8 +4,6 @@ with subprocess.run mocked — no real gitleaks/semgrep/git binary is invoked.""
 import json
 import subprocess
 
-import pytest
-
 from artisan_execution_sandbox import security_scan
 
 

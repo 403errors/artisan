@@ -7,6 +7,7 @@ it to the orchestrator's own config/secrets."""
 
 from functools import lru_cache
 
+from artisan_shared.github_auth import build_installation_client
 from githubkit import GitHub
 
 from artisan_agents.config import (
@@ -15,7 +16,6 @@ from artisan_agents.config import (
     SECRET_GITHUB_APP_PRIVATE_KEY,
 )
 from artisan_agents.gcp.secrets import get_secret
-from artisan_shared.github_auth import build_installation_client
 
 
 @lru_cache(maxsize=1)

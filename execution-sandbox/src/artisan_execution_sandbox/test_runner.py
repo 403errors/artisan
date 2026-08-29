@@ -15,6 +15,7 @@ def run_tests(repo_dir: str) -> tuple[bool, str]:
         cwd=repo_dir,
         capture_output=True,
         text=True,
+        check=False,
     )
     output = result.stdout + result.stderr
     return result.returncode == 0, output

@@ -5,7 +5,6 @@ import json
 
 import httpx
 import pytest
-
 from artisan_agents.jira import client as jira_client_module
 from artisan_agents.jira.client import (
     JiraClientError,
@@ -15,7 +14,6 @@ from artisan_agents.jira.client import (
     transition_ticket,
     update_description,
 )
-
 
 _RealAsyncClient = httpx.AsyncClient
 

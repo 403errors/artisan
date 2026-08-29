@@ -13,9 +13,10 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
+from artisan_shared.models import RepoContext
+
 from artisan_agents.gcp import firestore_client
 from artisan_agents.github import client as github_client
-from artisan_shared.models import RepoContext
 
 KNOWN_MANIFESTS = (
     "package.json",

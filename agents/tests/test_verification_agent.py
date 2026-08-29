@@ -3,12 +3,12 @@ green=false WITHOUT ever calling the model — a red test run can never be verif
 of what the model would say. Stubs the underlying model for the green-path call only."""
 
 import pytest
-
 from artisan_agents import event_context
 from artisan_agents.agents import verification_agent as verification_agent_module
 from artisan_agents.agents.verification_agent import run_verification
 from artisan_shared.event_log import NoOpEventSink
 from artisan_shared.models import ExecutionResult, Plan
+
 from tests.conftest import FakeLlm
 
 _PLAN = Plan(steps=["do the thing"], touched_files=["a.py"], test_cases=["t1"], doc_updates=["d1"])

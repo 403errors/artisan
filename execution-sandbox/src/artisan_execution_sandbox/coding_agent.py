@@ -20,14 +20,17 @@ import subprocess
 import uuid
 from pathlib import Path
 
+from artisan_shared.event_log import EventSink, NoOpEventSink
+from artisan_shared.models import Plan
+from artisan_shared.prompt_safety import UNTRUSTED_CONTENT_NOTICE, wrap_untrusted
 from google.adk import Agent, Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
-from artisan_execution_sandbox.config import GEMINI_MODEL_ID, MAX_CODING_AGENT_TOOL_CALLS
-from artisan_shared.event_log import EventSink, NoOpEventSink
-from artisan_shared.models import Plan
-from artisan_shared.prompt_safety import UNTRUSTED_CONTENT_NOTICE, wrap_untrusted
+from artisan_execution_sandbox.config import (
+    GEMINI_MODEL_ID,
+    MAX_CODING_AGENT_TOOL_CALLS,
+)
 
 APP_NAME = "artisan-execution-coding-agent"
 _USER_ID = "artisan-execution-sandbox"
@@ -110,7 +113,8 @@ def _build_tools(workdir: Path):
             return "error: command not permitted"
 
         result = subprocess.run(
-            argv, shell=False, cwd=str(workdir), capture_output=True, text=True, timeout=120
+            argv, shell=False, cwd=str(workdir), capture_output=True, text=True, timeout=120,
+            check=False,
         )
         return f"exit={result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
 

@@ -16,6 +16,14 @@ crashed instance can't block a delivery forever."""
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 
+from artisan_shared.event_log import EventSink
+from artisan_shared.firestore_schema import EscalationEntry, TicketDoc
+from artisan_shared.models import RepoContext
+from artisan_shared.ticket_ids import (
+    pr_pointer_doc_id,
+    repo_context_doc_id,
+    ticket_doc_id,
+)
 from google.cloud import firestore
 
 from artisan_agents.config import (
@@ -26,10 +34,6 @@ from artisan_agents.config import (
     MAX_TRIVIAL_CONFLICT_ATTEMPTS,
 )
 from artisan_agents.event_context import current_sink
-from artisan_shared.event_log import EventSink
-from artisan_shared.firestore_schema import EscalationEntry, TicketDoc
-from artisan_shared.models import RepoContext
-from artisan_shared.ticket_ids import pr_pointer_doc_id, repo_context_doc_id, ticket_doc_id
 
 __all__ = [
     "ClarificationCapExceeded",

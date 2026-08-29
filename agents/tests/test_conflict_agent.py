@@ -6,10 +6,10 @@ conflict should classify `semantic` with a comparison clearly separating "Side A
 import json
 
 import pytest
-
 from artisan_agents.agents import conflict_agent as conflict_agent_module
 from artisan_agents.agents.conflict_agent import run_conflict_classification
 from artisan_shared.models import ConflictDetectionResult
+
 from tests.conftest import FakeLlm
 
 

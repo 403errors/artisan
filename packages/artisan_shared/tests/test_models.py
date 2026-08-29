@@ -3,8 +3,6 @@ in Sprint 3's shared-package extraction — see docs/CONTEXT.md — since both `
 `execution-sandbox/` now depend on this module)."""
 
 import pytest
-from pydantic import ValidationError
-
 from artisan_shared.models import (
     ConflictDetectionResult,
     ConflictVerdict,
@@ -17,6 +15,7 @@ from artisan_shared.models import (
     RoutingDecision,
     VerificationVerdict,
 )
+from pydantic import ValidationError
 
 
 def test_routing_decision_round_trips_through_json() -> None:

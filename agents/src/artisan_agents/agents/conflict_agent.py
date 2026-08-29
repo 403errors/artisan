@@ -3,10 +3,11 @@ a real trial-merge conflict (from `cloud_run_jobs.trigger_conflict_detection`) a
 (non-overlapping/mechanically reconcilable, safe to auto-resolve) or `semantic` (both sides changed
 the same logic differently — never guess, escalate with a structured comparison instead)."""
 
-from artisan_agents.agents._run_agent import run_structured
-from artisan_agents.config import GEMINI_MODEL_ID
 from artisan_shared.models import ConflictDetectionResult, ConflictVerdict
 from google.adk import Agent
+
+from artisan_agents.agents._run_agent import run_structured
+from artisan_agents.config import GEMINI_MODEL_ID
 
 APP_NAME = "artisan-conflict"
 

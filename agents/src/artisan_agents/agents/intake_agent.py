@@ -1,12 +1,12 @@
 """Gate 1's Intake Agent (SYSTEM_DESIGN.md §3 step 4). Judges whether a GitHub issue thread has
 enough context to automate, returning the typed `IntakeVerdict` — never free text."""
 
+from artisan_shared.models import IntakeVerdict
+from artisan_shared.prompt_safety import UNTRUSTED_CONTENT_NOTICE, wrap_untrusted
 from google.adk import Agent
 
 from artisan_agents.agents._run_agent import run_structured
 from artisan_agents.config import GEMINI_MODEL_ID
-from artisan_shared.models import IntakeVerdict
-from artisan_shared.prompt_safety import UNTRUSTED_CONTENT_NOTICE, wrap_untrusted
 
 APP_NAME = "artisan-intake"
 

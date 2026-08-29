@@ -7,11 +7,15 @@ and prior-attempt feedback is threaded into the prompt only when given. Stubs th
 from datetime import datetime, timezone
 
 import pytest
-
 from artisan_agents.agents import planning_agent as planning_agent_module
-from artisan_agents.agents.planning_agent import _build_prompt, planning_agent, run_planning
+from artisan_agents.agents.planning_agent import (
+    _build_prompt,
+    planning_agent,
+    run_planning,
+)
 from artisan_shared.models import DomainExpertOutput, RepoContext
 from google.genai import types
+
 from tests.conftest import FakeLlm
 
 

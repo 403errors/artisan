@@ -6,11 +6,11 @@ import mimetypes
 import re
 
 import httpx
+from artisan_shared.models import DuplicateSearchHit
 from githubkit.exception import RequestFailed
 
 from artisan_agents.config import DUPLICATE_SEARCH_LIMIT
 from artisan_agents.github.auth import get_installation_client
-from artisan_shared.models import DuplicateSearchHit
 
 # Repo Context (WS3): cheap file-tree snapshot cap — see artisan_agents.repo_context.
 REPO_TREE_MAX_ENTRIES = 500
@@ -91,7 +91,7 @@ async def search_similar_issues(
     (Gate 1 duplicate check). A 422 (over-heavy query) or 403 (search rate limit) is treated as no
     candidates rather than failing intake; the Search API has its own 30 req/min rate bucket,
     separate from the REST core limit."""
-    owner, name = _split_repo(repo)
+    _, _ = _split_repo(repo)  # validates the repo string; the Search query carries the parts
     gh = get_installation_client()
     query = build_issue_search_query(repo, title, body)
     if not query:

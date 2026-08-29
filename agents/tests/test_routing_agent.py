@@ -5,10 +5,10 @@ underlying model — never calls live Gemini."""
 from datetime import datetime, timezone
 
 import pytest
-
 from artisan_agents.agents import routing_agent as routing_agent_module
 from artisan_agents.agents.routing_agent import _build_prompt, run_routing
 from artisan_shared.models import RepoContext
+
 from tests.conftest import FakeLlm
 
 

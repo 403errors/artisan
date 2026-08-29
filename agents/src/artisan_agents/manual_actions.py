@@ -8,14 +8,15 @@ itself then fails."""
 
 from datetime import datetime, timezone
 
+from artisan_shared.firestore_schema import EscalationEntry, TicketDoc
+from artisan_shared.models import ManualActionEnvelope
+
 from artisan_agents import dispatch, event_context, gate2, gate3
 from artisan_agents.completion import mark_ticket_done
 from artisan_agents.dispatch import infer_gate
 from artisan_agents.gcp import firestore_client
 from artisan_agents.github import client as github_client
 from artisan_agents.jira import client as jira_client
-from artisan_shared.firestore_schema import EscalationEntry, TicketDoc
-from artisan_shared.models import ManualActionEnvelope
 
 # A double-click guard, not a real lock: a live ticket whose Firestore doc was written this
 # recently is assumed to be a genuinely-running attempt, so a second manual action against it is

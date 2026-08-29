@@ -3,7 +3,6 @@ behavior is exercised elsewhere (test_firestore_client.py, real-Firestore integr
 only checks that every `gate_span` call also emits a `gate_decision` event on the ambient sink."""
 
 import pytest
-
 from artisan_agents import event_context, tracing
 from artisan_shared.event_log import NoOpEventSink
 

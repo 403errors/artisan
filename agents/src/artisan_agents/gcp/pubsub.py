@@ -5,12 +5,12 @@ import base64
 import json
 from functools import lru_cache
 
+from artisan_shared.models import GitHubWebhookEnvelope, ManualActionEnvelope
 from google.auth.transport import requests as gauth_requests
 from google.cloud import pubsub_v1
 from google.oauth2 import id_token
 
 from artisan_agents.config import GCP_PROJECT_ID, PUBSUB_PUSH_AUDIENCE, PUBSUB_TOPIC
-from artisan_shared.models import GitHubWebhookEnvelope, ManualActionEnvelope
 
 
 class PushTokenVerificationError(Exception):

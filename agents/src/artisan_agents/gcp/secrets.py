@@ -3,13 +3,14 @@ fetched here by name at call time, never hardcoded or passed as a literal. The a
 Manager call lives in `artisan_shared.secrets`, shared with `execution-sandbox` (Sprint 3) — this
 module just binds it to the orchestrator's own project id and adds the in-process cache."""
 
-from functools import lru_cache
+from functools import cache
 
-from artisan_agents.config import GCP_PROJECT_ID
 from artisan_shared.secrets import fetch_secret
 
+from artisan_agents.config import GCP_PROJECT_ID
 
-@lru_cache(maxsize=None)
+
+@cache
 def get_secret(name: str, version: str = "latest") -> str:
     """Fetches a secret's payload from Secret Manager. Cached in-process per (name, version) —
     secrets don't rotate mid-process, and repeated per-request fetches would add needless

@@ -85,7 +85,7 @@ async def handle_issue_deleted(
             await current_sink().emit(
                 type="pr_closed", summary=f"Closed Artisan PR #{pr_number} (issue deleted)"
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - best-effort close; must never abort the flow
             await current_sink().emit(
                 type="error", summary=f"Failed to close PR #{pr_number}: {exc}"
             )
@@ -130,7 +130,7 @@ async def mark_ticket_duplicate(
 
     try:
         await github_client.close_issue_as_duplicate(repo, issue_number, duplicate_of)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - best-effort close; must never abort the flow
         await current_sink().emit(
             type="error", summary=f"Failed to close #{issue_number} as duplicate: {exc}"
         )

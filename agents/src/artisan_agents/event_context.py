@@ -12,7 +12,7 @@ from contextvars import ContextVar
 
 from artisan_shared.event_log import EventSink, NoOpEventSink
 
-_current_sink: ContextVar[EventSink] = ContextVar("artisan_event_sink", default=NoOpEventSink())
+_current_sink: ContextVar[EventSink | None] = ContextVar("artisan_event_sink", default=None)
 
 
 def set_sink(sink: EventSink) -> None:
@@ -20,4 +20,7 @@ def set_sink(sink: EventSink) -> None:
 
 
 def current_sink() -> EventSink:
-    return _current_sink.get()
+    sink = _current_sink.get()
+    if sink is not None:
+        return sink
+    return NoOpEventSink()

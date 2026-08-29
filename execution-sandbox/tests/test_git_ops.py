@@ -6,7 +6,6 @@ docs/CONTEXT.md) and isn't attempted here."""
 import subprocess
 
 import pytest
-
 from artisan_execution_sandbox.git_ops import (
     GitCommandError,
     _run,
@@ -166,7 +165,7 @@ def test_merge_clean_returns_true_and_stays_uncommitted(tmp_path) -> None:
     checkout(str(workdir), "feature")
     fetch(str(workdir), "main")
 
-    merged_clean, output = merge(str(workdir), "main")
+    merged_clean, _ = merge(str(workdir), "main")
 
     assert merged_clean is True
     assert (workdir / "main_only.py").exists()
@@ -188,7 +187,7 @@ def test_merge_conflict_returns_false_with_conflicted_files_listed(tmp_path) -> 
     checkout(str(workdir), "feature")
     fetch(str(workdir), "main")
 
-    merged_clean, output = merge(str(workdir), "main")
+    merged_clean, _ = merge(str(workdir), "main")
 
     assert merged_clean is False
     conflicted = list_conflicted_files(str(workdir))

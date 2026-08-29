@@ -5,10 +5,9 @@ available, so it doesn't break `uv run pytest` in an environment without ADC."""
 from datetime import UTC, datetime
 
 import pytest
-from google.cloud import firestore
-
 from artisan_shared.firestore_schema import TicketDoc
 from artisan_shared.models import ConflictDetectionResult, ExecutionResult
+from google.cloud import firestore
 
 PROJECT_ID = "artisan-multiagent-ai"
 
@@ -16,7 +15,7 @@ PROJECT_ID = "artisan-multiagent-ai"
 def _client() -> firestore.Client:
     try:
         return firestore.Client(project=PROJECT_ID)
-    except Exception as exc:  # pragma: no cover - environment-dependent
+    except Exception as exc:  # pragma: no cover - environment-dependent  # noqa: BLE001
         pytest.skip(f"no Firestore credentials available: {exc}")
 
 

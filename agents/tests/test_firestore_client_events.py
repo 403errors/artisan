@@ -6,7 +6,6 @@ is mocked here — unlike test_firestore_client.py, this file never touches the 
 from datetime import UTC, datetime
 
 import pytest
-
 from artisan_agents import event_context
 from artisan_agents.gcp import firestore_client
 from artisan_shared.event_log import NoOpEventSink

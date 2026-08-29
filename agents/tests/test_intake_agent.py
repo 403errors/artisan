@@ -5,12 +5,15 @@ explicitly-marked integration test should do that."""
 from collections.abc import AsyncGenerator
 
 import pytest
+from artisan_agents.agents import intake_agent as intake_agent_module
+from artisan_agents.agents.intake_agent import (
+    INTAKE_INSTRUCTION,
+    _build_prompt,
+    run_intake,
+)
 from google.adk.models.base_llm import BaseLlm
 from google.adk.models.llm_response import LlmResponse
 from google.genai import types
-
-from artisan_agents.agents import intake_agent as intake_agent_module
-from artisan_agents.agents.intake_agent import INTAKE_INSTRUCTION, _build_prompt, run_intake
 
 
 class _FakeLlm(BaseLlm):

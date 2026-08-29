@@ -7,10 +7,6 @@ import uuid
 from collections.abc import AsyncGenerator
 
 import pytest
-from google.adk.models.base_llm import BaseLlm
-from google.adk.models.llm_response import LlmResponse
-from google.genai import types
-
 from artisan_execution_sandbox.coding_agent import (
     _build_prompt,
     run_coding_agent,
@@ -19,6 +15,9 @@ from artisan_execution_sandbox.coding_agent import (
 from artisan_execution_sandbox.config import MAX_CODING_AGENT_TOOL_CALLS
 from artisan_shared.event_log import NoOpEventSink
 from artisan_shared.models import Plan, RemovedCodeItem
+from google.adk.models.base_llm import BaseLlm
+from google.adk.models.llm_response import LlmResponse
+from google.genai import types
 
 _PLAN = Plan(
     steps=["Create hello.txt with a greeting"],

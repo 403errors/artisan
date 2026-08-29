@@ -6,7 +6,6 @@ candidate capping, and prompt hygiene."""
 import json
 
 import pytest
-
 from artisan_agents.agents import duplicate_agent as duplicate_agent_module
 from artisan_agents.agents.duplicate_agent import (
     DUPLICATE_INSTRUCTION,
@@ -14,6 +13,7 @@ from artisan_agents.agents.duplicate_agent import (
     run_duplicate_check,
 )
 from artisan_shared.models import DuplicateSearchHit
+
 from tests.conftest import FakeLlm
 
 

@@ -8,8 +8,6 @@ from datetime import UTC, datetime
 
 import pytest
 import pytest_asyncio
-from google.cloud import firestore
-
 from artisan_agents.gcp import firestore_client
 from artisan_agents.gcp.firestore_client import (
     ClarificationCapExceeded,
@@ -17,6 +15,7 @@ from artisan_agents.gcp.firestore_client import (
     TrivialConflictCapExceeded,
 )
 from artisan_shared.firestore_schema import EscalationEntry, TraceEntry
+from google.cloud import firestore
 
 REPO = "403errors/artisan-demo"
 
@@ -34,7 +33,7 @@ def _fresh_firestore_client():
 def _require_credentials() -> None:
     try:
         firestore.Client(project="artisan-multiagent-ai")
-    except Exception as exc:  # pragma: no cover - environment-dependent
+    except Exception as exc:  # pragma: no cover - environment-dependent  # noqa: BLE001
         pytest.skip(f"no Firestore credentials available: {exc}")
 
 
