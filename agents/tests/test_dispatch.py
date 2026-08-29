@@ -29,12 +29,13 @@ class _FakeTicketStore:
     async def get_ticket(self, repo: str, issue_number: int) -> TicketDoc | None:
         return self.tickets.get(self._key(repo, issue_number))
 
-    async def create_ticket(self, repo: str, issue_number: int, jira_key: str) -> TicketDoc:
+    async def create_ticket(self, repo: str, issue_number: int, jira_key: str, jira_summary: str | None = None) -> TicketDoc:
         now = datetime.now(timezone.utc)
         doc = TicketDoc(
             github_issue_number=issue_number,
             github_repo=repo,
             jira_key=jira_key,
+            jira_summary=jira_summary,
             status="intake",
             created_at=now,
             updated_at=now,
@@ -118,7 +119,7 @@ def stub_collaborators(monkeypatch):
     jira_comments: list[str] = []
 
     async def fake_create_ticket(issue_number, title, body, url):
-        return "ART-1"
+        return "ART-1", f"[GH#{issue_number}] {title}"
 
     async def fake_transition_ticket(jira_key, status_name):
         raise AssertionError("must not transition to In Progress on an insufficient verdict")
@@ -202,7 +203,7 @@ async def test_needs_info_verdict_posts_a_numbered_list_of_multiple_questions(
     posted_comments = []
 
     async def fake_create_ticket(issue_number, title, body, url):
-        return "ART-1"
+        return "ART-1", f"[GH#{issue_number}] {title}"
 
     async def fake_get_issue_thread(repo, issue_number):
         return "title", "body", "octocat", []
@@ -256,7 +257,7 @@ async def test_not_actionable_verdict_skips_clarification_rounds_and_marks_manua
     jira_comments = []
 
     async def fake_create_ticket(issue_number, title, body, url):
-        return "ART-1"
+        return "ART-1", f"[GH#{issue_number}] {title}"
 
     async def fake_get_issue_thread(repo, issue_number):
         return "title", "how are you doing today?", "octocat", []
@@ -312,7 +313,7 @@ async def test_sus_image_gate_short_circuits_before_running_intake(fake_store, m
     intake_calls = []
 
     async def fake_create_ticket(issue_number, title, body, url):
-        return "ART-1"
+        return "ART-1", f"[GH#{issue_number}] {title}"
 
     async def fake_get_issue_thread(repo, issue_number):
         return (
@@ -351,7 +352,7 @@ async def test_sufficient_verdict_transitions_to_in_progress_and_hands_off_to_ga
     gate2_calls = []
 
     async def fake_create_ticket(issue_number, title, body, url):
-        return "ART-1"
+        return "ART-1", f"[GH#{issue_number}] {title}"
 
     async def fake_transition_ticket(jira_key, status_name):
         transitioned.append((jira_key, status_name))
@@ -393,7 +394,7 @@ async def test_sufficient_after_clarification_round_posts_a_taking_over_comment(
     ]
 
     async def fake_create_ticket(issue_number, title, body, url):
-        return "ART-1"
+        return "ART-1", f"[GH#{issue_number}] {title}"
 
     async def fake_transition_ticket(jira_key, status_name):
         pass
@@ -457,7 +458,7 @@ async def test_sufficient_on_first_pass_does_not_touch_jira_description(
     jira_descriptions = []
 
     async def fake_create_ticket(issue_number, title, body, url):
-        return "ART-1"
+        return "ART-1", f"[GH#{issue_number}] {title}"
 
     async def fake_transition_ticket(jira_key, status_name):
         pass
@@ -500,7 +501,7 @@ async def test_github_404_on_issue_thread_is_classified_non_retriable(
     fake_store, monkeypatch
 ) -> None:
     async def fake_create_ticket(issue_number, title, body, url):
-        return "ART-1"
+        return "ART-1", f"[GH#{issue_number}] {title}"
 
     async def fake_get_issue_thread(repo, issue_number):
         raise _request_failed(404)
@@ -517,7 +518,7 @@ async def test_non_404_github_failure_on_issue_thread_propagates_unchanged(
     fake_store, monkeypatch
 ) -> None:
     async def fake_create_ticket(issue_number, title, body, url):
-        return "ART-1"
+        return "ART-1", f"[GH#{issue_number}] {title}"
 
     async def fake_get_issue_thread(repo, issue_number):
         raise _request_failed(500)
@@ -660,7 +661,7 @@ async def test_injection_flagged_body_emits_event_and_is_passed_to_run_intake(
     intake_calls = []
 
     async def fake_create_ticket(issue_number, title, body, url):
-        return "ART-1"
+        return "ART-1", f"[GH#{issue_number}] {title}"
 
     async def fake_transition_ticket(jira_key, status_name):
         pass

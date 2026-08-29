@@ -53,6 +53,7 @@ export interface TicketDoc {
   githubIssueNumber: number;
   githubRepo: string;
   jiraKey: string;
+  jiraSummary: string | null;
   status: TicketStatus;
   currentStep: string | null;
   clarificationRounds: number;
@@ -75,6 +76,7 @@ export interface TicketDoc {
 export interface TicketSummary {
   id: string;
   jiraKey: string;
+  jiraSummary: string | null;
   githubIssueNumber: number;
   githubRepo: string;
   status: TicketStatus;

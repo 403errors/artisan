@@ -37,24 +37,25 @@ async def _request(method: str, path: str, **kwargs) -> dict:
     return response.json() if response.content else {}
 
 
-async def create_ticket(issue_number: int, issue_title: str, issue_body: str, issue_url: str) -> str:
-    """Creates a Jira issue on the configured project; returns the new issue key (e.g. `ART-42`).
+async def create_ticket(issue_number: int, issue_title: str, issue_body: str, issue_url: str) -> tuple[str, str]:
+    """Creates a Jira issue on the configured project; returns a tuple of (issue_key, summary).
     `issue_number` is prefixed onto the summary since Jira's own key (`ART-N`) is a separate
     per-project auto-increment unrelated to the GitHub issue number — without this prefix there's
     no way to tell which GitHub issue a Jira ticket came from without opening it."""
+    summary = f"[GH#{issue_number}] {issue_title}"
     data = await _request(
         "POST",
         "/rest/api/2/issue",
         json={
             "fields": {
                 "project": {"key": JIRA_PROJECT_KEY},
-                "summary": f"[GH#{issue_number}] {issue_title}",
+                "summary": summary,
                 "description": f"{issue_body}\n\nSource: {issue_url}",
                 "issuetype": {"name": "Task"},
             }
         },
     )
-    return data["key"]
+    return data["key"], summary
 
 
 async def update_description(jira_key: str, description: str) -> None:
@@ -92,3 +93,12 @@ async def add_comment(jira_key: str, body: str) -> None:
 
 async def add_label(jira_key: str, label: str) -> None:
     await _request("PUT", f"/rest/api/2/issue/{jira_key}", json={"update": {"labels": [{"add": label}]}})
+
+
+async def get_ticket_summary(jira_key: str) -> str | None:
+    """Fetches the current summary/title of a Jira ticket. Returns None if the ticket is not found."""
+    try:
+        data = await _request("GET", f"/rest/api/2/issue/{jira_key}")
+        return data.get("fields", {}).get("summary")
+    except JiraClientError:
+        return None

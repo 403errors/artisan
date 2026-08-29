@@ -57,10 +57,10 @@ async def _handle_issue_opened(envelope: GitHubWebhookEnvelope) -> None:
     issue_number = issue["number"]
     ticket = await firestore_client.get_ticket(envelope.repo, issue_number)
     if ticket is None:
-        jira_key = await jira_client.create_ticket(
+        jira_key, jira_summary = await jira_client.create_ticket(
             issue_number, issue["title"], issue["body"] or "", issue["html_url"]
         )
-        ticket = await firestore_client.create_ticket(envelope.repo, issue_number, jira_key)
+        ticket = await firestore_client.create_ticket(envelope.repo, issue_number, jira_key, jira_summary)
     if ticket.status == "intake":
         await evaluate_intake(envelope.repo, issue_number, ticket.jira_key)
 

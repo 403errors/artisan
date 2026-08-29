@@ -26,6 +26,11 @@ export function TicketCard({ ticket }: { ticket: TicketSummary }) {
   const bucket = bucketOf(ticket.status);
   const stalled = isStalled({ status: ticket.status, updatedAt: ticket.updatedAt }, now);
   const href = `/tickets/${ticket.id}`;
+  
+  // Extract just the title from "[GH#N] Title" format
+  const displayTitle = ticket.jiraSummary 
+    ? ticket.jiraSummary.replace(/^\[GH#\d+\]\s*/, '')
+    : ticket.jiraKey;
 
   return (
     <Card
@@ -44,7 +49,7 @@ export function TicketCard({ ticket }: { ticket: TicketSummary }) {
     >
       <CardHeader className="flex flex-row items-start justify-between gap-2">
         <div>
-          <p className="font-medium">{ticket.jiraKey}</p>
+          <p className="font-medium">{displayTitle}</p>
           <p className="text-sm text-muted-foreground">#{ticket.githubIssueNumber}</p>
         </div>
         <TicketStatusBadge status={ticket.status} stalled={stalled} />

@@ -40,6 +40,7 @@ class TicketDoc(BaseModel):
     github_issue_number: int
     github_repo: str
     jira_key: str
+    jira_summary: str | None = None
     status: TicketStatus
     # Display-only progress hint for the Sprint 5 dashboard's live view (e.g. "planning",
     # "executing (attempt 2)") — not a control-flow-branching value like `status`, so it's a plain

@@ -25,6 +25,7 @@ interface RawTicketDoc {
   github_issue_number: number;
   github_repo: string;
   jira_key: string;
+  jira_summary: string | null;
   status: TicketStatus;
   current_step: string | null;
   clarification_rounds: number;
@@ -112,6 +113,7 @@ function toTicketDoc(id: string, raw: RawTicketDoc): TicketDoc {
     githubIssueNumber: raw.github_issue_number,
     githubRepo: raw.github_repo,
     jiraKey: raw.jira_key,
+    jiraSummary: raw.jira_summary ?? null,
     status: raw.status,
     currentStep: raw.current_step ?? null,
     clarificationRounds: raw.clarification_rounds,
@@ -135,6 +137,7 @@ function toTicketSummary(doc: TicketDoc): TicketSummary {
   return {
     id: doc.id,
     jiraKey: doc.jiraKey,
+    jiraSummary: doc.jiraSummary,
     githubIssueNumber: doc.githubIssueNumber,
     githubRepo: doc.githubRepo,
     status: doc.status,

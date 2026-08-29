@@ -98,7 +98,7 @@ async def get_ticket(repo: str, issue_number: int) -> TicketDoc | None:
     return TicketDoc.model_validate(snapshot.to_dict())
 
 
-async def create_ticket(repo: str, issue_number: int, jira_key: str) -> TicketDoc:
+async def create_ticket(repo: str, issue_number: int, jira_key: str, jira_summary: str | None = None) -> TicketDoc:
     """Creates the ticket doc. Callers must have already created the Jira ticket (jira/client.py)
     since `jira_key` is a required field — the mapping is stored atomically with the doc, not
     added in a follow-up write."""
@@ -107,6 +107,7 @@ async def create_ticket(repo: str, issue_number: int, jira_key: str) -> TicketDo
         github_issue_number=issue_number,
         github_repo=repo,
         jira_key=jira_key,
+        jira_summary=jira_summary,
         status="intake",
         created_at=now,
         updated_at=now,
@@ -125,6 +126,11 @@ async def update_ticket(repo: str, issue_number: int, **fields) -> None:
         await current_sink().emit(type="step_changed", summary=str(fields["current_step"]))
     fields["updated_at"] = _now().isoformat()
     await _client().collection("tickets").document(ticket_doc_id(repo, issue_number)).update(fields)
+
+
+async def update_jira_summary(repo: str, issue_number: int, jira_summary: str | None) -> None:
+    """Updates the Jira ticket summary in Firestore — called when syncing from Jira."""
+    await update_ticket(repo, issue_number, jira_summary=jira_summary)
 
 
 async def mark_needs_human_review(repo: str, issue_number: int) -> None:

@@ -35,6 +35,7 @@ def stub_secret(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.asyncio
 async def test_create_ticket_returns_issue_key(monkeypatch) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
@@ -45,8 +46,9 @@ async def test_create_ticket_returns_issue_key(monkeypatch) -> None:
         return httpx.Response(201, json={"key": "ART-42"})
 
     monkeypatch.setattr(jira_client_module.httpx, "AsyncClient", _client_factory(handler))
-    key = await create_ticket(7, "Title", "Body", "https://github.com/x/y/issues/1")
+    key, summary = await create_ticket(7, "Title", "Body", "https://github.com/x/y/issues/1")
     assert key == "ART-42"
+    assert summary == "[GH#7] Title"
 
 
 @pytest.mark.asyncio
