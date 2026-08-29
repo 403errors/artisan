@@ -311,6 +311,53 @@ async def test_other_pull_request_actions_are_ignored(monkeypatch) -> None:
     assert calls == []
 
 
+def _merged_pull_request_event(repo: str = "acme/demo") -> GitHubWebhookEnvelope:
+    envelope = _pull_request_event("closed", repo=repo)
+    return envelope.model_copy(
+        update={"payload": {**envelope.payload, "pull_request": {**envelope.payload["pull_request"], "merged": True}}}
+    )
+
+
+@pytest.mark.asyncio
+async def test_merged_pull_request_resolves_the_ticket_and_marks_it_done(monkeypatch) -> None:
+    from artisan_shared.firestore_schema import TicketDoc
+
+    now = datetime.now(timezone.utc)
+    ticket = TicketDoc(
+        github_issue_number=1, github_repo="acme/demo", jira_key="ART-1", status="pr_open",
+        pr_number=5, created_at=now, updated_at=now,
+    )
+
+    async def fake_get_ticket_by_pr(repo, pr_number):
+        return ticket if pr_number == 5 else None
+
+    calls = []
+
+    async def fake_mark_ticket_done(repo, issue_number, jira_key, *, trigger):
+        calls.append((repo, issue_number, jira_key, trigger))
+
+    monkeypatch.setattr(dispatch.firestore_client, "get_ticket_by_pr", fake_get_ticket_by_pr)
+    monkeypatch.setattr(dispatch.completion, "mark_ticket_done", fake_mark_ticket_done)
+
+    await dispatch.handle_event(_merged_pull_request_event())
+
+    assert calls == [("acme/demo", 1, "ART-1", "merge")]
+
+
+@pytest.mark.asyncio
+async def test_merged_untracked_pull_request_is_a_noop(monkeypatch) -> None:
+    async def fake_get_ticket_by_pr(repo, pr_number):
+        return None
+
+    called = []
+    monkeypatch.setattr(dispatch.firestore_client, "get_ticket_by_pr", fake_get_ticket_by_pr)
+    monkeypatch.setattr(dispatch.completion, "mark_ticket_done", lambda *a, **k: called.append(1))
+
+    await dispatch.handle_event(_merged_pull_request_event())
+
+    assert called == []
+
+
 class _RecordingSink(NoOpEventSink):
     def __init__(self) -> None:
         super().__init__()

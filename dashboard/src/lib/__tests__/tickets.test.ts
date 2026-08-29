@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { currentGate, lastDecision } from "@/lib/tickets";
+import { currentGate, lastDecision, toTicketEvent, type RawTicketEvent } from "@/lib/tickets";
 import type { TicketDoc } from "@/types/ticket";
 
 function ticket(overrides: Partial<TicketDoc>): TicketDoc {
@@ -79,5 +79,58 @@ describe("lastDecision", () => {
     expect(lastDecision(ticket({ status: "pr_open", prUrl: "https://x/pull/5" }))).toContain(
       "https://x/pull/5",
     );
+  });
+});
+
+function rawEvent(overrides: Partial<RawTicketEvent>): RawTicketEvent {
+  return {
+    seq: 0,
+    run_id: "run-1",
+    at: { toDate: () => new Date("2026-01-01T00:00:00Z") } as RawTicketEvent["at"],
+    gate: "2",
+    type: "tool_call",
+    actor: "coding_agent",
+    summary: "read_file(path=a.txt)",
+    detail: null,
+    tool_name: "read_file",
+    tool_args: { path: "a.txt" },
+    tool_result_summary: null,
+    truncated: false,
+    ...overrides,
+  };
+}
+
+describe("toTicketEvent", () => {
+  it("converts the Firestore Timestamp to an ISO string and maps snake_case to camelCase", () => {
+    const event = toTicketEvent("doc-1", rawEvent({}));
+    expect(event).toMatchObject({
+      id: "doc-1",
+      at: "2026-01-01T00:00:00.000Z",
+      type: "tool_call",
+      gate: "2",
+      toolName: "read_file",
+      args: { path: "a.txt" },
+    });
+  });
+
+  it("falls back to now when at is still null (server timestamp not yet resolved)", () => {
+    const event = toTicketEvent("doc-1", rawEvent({ at: null }));
+    expect(new Date(event.at).getTime()).toBeGreaterThan(0);
+  });
+
+  it("marks error-type events with status error", () => {
+    const event = toTicketEvent("doc-1", rawEvent({ type: "error", summary: "boom" }));
+    expect(event.status).toBe("error");
+  });
+
+  it("omits detail/toolName/args/result when the underlying fields are null", () => {
+    const event = toTicketEvent(
+      "doc-1",
+      rawEvent({ detail: null, tool_name: null, tool_args: null, tool_result_summary: null }),
+    );
+    expect(event.detail).toBeUndefined();
+    expect(event.toolName).toBeUndefined();
+    expect(event.args).toBeUndefined();
+    expect(event.result).toBeUndefined();
   });
 });

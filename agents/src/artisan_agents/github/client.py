@@ -36,3 +36,13 @@ async def open_pull_request(
         owner, name, title=title, head=head, base=base, body=body
     )
     return response.parsed_data.number, response.parsed_data.html_url
+
+
+async def get_pull_request(repo: str, pr_number: int) -> tuple[str, str, str, str, str]:
+    """Returns (title, body, base_ref, head_ref, head_sha) — a manual "retry Gate 3" action
+    (Sprint 6) needs these to reconstruct start_gate3's inputs, since only `pr_number` is
+    persisted on the ticket doc."""
+    owner, name = _split_repo(repo)
+    gh = get_installation_client()
+    pr = (await gh.rest.pulls.async_get(owner, name, pr_number)).parsed_data
+    return pr.title, pr.body or "", pr.base.ref, pr.head.ref, pr.head.sha

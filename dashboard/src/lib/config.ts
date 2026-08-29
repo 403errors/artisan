@@ -2,6 +2,10 @@
 export const TARGET_REPO = "403errors/artisan-demo";
 export const JIRA_SITE = "pieisnot22by7.atlassian.net";
 export const GCP_PROJECT_ID = "artisan-multiagent-ai";
+// Same topic `agents/`'s real GitHub webhooks publish to (agents/config.py's PUBSUB_TOPIC
+// default) — a manual action rides the exact same OIDC-authenticated ingress, at-least-once
+// delivery, and claim_delivery idempotency as a real webhook, discriminated by envelope `kind`.
+export const PUBSUB_TOPIC = "artisan-github-events";
 
 export function githubIssueUrl(repo: string, issueNumber: number): string {
   return `https://github.com/${repo}/issues/${issueNumber}`;

@@ -1,3 +1,5 @@
+import type { Timestamp } from "@google-cloud/firestore";
+
 import { getFirestore } from "@/lib/firestore";
 import { TARGET_REPO } from "@/lib/config";
 import { currentGate, lastDecision } from "@/lib/ticket-derived";
@@ -10,6 +12,7 @@ import type {
   TicketSummary,
   TicketStatus,
 } from "@/types/ticket";
+import type { TicketEvent } from "@/types/ticket-event";
 
 // Raw wire shape as Firestore actually stores it — Pydantic dumps field names verbatim, no
 // alias_generator configured anywhere in firestore_schema.py, so this is genuinely snake_case.
@@ -157,6 +160,43 @@ export async function getTicket(id: string): Promise<TicketDoc | null> {
   const snapshot = await getFirestore().collection("tickets").doc(id).get();
   if (!snapshot.exists) return null;
   return toTicketDoc(snapshot.id, snapshot.data() as RawTicketDoc);
+}
+
+// Raw wire shape of a `tickets/{ticketId}/events/{autoId}` doc — see
+// packages/artisan_shared/src/artisan_shared/events.py::TicketEvent for the source of truth.
+// `at` is a real Firestore Timestamp (SERVER_TIMESTAMP resolved server-side), not an ISO string
+// like every other timestamp field in this file — see event_log.py's EventSink for why (ordering
+// across two different processes with unbounded clock skew).
+export interface RawTicketEvent {
+  seq: number;
+  run_id: string;
+  at: Timestamp | null;
+  gate: "1" | "2" | "3" | null;
+  type: string;
+  actor: string;
+  summary: string;
+  detail: string | null;
+  tool_name: string | null;
+  tool_args: Record<string, string> | null;
+  tool_result_summary: string | null;
+  truncated: boolean;
+}
+
+export function toTicketEvent(id: string, raw: RawTicketEvent): TicketEvent {
+  return {
+    id,
+    // A just-committed event's listener callback can still see `at` as null for an instant
+    // (server-timestamp resolution) — fall back to "now" rather than a bogus epoch date.
+    at: raw.at ? raw.at.toDate().toISOString() : new Date().toISOString(),
+    type: raw.type,
+    gate: raw.gate,
+    summary: raw.summary,
+    detail: raw.detail ?? undefined,
+    toolName: raw.tool_name ?? undefined,
+    args: raw.tool_args ?? undefined,
+    result: raw.tool_result_summary ?? undefined,
+    status: raw.type === "error" ? "error" : undefined,
+  };
 }
 
 export { toTicketDoc, toTicketSummary, currentGate, lastDecision };

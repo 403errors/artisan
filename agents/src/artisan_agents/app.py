@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 
-from artisan_agents import tracing
+from artisan_agents import manual_actions, tracing
 from artisan_agents.config import SECRET_GITHUB_WEBHOOK_SECRET
 from artisan_agents.dispatch import NonRetriableEventError, handle_event
 from artisan_agents.gcp.firestore_client import (
@@ -30,6 +30,7 @@ from artisan_agents.gcp.pubsub import (
 )
 from artisan_agents.gcp.secrets import get_secret
 from artisan_agents.github.webhook import parse_envelope, verify_signature
+from artisan_shared.models import ManualActionEnvelope
 
 
 @asynccontextmanager
@@ -66,21 +67,30 @@ async def pubsub_push(request: Request) -> Response:
 
     body = await request.json()
     envelope = decode_push_message(body)
+    # ManualActionEnvelope has no delivery_id (it's dashboard-originated, not a GitHub delivery) —
+    # action_id is its own claim_delivery key instead, serving the identical double-delivery-guard
+    # purpose.
+    claim_key = (
+        envelope.action_id if isinstance(envelope, ManualActionEnvelope) else envelope.delivery_id
+    )
 
-    if not await claim_delivery(envelope.delivery_id):
+    if not await claim_delivery(claim_key):
         return Response(status_code=200)
 
     try:
-        await handle_event(envelope)
+        if isinstance(envelope, ManualActionEnvelope):
+            await manual_actions.handle_action(envelope)
+        else:
+            await handle_event(envelope)
     except NonRetriableEventError:
         # This delivery will fail identically forever (e.g. the GitHub issue it references
         # doesn't exist) — mark it completed so Pub/Sub doesn't burn the dead-letter budget
         # retrying something that can never succeed.
-        await mark_delivery_completed(envelope.delivery_id)
+        await mark_delivery_completed(claim_key)
         return Response(status_code=200)
     except Exception:
-        await mark_delivery_failed(envelope.delivery_id)
+        await mark_delivery_failed(claim_key)
         raise
 
-    await mark_delivery_completed(envelope.delivery_id)
+    await mark_delivery_completed(claim_key)
     return Response(status_code=200)

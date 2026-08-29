@@ -212,3 +212,46 @@ def test_pubsub_push_acks_and_does_not_retry_on_non_retriable_error(client, monk
     assert response.status_code == 200
     assert completed == ["d-4"]
     assert failed == []
+
+
+def test_pubsub_push_routes_a_manual_action_envelope_to_manual_actions_and_claims_by_action_id(
+    client, monkeypatch
+) -> None:
+    from artisan_shared.models import ManualActionEnvelope
+
+    envelope = ManualActionEnvelope(
+        action_id="action-1", action="retry_gate2", repo="a/b", issue_number=1, actor="octocat"
+    )
+    monkeypatch.setattr(app_module, "verify_push_token", lambda _header: None)
+    monkeypatch.setattr(app_module, "decode_push_message", lambda _body: envelope)
+
+    claimed = []
+    completed = []
+    handled = []
+
+    async def _claim(key):
+        claimed.append(key)
+        return True
+
+    async def _handle_action(_envelope):
+        handled.append(_envelope)
+
+    async def _mark_completed(key):
+        completed.append(key)
+
+    async def _handle_event_must_not_be_called(_envelope):
+        raise AssertionError("a ManualActionEnvelope must not be routed to dispatch.handle_event")
+
+    monkeypatch.setattr(app_module, "claim_delivery", _claim)
+    monkeypatch.setattr(app_module.manual_actions, "handle_action", _handle_action)
+    monkeypatch.setattr(app_module, "handle_event", _handle_event_must_not_be_called)
+    monkeypatch.setattr(app_module, "mark_delivery_completed", _mark_completed)
+
+    response = client.post(
+        "/pubsub/push",
+        json={"message": {"data": base64.b64encode(b"{}").decode()}},
+    )
+    assert response.status_code == 200
+    assert claimed == ["action-1"]
+    assert handled == [envelope]
+    assert completed == ["action-1"]

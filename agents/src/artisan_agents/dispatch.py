@@ -6,7 +6,7 @@ hand off into Gate 3 (gate3.handle_pull_request_event, Sprint 4)."""
 
 from githubkit.exception import RequestFailed
 
-from artisan_agents import event_context, gate2, gate3, tracing
+from artisan_agents import completion, event_context, gate2, gate3, tracing
 from artisan_agents.agents.intake_agent import run_intake
 from artisan_agents.gcp import firestore_client
 from artisan_agents.gcp.firestore_client import ClarificationCapExceeded
@@ -29,6 +29,26 @@ async def handle_event(envelope: GitHubWebhookEnvelope) -> None:
         await _handle_issue_comment(envelope)
     elif envelope.event == "pull_request" and envelope.action in {"opened", "synchronize"}:
         await gate3.handle_pull_request_event(envelope.repo, envelope.payload)
+    elif (
+        envelope.event == "pull_request"
+        and envelope.action == "closed"
+        and envelope.payload["pull_request"].get("merged") is True
+    ):
+        await _handle_pull_request_merged(envelope)
+
+
+async def _handle_pull_request_merged(envelope: GitHubWebhookEnvelope) -> None:
+    """Sprint 6: this branch didn't exist before — `pull_request.closed` deliveries were already
+    flowing through Pub/Sub (per SUPPORTED_EVENTS) but silently dropped, so nothing ever moved a
+    ticket to `done` despite docs/SYSTEM_DESIGN.md §9 claiming otherwise. `"pull_request"` needs
+    no webhook-side change since it's already a subscribed event type."""
+    pr_number = envelope.payload["pull_request"]["number"]
+    ticket = await firestore_client.get_ticket_by_pr(envelope.repo, pr_number)
+    if ticket is None:
+        return  # not an Artisan-tracked PR
+    await completion.mark_ticket_done(
+        envelope.repo, ticket.github_issue_number, ticket.jira_key, trigger="merge"
+    )
 
 
 async def _handle_issue_opened(envelope: GitHubWebhookEnvelope) -> None:

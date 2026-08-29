@@ -10,7 +10,7 @@ from google.cloud import pubsub_v1
 from google.oauth2 import id_token
 
 from artisan_agents.config import GCP_PROJECT_ID, PUBSUB_PUSH_AUDIENCE, PUBSUB_TOPIC
-from artisan_shared.models import GitHubWebhookEnvelope
+from artisan_shared.models import GitHubWebhookEnvelope, ManualActionEnvelope
 
 
 class PushTokenVerificationError(Exception):
@@ -46,7 +46,13 @@ def verify_push_token(authorization_header: str | None) -> None:
         raise PushTokenVerificationError("unexpected audience")
 
 
-def decode_push_message(body: dict) -> GitHubWebhookEnvelope:
-    """Decodes a Pub/Sub push request body's base64 `message.data` back into the envelope."""
+def decode_push_message(body: dict) -> GitHubWebhookEnvelope | ManualActionEnvelope:
+    """Decodes a Pub/Sub push request body's base64 `message.data` back into the envelope.
+    Sprint 6: the dashboard publishes `ManualActionEnvelope`s to this same topic, discriminated by
+    the `kind` field — defaulted on `GitHubWebhookEnvelope` so messages published before that
+    field existed still decode correctly."""
     raw = base64.b64decode(body["message"]["data"])
-    return GitHubWebhookEnvelope.model_validate(json.loads(raw))
+    data = json.loads(raw)
+    if data.get("kind") == "manual_action":
+        return ManualActionEnvelope.model_validate(data)
+    return GitHubWebhookEnvelope.model_validate(data)
