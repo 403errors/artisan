@@ -1,34 +1,169 @@
-# Artisan
+<p align="center">
+  <img src="assets/artisan_banner.jpeg" alt="Artisan — The Agentic Development Platform" width="100%" />
+</p>
 
-An expert co-developer that closes the loop between your coding-agent fleet and Jira.
+<div align="center">
 
-It watches a GitHub repo's issues and PRs via webhooks and drives each one through three gates:
-**Gate 1 — intake** (checks the issue has enough context to automate, and flags/confirms likely
-**duplicates** against existing issues before doing anything), **Gate 2 — plan → execute → verify →
-PR**, and **Gate 3 — merge-conflict triage**.
 
-Full product context lives in [`docs/`](./docs): [PRD.md](./docs/PRD.md) (what/why), [SYSTEM_DESIGN.md](./docs/SYSTEM_DESIGN.md) (how), [TECH_STACK.md](./docs/TECH_STACK.md) (exact versions), [SPRINT.md](./docs/SPRINT.md) (sprint plan), [MILESTONE.md](./docs/MILESTONE.md) (closed-sprint DoD archive), [CONTEXT.md](./docs/CONTEXT.md) (current state — read this first).
+
+  **The Agentic Development Platform** — an expert co-developer that closes the loop between
+  your coding-agent fleet and Jira.
+
+  [![CI](https://github.com/403errors/artisan/actions/workflows/ci.yml/badge.svg)](https://github.com/403errors/artisan/actions/workflows/ci.yml)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+  [![Python 3.13](https://img.shields.io/badge/Python-3.13-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+  [![uv](https://img.shields.io/badge/uv-workspace-8B5CF6.svg)](https://docs.astral.sh/uv/)
+  [![Next.js](https://img.shields.io/badge/Next.js-15-000000.svg?logo=next.js&logoColor=white)](https://nextjs.org/)
+
+</div>
+
+Artisan watches a GitHub repo's issues and PRs via webhooks and drives each one through three
+gates — **GitHub issue in, reviewed PR out, Jira kept in sync throughout** — so no human has to
+shuttle context between a coding agent and a ticket tracker.
+
+## Features
+
+- **Duplicate-aware intake** — before acting, Artisan checks a new issue against open ones, flags
+  likely duplicates with links, and only proceeds after you confirm. It never auto-closes anything.
+- **Plan → Execute → Verify → PR** — an issue becomes a plan, the plan is executed in an isolated
+  sandbox, and only a verified result with a passing test suite becomes a reviewable PR.
+- **Merge-conflict triage** — trivial conflicts are auto-resolved only when the full test suite
+  passes; conflicts that need a judgment call about intent are escalated with both sides laid out.
+- **Jira kept in sync end-to-end** — tickets move from *To Do* to an open PR with comments and
+  links, with no manual status editing.
+- **Full decision audit trail + dashboard** — every gate decision (proceed / ask / escalate) is
+  traced and visible in a dashboard, so you can always answer *"why did Artisan do that?"*
+
+## How it works
+
+```mermaid
+flowchart LR
+    subgraph GHA["GitHub"]
+        I["Issue / PR event"] --> W["Webhook · GitHub App"]
+    end
+    W --> PS["Pub/Sub · artisan-github-events"]
+    PS --> O["Orchestrator · Cloud Run"]
+    O --> G1["Gate 1 · Intake"]
+    G1 -->|sufficient context| G2["Gate 2 · Plan → Execute → Verify → PR"]
+    G2 --> G3["Gate 3 · Merge-conflict triage"]
+    G2 --> PR["Pull Request"]
+    G3 --> PR
+    PR --> M["Human merges"]
+    M --> DONE["Ticket done"]
+    O <--> J["Jira · kept in sync"]
+    O <--> F["Firestore · source of truth"]
+    O -.-> DB["Dashboard"]
+```
+
+### Gate 1 · Intake — duplicate-aware by design
+
+Every new issue is checked against the repo's open issues *before* anything happens. A Search API
+pre-filter finds candidates, an agent scores true overlap, and only **you** decide whether a
+duplicate is really a duplicate.
+
+```mermaid
+flowchart TD
+    A["Issue opened"] --> B["Duplicate check\nSearch API pre-filter + agent"]
+    B --> C{"Likely duplicate?"}
+    C -- "no" --> D["Intake Agent\njudges context"]
+    C -- "yes" --> E["Flag comment with links\nask reporter to confirm"]
+    E --> F{"Reporter confirms?"}
+    F -- "duplicate" --> G["Close as duplicate · ticket done"]
+    F -- "not a duplicate" --> D
+    D --> H{"Enough context?"}
+    H -- "yes" --> I["Trigger Gate 2"]
+    H -- "no" --> J["Post one specific question\n(≤ 3 rounds, then manual pickup)"]
+    J --> D
+```
+
+### Gate 2 · Plan → Execute → Verify → PR — security first
+
+No code ever touches a shared machine and no PR opens on a guess. Execution happens in an
+ephemeral Cloud Run Job; the full test suite must pass; a verification agent checks the result
+against the plan and the original issue — *then* a PR is opened.
+
+```mermaid
+flowchart TD
+    A["Gate 2 triggered"] --> B["Routing\n→ domain-expert persona(s)"]
+    B --> C["Planning Agent\n→ plan: steps · files · tests · docs"]
+    C --> D["Sandboxed execution job\nclone · branch · write code · run full suite"]
+    D --> E{"Tests pass?"}
+    E -- "no" --> R["Specific feedback · retry\n(capped)"]
+    R --> C
+    E -- "yes" --> F["Verification Agent\nresult vs plan vs issue"]
+    F --> G{"Verified?"}
+    G -- "no" --> R
+    G -- "yes" --> H["Open PR\n(tags issue · summarizes approach)"]
+    H --> K["Jira + Firestore synced\nstatus: PR open — awaiting review"]
+```
+
+Safety invariants:
+
+- **Sandboxed execution** — the coding agent runs in an ephemeral Cloud Run Job with bounded
+  tools; no shelled-out external coding CLIs.
+- **No force-push, no self-merge** — a human merge is the only path to *Done*.
+- **Bounded retries, then escalation** — never an infinite retry loop.
+
+### Gate 3 · Merge-conflict triage — never guesses on intent
+
+Artisan runs its own authoritative trial-merge (not GitHub's stale `mergeable_state`) and
+classifies the conflict. Trivial ones are resolved in a scratch worktree — and only pushed if the
+full suite passes. Semantic conflicts are always escalated, with both sides laid out.
+
+```mermaid
+flowchart TD
+    A["PR opened / updated"] --> B["Trial merge in sandbox\nHEAD + base"]
+    B --> C{"Clean merge?"}
+    C -- "yes" --> D["No-op"]
+    C -- "no" --> E["Conflict Agent\nclassifies trivial vs semantic"]
+    E -- "semantic" --> F["Side A vs Side B comparison\n→ escalate to maintainer"]
+    E -- "trivial" --> G["Resolve in scratch worktree\n(one allowed attempt)"]
+    G --> H{"Full test suite passes?"}
+    H -- "yes" --> I["Push to PR branch\nfast-forward only"]
+    H -- "no" --> F
+```
+
+## Screenshots
+
+<p align="center">
+  <img src="assets/ticket_dashboard.png" alt="Artisan dashboard — every ticket's gate, status, and links at a glance" width="48%" />
+  <img src="assets/ticket_details_page.png" alt="Ticket detail — the full decision trail for any ticket" width="48%" />
+</p>
+
+*Left: the dashboard at a glance. Right: drill into any ticket to see every gate decision.*
+
+## Quick start
+
+```bash
+# 1. Sync the whole uv workspace (agents + execution-sandbox + artisan_shared)
+uv sync
+
+# 2. Run the orchestrator's test suite
+uv run --package artisan-agents pytest
+
+# 3. Run the dashboard
+cd dashboard && pnpm install && pnpm dev   # http://localhost:3000
+```
+
+Full local setup, env vars, and Cloud deploy instructions live in
+[`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md).
 
 ## Repo layout
 
 ```
 agents/                    Python — orchestrator + all ADK agents
 execution-sandbox/         Python — Cloud Run Job image (Execution Agent runtime)
-packages/artisan_shared/   Python — shared models/Firestore-id-scheme/GitHub-auth (Sprint 3)
+packages/artisan_shared/   Python — shared models / Firestore id-scheme / GitHub auth
 dashboard/                 TypeScript — Next.js monitoring dashboard
 infra/                     Deploy config (Dockerfiles, Terraform/gcloud)
 docs/                      Living project docs
 ```
 
-`agents/`, `execution-sandbox/`, and `packages/artisan_shared/` are three members of one `uv` workspace (root `pyproject.toml`) — `packages/artisan_shared/` holds the typed models and Firestore ticket-id scheme both Python projects need to stay in sync on (see [TECH_STACK.md](./docs/TECH_STACK.md)). Run `uv sync` from the repo root to sync every member at once.
-
-## Prerequisites
-
-- Python 3.13 (managed via `uv` — no separate install needed)
-- [`uv`](https://docs.astral.sh/uv/) — Python package manager
-- Node 22 LTS + [`pnpm`](https://pnpm.io/)
-- A GCP project with billing enabled, and the `gcloud` CLI authenticated
-- A GitHub App installed on the target repo, and a Jira Cloud site/project (see [CONTEXT.md](./docs/CONTEXT.md) for the specific identifiers already provisioned for this deployment)
+`agents/`, `execution-sandbox/`, and `packages/artisan_shared/` are three members of one `uv`
+workspace (root `pyproject.toml`) — `packages/artisan_shared/` holds the typed models and Firestore
+ticket-id scheme both Python projects need to stay in sync on (see
+[TECH_STACK.md](./docs/TECH_STACK.md)). Run `uv sync` from the repo root to sync every member at
+once.
 
 ## Setup
 
@@ -37,124 +172,24 @@ docs/                      Living project docs
 ```bash
 uv sync                              # from the repo root — syncs the whole workspace
 uv run --package artisan-agents pytest
+cd agents && uv run artisan-agents   # serves on :8080 (or $PORT)
 ```
 
-This includes the orchestrator (the Cloud Run service handling Gate 1 intake — see [SYSTEM_DESIGN.md §3](./docs/SYSTEM_DESIGN.md#3-data-flow--gate-1-intake)). To run it locally:
-
-```bash
-cd agents
-uv run artisan-agents   # serves on :8080 (or $PORT)
-```
-
-Requires GCP Application Default Credentials (`gcloud auth application-default login`) for Firestore/Secret Manager/Pub/Sub access, and these env vars for anything beyond the Sprint 1 defaults:
-
-| Var | Purpose | Default |
-|---|---|---|
-| `ARTISAN_GCP_PROJECT_ID` | GCP project for Firestore/Secret Manager/Pub/Sub | `artisan-multiagent-ai` |
-| `ARTISAN_PUBSUB_TOPIC` | Topic the ingestion route publishes to | `artisan-github-events` |
-| `ARTISAN_PUBSUB_PUSH_AUDIENCE` | Expected audience on the Pub/Sub push OIDC token — must be the full push endpoint URL *including* `/pubsub/push`, since that's what Cloud Run's default push OIDC audience actually is | *(unset — set at deploy time)* |
-| `ARTISAN_JIRA_URL` | Jira Cloud site base URL | `https://pieisnot22by7.atlassian.net` |
-| `ARTISAN_JIRA_USERNAME` | Jira service-account email (paired with the `jira-api-token` secret, Basic Auth) | `pieisnot22by7@gmail.com` |
-| `ARTISAN_JIRA_PROJECT_KEY` | Jira project tickets are created under | `ART` |
-| `ARTISAN_GITHUB_APP_ID` / `ARTISAN_GITHUB_INSTALLATION_ID` | GitHub App identity for installation-token auth | Sprint 1's provisioned App/installation |
-| `GOOGLE_GENAI_USE_VERTEXAI` | Routes ADK's Gemini calls through Vertex AI (no API key needed — uses ADC) instead of the Gemini Developer API | `TRUE` |
-| `GOOGLE_CLOUD_PROJECT` | Vertex AI project | `artisan-multiagent-ai` |
-| `GOOGLE_CLOUD_LOCATION` | Vertex AI location — **must be `global`**, not a region; `gemini-3.7-flash` isn't served from regional endpoints like `us-central1` (see [CONTEXT.md](./docs/CONTEXT.md) Milestone 3) | `global` |
-| `ARTISAN_CLOUD_RUN_REGION` | Region of the `execution-sandbox` Cloud Run Job the orchestrator triggers (Sprint 3, Gate 2) | `us-central1` |
-| `ARTISAN_EXECUTION_SANDBOX_JOB_NAME` | Name of that Cloud Run Job | `execution-sandbox` |
-
-Jira access is a direct REST API call (Basic Auth, email + `jira-api-token` from Secret Manager) — not routed through the `mcp-atlassian` service from Sprint 1, which was deleted after being superseded (see [CONTEXT.md](./docs/CONTEXT.md) for why).
-
-Gemini access requires `aiplatform.googleapis.com` enabled on the project and `roles/aiplatform.user` granted to the orchestrator's service account — see [CONTEXT.md](./docs/CONTEXT.md) Milestone 3 for the exact commands (this wasn't a Sprint 1 default; it was missing until Sprint 2's live field-testing caught it).
-
-Deploying to Cloud Run (`agents/Dockerfile`) — as of Sprint 3, `agents/pyproject.toml` has a `uv`
-workspace path dependency on `packages/artisan_shared`, so the Docker build context must be the
-**repo root**, not `agents/`; `gcloud run deploy --source .` can no longer be used directly since
-it doesn't support an out-of-context Dockerfile path:
-
-```bash
-# from the repo root
-docker build -f agents/Dockerfile -t <your-registry>/orchestrator .
-docker push <your-registry>/orchestrator
-gcloud run deploy orchestrator --image <your-registry>/orchestrator --region us-central1 \
-  --set-env-vars ARTISAN_PUBSUB_PUSH_AUDIENCE=<this-service-url>/pubsub/push
-```
-
-then point the GitHub App's webhook URL (App settings → Webhook) at `<orchestrator-url>/webhooks/github`, and create the Pub/Sub topic/push subscription (with a dead-letter policy — see [CONTEXT.md](./docs/CONTEXT.md) Milestone 3) targeting `<orchestrator-url>/pubsub/push` (see [CONTEXT.md](./docs/CONTEXT.md) "Known follow-up: Sprint 2 infra/deployment — done; Gate 1 verified live end-to-end" for the exact commands and required IAM grants — none of this is automated yet; Sprint 7 adds IaC).
+Requires GCP Application Default Credentials (`gcloud auth application-default login`) for
+Firestore/Secret Manager/Pub/Sub access, plus env vars — see
+[`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md#environment-variables).
 
 ### Execution sandbox (`execution-sandbox/`)
 
-Gate 2's per-attempt Cloud Run Job (Sprint 3) — clones the repo, runs a bounded ADK coding agent
-against the orchestrator's `Plan`, runs the test suite, pushes a branch, and writes the result back
-to Firestore. See [SYSTEM_DESIGN.md §4](./docs/SYSTEM_DESIGN.md#4-data-flow--gate-2-plan--execute--verify--pr).
-
 ```bash
-uv sync                                          # from the repo root
+uv sync
 uv run --package artisan-execution-sandbox pytest
-```
-
-Env vars beyond the Sprint 1 defaults it shares with `agents/` (`ARTISAN_GCP_PROJECT_ID`,
-`ARTISAN_GITHUB_APP_ID`/`ARTISAN_GITHUB_INSTALLATION_ID`):
-
-| Var | Purpose | Default |
-|---|---|---|
-| `ARTISAN_CLOUD_RUN_REGION` | Used to build a Cloud Logging link for this execution's `ExecutionResult.logs_uri` | `us-central1` |
-| `ARTISAN_DEMO_REPO_TEST_COMMAND` | The single test command run against the checkout — v1 is scoped to one fixed demo repo ([PRD.md §5](./docs/PRD.md#5-non-goals--out-of-scope-v1)), so a hardcoded command is legitimate rather than generic multi-language test detection | `npm test` |
-
-At runtime (as a Cloud Run Job execution, not a long-running service), the orchestrator's
-`gcp/cloud_run_jobs.py::trigger_execution` sets `GITHUB_REPO`, `ISSUE_NUMBER`, `BRANCH_NAME`,
-`ATTEMPT_NUMBER`, `PLAN_JSON`, and `PRIOR_FEEDBACK` as per-execution env var overrides — these
-aren't meant to be set by hand except for a manual smoke-test trigger.
-
-Needs two IAM grants beyond Sprint 1's `execution-sandbox@` (`datastore.user`): `secretAccessor`
-on the `github-app-private-key` secret, since this job mints its own GitHub App installation
-token rather than being handed one by the orchestrator; and `aiplatform.user`, for the coding
-agent's own Gemini calls (see [SYSTEM_DESIGN.md §8](./docs/SYSTEM_DESIGN.md#8-auth--security)).
-Both are granted as of Sprint 3's close-out.
-
-If Docker isn't available locally, `gcloud builds submit` with a small `cloudbuild.yaml`
-(`docker build -f <dockerfile> -t <image> .`, repo root as context) builds the same Dockerfile in
-Cloud Build and pushes automatically — this is how both images were actually built for Sprint 3's
-close-out, since no local Docker daemon existed in that environment either.
-
-Deploying/registering it as a Cloud Run Job — done as of Sprint 3's close-out, deployed with
-`--task-timeout=1800` and `ARTISAN_DEMO_REPO_TEST_COMMAND=true` (see
-[CONTEXT.md](./docs/CONTEXT.md) Milestone 5) — same repo-root build-context requirement as
-`agents/` above:
-
-```bash
-# from the repo root
-docker build -f execution-sandbox/Dockerfile -t <your-registry>/execution-sandbox .
-docker push <your-registry>/execution-sandbox
-gcloud run jobs deploy execution-sandbox --image <your-registry>/execution-sandbox --region us-central1
 ```
 
 ### Dashboard (`dashboard/`)
 
-**External prerequisite: a GitHub OAuth App** (separate from the GitHub App used for webhooks —
-that one authenticates Artisan *to* GitHub; this one authenticates a maintainer *into* the
-dashboard). Create it at GitHub → Settings → Developer settings → OAuth Apps → New OAuth App:
-- Homepage URL: `http://localhost:3000`
-- Authorization callback URL: `http://localhost:3000/api/auth/callback/github`
-
-Then create `dashboard/.env.local` (gitignored):
-
-```
-GITHUB_ID=<OAuth App client id>
-GITHUB_SECRET=<OAuth App client secret>
-AUTH_SECRET=<run: npx auth secret>
-```
-
-Firestore access uses plain Application Default Credentials, exactly like `agents/` — no service
-account key file, no extra env var:
-
-```bash
-gcloud auth application-default login
-```
-
-Sign-in itself is gated beyond "any GitHub account": the `signIn` callback checks the signed-in
-user's real collaborator permission on the target repo via the GitHub API, so dashboard access
-matches actual repo access (see [SYSTEM_DESIGN.md §8](./docs/SYSTEM_DESIGN.md#8-auth--security)).
+Requires a GitHub OAuth App and `dashboard/.env.local` — see
+[`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md#dashboard-dashboard).
 
 ```bash
 cd dashboard
@@ -164,22 +199,22 @@ pnpm build
 pnpm dev          # http://localhost:3000
 ```
 
-End-to-end tests (requires a running build). Real GitHub OAuth can't be driven headlessly, so
-Playwright signs in via a test-only Credentials provider gated behind `AUTH_E2E_TEST_MODE=1`
-(set automatically for the test run in `playwright.config.ts` — never set this in real local dev
-or in a real deployment):
+### Secrets & deployment
 
-```bash
-cd dashboard
-pnpm exec playwright install   # first run only
-pnpm build
-pnpm test:e2e
-```
+All secrets live in Google Secret Manager, scoped per-secret to the service account that needs it
+— never as literals in code. Build and deploy commands for Cloud Run are in
+[`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md).
 
-## Secrets
+## Docs
 
-None of this repo's code ever takes a raw secret as a literal. Everything (`github-app-private-key`, `github-webhook-secret`, `jira-api-token`) lives in Google Secret Manager, scoped per-secret to the service account that needs it. See [SYSTEM_DESIGN.md §8](./docs/SYSTEM_DESIGN.md#8-auth--security). The dashboard's OAuth App credentials (`GITHUB_ID`/`GITHUB_SECRET`/`AUTH_SECRET`, Sprint 5) are the one deliberate exception for now — local-only, in `dashboard/.env.local` (gitignored) — moving them to Secret Manager is Sprint 7 deploy scope.
+- [PRD.md](./docs/PRD.md) — what & why
+- [SYSTEM_DESIGN.md](./docs/SYSTEM_DESIGN.md) — how it's built
+- [TECH_STACK.md](./docs/TECH_STACK.md) — exact versions
+- [SPRINT.md](./docs/SPRINT.md) — sprint plan
+- [MILESTONE.md](./docs/MILESTONE.md) — closed-sprint DoD archive
+- [CONTEXT.md](./docs/CONTEXT.md) — current state (read this first)
+- [DEPLOYMENT.md](./docs/DEPLOYMENT.md) — deployment & operations
 
-## Deployment
+## License
 
-Cloud Run (services: `orchestrator`, `dashboard`; job: `execution-sandbox`; `mcp-atlassian` was deployed in Sprint 1 and deleted in Sprint 2 after being superseded, see above). `orchestrator` has a Dockerfile and a manual `docker build` + `gcloud run deploy --image` path (see above) as of Sprint 2, updated in Sprint 3 for the `uv` workspace's repo-root build context; `execution-sandbox` got its first Dockerfile in Sprint 3 and was deployed/registered as a Cloud Run Job for the first time as of Sprint 3's close-out (see [CONTEXT.md](./docs/CONTEXT.md) Milestone 5). Full IaC + CI/CD automation for all services lands in Sprint 7 — see [SPRINT.md](./docs/SPRINT.md#sprint-7--deployment--cicd).
+[MIT](./LICENSE) © 2026 Sameer Verma
