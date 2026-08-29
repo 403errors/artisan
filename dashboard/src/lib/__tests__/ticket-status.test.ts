@@ -16,6 +16,8 @@ describe("bucketOf", () => {
     ["in_progress", "active"],
     ["pr_open", "review"],
     ["manual_pickup", "review"],
+    ["needs_human_review", "review"],
+    ["duplicate_review", "review"],
     ["escalated", "urgent"],
     ["done", "resolved"],
   ];
@@ -37,6 +39,8 @@ describe("isLive", () => {
     expect(isLive("pr_open")).toBe(false);
     expect(isLive("escalated")).toBe(false);
     expect(isLive("manual_pickup")).toBe(false);
+    expect(isLive("needs_human_review")).toBe(false);
+    expect(isLive("duplicate_review")).toBe(false);
     expect(isLive("done")).toBe(false);
   });
 });

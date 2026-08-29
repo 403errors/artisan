@@ -2,6 +2,11 @@
 
 An expert co-developer that closes the loop between your coding-agent fleet and Jira.
 
+It watches a GitHub repo's issues and PRs via webhooks and drives each one through three gates:
+**Gate 1 — intake** (checks the issue has enough context to automate, and flags/confirms likely
+**duplicates** against existing issues before doing anything), **Gate 2 — plan → execute → verify →
+PR**, and **Gate 3 — merge-conflict triage**.
+
 Full product context lives in [`docs/`](./docs): [PRD.md](./docs/PRD.md) (what/why), [SYSTEM_DESIGN.md](./docs/SYSTEM_DESIGN.md) (how), [TECH_STACK.md](./docs/TECH_STACK.md) (exact versions), [SPRINT.md](./docs/SPRINT.md) (sprint plan), [MILESTONE.md](./docs/MILESTONE.md) (closed-sprint DoD archive), [CONTEXT.md](./docs/CONTEXT.md) (current state — read this first).
 
 ## Repo layout

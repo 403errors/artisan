@@ -52,6 +52,15 @@ describe("availableActions", () => {
     expect(kinds("escalated", RECENT)).toEqual(["mark-done:enabled", "retry:enabled"]);
     expect(kinds("manual_pickup", RECENT)).toEqual(["mark-done:enabled", "retry:enabled"]);
   });
+
+  it("offers a proceed-without-confirmation retry and escalate for duplicate_review", () => {
+    expect(kinds("duplicate_review", RECENT)).toEqual(["escalate:enabled", "retry:enabled"]);
+
+    const actions = availableActions({ status: "duplicate_review", updatedAt: RECENT }, NOW);
+    const retry = actions.find((a) => a.kind === "retry");
+    expect(retry?.label).toBe("Proceed without confirmation");
+    expect(retry?.confirm?.title).toBe("Proceed without duplicate confirmation?");
+  });
 });
 
 describe("postTicketAction", () => {

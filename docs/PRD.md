@@ -25,8 +25,9 @@ Artisan is an expert co-developer, not a chatbot: given a GitHub issue, it decid
 
 ### F1 — Intake & Context Gate (Gate 1)
 A GitHub Issue syncs into Jira as a new ticket. Artisan reads it and judges whether there's enough context to automate.
-- **User story:** As a maintainer, I file an issue and either see it start moving on its own, or get a specific, answerable question posted back on the issue — not a generic "please provide more details."
+- **User story:** As a maintainer, I file an issue and either see it start moving on its own, or get a specific, answerable question posted back on the issue — not a generic "please provide more details." If my issue is a duplicate of something already filed, Artisan flags it with links to the existing issue(s) and asks me to confirm before doing anything.
 - **Acceptance criteria:** if context is sufficient, the ticket moves to *In Progress* automatically. If not, Artisan posts the exact missing piece of information as an issue comment and waits, for up to 3 clarification rounds, before flagging the ticket for manual pickup instead of guessing.
+- **Duplicate check (Sprint 9):** before running intake, Artisan searches the repo's open issues for likely duplicates. On strong matches it posts a flag comment linking each candidate and asks the reporter to confirm. If the reporter confirms it's the same, Artisan closes the issue as a duplicate and closes the ticket out (Jira *Done*); if they say it's different, or the reply is ambiguous past one follow-up, Artisan proceeds with normal intake. Nothing is ever closed on Artisan's own initiative — only after the reporter's confirmation.
 
 ### F2 — Plan → Execute → Verify → PR Pipeline (Gate 2)
 With enough context, an orchestrator routes the ticket to the relevant domain-expert persona(s), which feed a Planning Agent, then an Execution Agent, then a Verification Agent.
@@ -73,5 +74,6 @@ A lightweight web app scoped to one GitHub repo and its linked Jira board.
 
 1. **Happy path:** Issue filed → Jira ticket created → Gate 1 passes → orchestrator routes to domain expert(s) → plan produced → code/tests/docs written → verification passes → full suite passes → PR opened, Jira updated to *PR Open — Awaiting Review* → human reviews and merges → ticket moves to *Done*.
 2. **Clarification path:** Issue filed → Gate 1 fails → Artisan comments with a specific question → user replies → Gate 1 re-evaluated (up to 3 rounds) → either passes or the ticket is flagged for manual pickup.
-3. **Retry path:** Verification or full test suite fails → specific feedback loops back to Planning/Execution → retried up to a capped count → on repeated failure, escalated to the maintainer with the failure detail attached.
+3. **Duplicate path:** Issue filed → search finds a likely duplicate → Artisan comments with links to the existing issue(s) and asks for confirmation → reporter replies "same" → issue closed as a duplicate and ticket closed out (Jira *Done*); or reporter replies "different" → Gate 1 intake proceeds normally.
+4. **Retry path:** Verification or full test suite fails → specific feedback loops back to Planning/Execution → retried up to a capped count → on repeated failure, escalated to the maintainer with the failure detail attached.
 4. **Conflict path:** PR conflicts before merge → Conflict Agent classifies → trivial: auto-resolved and re-verified in a scratch worktree → semantic: structured comparison posted, escalated to maintainer.

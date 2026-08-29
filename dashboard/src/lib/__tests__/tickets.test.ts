@@ -63,6 +63,10 @@ describe("currentGate", () => {
   it("falls back to gate 2 for a pr_open ticket with no escalation history", () => {
     expect(currentGate(ticket({ status: "pr_open", prUrl: "https://x" }))).toBe("2");
   });
+
+  it("returns gate 1 while awaiting duplicate confirmation", () => {
+    expect(currentGate(ticket({ status: "duplicate_review" }))).toBe("1");
+  });
 });
 
 describe("lastDecision", () => {
@@ -75,6 +79,12 @@ describe("lastDecision", () => {
         }),
       ),
     ).toBe("verification failed 3x");
+  });
+
+  it("reports awaiting duplicate confirmation while in duplicate_review", () => {
+    expect(lastDecision(ticket({ status: "duplicate_review" }))).toBe(
+      "awaiting duplicate confirmation",
+    );
   });
 
   it("mentions the PR url when pr_open", () => {

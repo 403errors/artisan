@@ -63,9 +63,13 @@ OpenTelemetry → Cloud Trace / Cloud Logging (every gate decision)
 1. GitHub emits an `issues` (opened) or `issue_comment` (created) event → GitHub App webhook → Pub/Sub.
 2. Orchestrator's Pub/Sub handler deduplicates on GitHub's `X-GitHub-Delivery` header (idempotency key stored in Firestore) and loads/creates the ticket's Firestore document.
 3. If the ticket has no Jira key yet, the orchestrator creates one via a direct Jira Cloud REST API call and stores the mapping.
-4. Intake Agent reads the GitHub issue thread + Jira ticket and returns a structured verdict: `sufficient` or `insufficient` (with a specific question).
-5. **Sufficient:** Artisan posts a GitHub comment @-mentioning the issue's reporter confirming it has enough context and is taking over resolution — after one or more clarification rounds it thanks the reporter for the clarifying replies; on the very first pass it just confirms pickup (the reporter otherwise gets no acknowledgement that automation engaged until a PR appears). Jira ticket transitions to *In Progress*; Gate 2 is triggered.
-6. **Insufficient:** Artisan posts the specific question as a GitHub issue comment, @-mentioning the issue's reporter, increments `clarification_rounds` in Firestore, and stops. A reply re-triggers step 4. After 3 rounds still insufficient, the ticket is flagged `manual_pickup` and Jira is annotated accordingly — no further automated attempts.
+4. **Duplicate check** (Sprint 9): the orchestrator queries the GitHub Search API for open issues in the same repo keyword-similar to the new issue (title tokens; body backfills a sparse title). If any candidates come back, the Duplicate Detector Agent (Gemini) scores them for *true* overlap (same problem, same expected behavior — conservative bar; a false positive is worse than a missed duplicate).
+   - **No candidates:** `duplicate_checked_at` is recorded and the flow continues to step 5. The check runs at most once per issue (guarded by `duplicate_checked_at`, so re-delivered webhooks and manual Gate 1 retries never re-run it), and the LLM call is gated on the search returning *any* candidates — zero extra model cost when nothing looks similar.
+   - **Candidates found:** Artisan posts a GitHub comment @-mentioning the reporter with a link to every candidate (so they can check each manually) and asks whether this is the same issue, then moves the ticket to `duplicate_review` and stops. Nothing is ever auto-closed (PRD.md §5).
+5. **Duplicate confirmation** (Sprint 9): a human reply to the flag comment while the ticket is in `duplicate_review` is classified by the Duplicate Confirm Agent: `confirm_duplicate` → close the issue as a duplicate of the named candidate (explanatory comment + `state_reason="not_planned"`), mark the ticket `done`, and move Jira to *Done* (`completion.mark_ticket_duplicate`); `not_duplicate` → clear the candidates, return to `intake`, and proceed to step 6; `needs_clarification` → one follow-up comment (capped at `MAX_DUPLICATE_FOLLOWUPS`), after which the issue proceeds anyway so an unresolved thread never blocks it forever. Any human reply counts, matching how the clarification loop treats comments.
+6. Intake Agent reads the GitHub issue thread + Jira ticket and returns a structured verdict: `sufficient` or `insufficient` (with a specific question).
+7. **Sufficient:** Artisan posts a GitHub comment @-mentioning the issue's reporter confirming it has enough context and is taking over resolution — after one or more clarification rounds it thanks the reporter for the clarifying replies; on the very first pass it just confirms pickup (the reporter otherwise gets no acknowledgement that automation engaged until a PR appears). Jira ticket transitions to *In Progress*; Gate 2 is triggered.
+8. **Insufficient:** Artisan posts the specific question as a GitHub issue comment, @-mentioning the issue's reporter, increments `clarification_rounds` in Firestore, and stops. A reply re-triggers step 6. After 3 rounds still insufficient, the ticket is flagged `manual_pickup` and Jira is annotated accordingly — no further automated attempts.
 
 **Flowchart:**
 
@@ -76,16 +80,24 @@ flowchart TD
     C --> D{"Delivery ID\nseen before?"}
     D -- Yes --> Z1["No-op (idempotent skip)"]
     D -- No --> E["Ticket bootstrap:\nFirestore doc + Jira ticket"]
-    E --> F["Intake Agent\n(Gemini 3.7 Flash)"]
-    F --> G{"sufficient?"}
-    G -- Yes --> H["Jira: transition to In Progress"]
-    H --> I(["Trigger Gate 2"])
-    G -- No --> J["Post clarifying question\nas GitHub issue comment"]
-    J --> K["Increment clarification_rounds\n(Firestore, transactional)"]
-    K --> L{"clarification_rounds\n>= 3?"}
-    L -- Yes --> M(["status: manual_pickup\nJira annotated — stop"])
-    L -- No --> N["Wait for issue reply"]
-    N --> F
+    E --> F{"Duplicate check:\nSearch API +\nDuplicate Detector Agent"}
+    F -- "no candidates" --> G["Intake Agent\n(Gemini 3.7 Flash)"]
+    F -- "candidates found" --> H["Post flag comment\nwith links to candidates"]
+    H --> I["status: duplicate_review\nwait for reply"]
+    I --> J{"Reply classified by\nDuplicate Confirm Agent"}
+    J -- "confirm_duplicate" --> K(["Close as duplicate,\nticket done, Jira Done"])
+    J -- "not_duplicate" --> G
+    J -- "needs_clarification" --> L["One follow-up comment\n(capped, then proceed)"]
+    L --> I
+    G --> M{"sufficient?"}
+    M -- Yes --> N["Jira: transition to In Progress"]
+    N --> O(["Trigger Gate 2"])
+    M -- No --> P["Post clarifying question\nas GitHub issue comment"]
+    P --> Q["Increment clarification_rounds\n(Firestore, transactional)"]
+    Q --> R{"clarification_rounds\n>= 3?"}
+    R -- Yes --> S(["status: manual_pickup\nJira annotated — stop"])
+    R -- No --> T["Wait for issue reply"]
+    T --> G
 ```
 
 ## 4. Data Flow — Gate 2 (Plan → Execute → Verify → PR)
@@ -224,6 +236,26 @@ class IntakeVerdict(BaseModel):
     sufficient: bool
     missing_context_question: str | None = None
 
+class DuplicateSearchHit(BaseModel):
+    issue_number: int
+    title: str
+    html_url: str
+    body: str  # truncated excerpt
+
+class DuplicateCandidate(BaseModel):
+    issue_number: int
+    title: str
+    html_url: str
+    score: float  # 0-1 similarity from the Duplicate Detector Agent
+    reason: str
+
+class DuplicateVerdict(BaseModel):
+    candidates: list[DuplicateCandidate] = []  # empty = no true duplicate, proceed
+
+class DuplicateConfirmVerdict(BaseModel):
+    intent: Literal["confirm_duplicate", "not_duplicate", "needs_clarification"]
+    target_issue_number: int | None = None
+
 class DomainExpertOutput(BaseModel):
     domain: Literal["frontend", "backend", "infra-devops"]
     technical_summary: str
@@ -278,9 +310,13 @@ class ConflictDetectionResult(BaseModel):
   github_issue_number: number,
   github_repo: string,
   jira_key: string,
-  status: "intake" | "in_progress" | "pr_open" | "escalated" | "manual_pickup" | "done",
+  status: "intake" | "in_progress" | "pr_open" | "escalated" | "manual_pickup" |
+          "needs_human_review" | "duplicate_review" | "done",
   current_step: string | null,
   clarification_rounds: number,
+  duplicate_checked_at: timestamp | null,   // set once — the "already checked" guard
+  duplicate_candidates: [{ issue_number, title, html_url, score, reason }],
+  duplicate_followups: number,
   retry_count: number,
   domains: string[],
   plan: Plan | null,
@@ -322,7 +358,7 @@ resolves to its ticket via a direct `.get()`, never a query.
 
 - **Firestore is the single source of truth per ticket** — every gate reads and writes through it; agents themselves are stateless between invocations.
 - **Idempotency is a claim, not a flag:** a `processed_deliveries/{delivery_id}` doc (top-level collection, not a field on the ticket doc) is atomically claimed *before* `handle_event` runs, not marked after — Gate 2 can run for minutes, and Pub/Sub's own ack-deadline-driven redelivery can easily arrive while the first attempt is still in flight, so a naive check-then-mark-on-success guard leaves that whole window unprotected (found and fixed in Sprint 3). `status` moves `in_progress` -> `completed` (permanent dedupe) or `in_progress` -> `failed` (immediately reclaimable, so Pub/Sub's own retry-on-failure still works); a stale `in_progress` claim (the owning instance died mid-request) is also reclaimable after a timeout, so one crashed attempt can't block a delivery forever.
-- **Caps enforced in Firestore, not in agent prompts:** `clarification_rounds` (max 3) and `retry_count` (max N, configurable) are read and incremented transactionally so a race between duplicate deliveries can't bypass a cap. `trivial_conflict_attempts` (Gate 3, max 1) uses the same transactional shape but a different comparison: it's claimed *before* the one allowed attempt runs (`new_count > MAX`, mirroring `claim_delivery`'s claim-before-side-effect philosophy), not after a failure like the other two caps (`new_count >= MAX`, gating the *next* attempt) — copying the wrong comparison here would make trivial-conflict resolution unreachable on the very first call. `semantic_conflict_escalated` (Gate 3, Sprint 6) is the same claim-before-act shape again but a one-shot boolean rather than a counter — every independent `opened`/`synchronize` delivery reclassified `semantic` used to re-post duplicate GitHub+Jira comments before this; `claim_semantic_conflict_escalation` now guarantees exactly one.
+- **Caps enforced in Firestore, not in agent prompts:** `clarification_rounds` (max 3) and `retry_count` (max N, configurable) are read and incremented transactionally so a race between duplicate deliveries can't bypass a cap. The duplicate check (Sprint 9) adds two softer, non-transactional bounds: `duplicate_checked_at` ensures the Search API + Duplicate Detector Agent run at most once per issue, and `duplicate_followups` (max `MAX_DUPLICATE_FOLLOWUPS`) caps the "please confirm" follow-up comments — after the cap, an ambiguous thread proceeds to normal intake rather than blocking the issue forever. `trivial_conflict_attempts` (Gate 3, max 1) uses the same transactional shape but a different comparison: it's claimed *before* the one allowed attempt runs (`new_count > MAX`, mirroring `claim_delivery`'s claim-before-side-effect philosophy), not after a failure like the other two caps (`new_count >= MAX`, gating the *next* attempt) — copying the wrong comparison here would make trivial-conflict resolution unreachable on the very first call. `semantic_conflict_escalated` (Gate 3, Sprint 6) is the same claim-before-act shape again but a one-shot boolean rather than a counter — every independent `opened`/`synchronize` delivery reclassified `semantic` used to re-post duplicate GitHub+Jira comments before this; `claim_semantic_conflict_escalation` now guarantees exactly one.
 - **Session/PR mapping:** the ticket doc is the join point between a GitHub issue, a Jira ticket, and (once opened) a PR — the dashboard and every agent resolve identity through this doc, never by re-deriving it from GitHub/Jira directly.
 
 ## 8. Auth & Security
