@@ -113,6 +113,18 @@ def _issue_comment(
     )
 
 
+def _deleted_issue_event(
+    repo: str = "acme/demo", issue_number: int = 1
+) -> GitHubWebhookEnvelope:
+    return GitHubWebhookEnvelope(
+        delivery_id="d-deleted",
+        event="issues",
+        action="deleted",
+        repo=repo,
+        payload={"issue": {"number": issue_number}},
+    )
+
+
 @pytest.fixture
 def stub_collaborators(monkeypatch):
     posted_comments: list[str] = []
@@ -555,11 +567,55 @@ async def test_github_404_on_issue_thread_is_classified_non_retriable(
     async def fake_get_issue_thread(repo, issue_number):
         raise _request_failed(404)
 
+    # The 404 path now runs issue-deleted cleanup first (see the cleanup test below) — stub it
+    # here so this test stays focused purely on the NonRetriableEventError classification.
+    called = []
+
+    async def fake_handle_issue_deleted(*args, **kwargs):
+        called.append(1)
+
+    monkeypatch.setattr(
+        dispatch.completion, "handle_issue_deleted", fake_handle_issue_deleted
+    )
+
     monkeypatch.setattr(dispatch.jira_client, "create_ticket", fake_create_ticket)
     monkeypatch.setattr(dispatch.github_client, "get_issue_thread", fake_get_issue_thread)
 
     with pytest.raises(dispatch.NonRetriableEventError):
         await dispatch.handle_event(_issue_opened())
+
+    assert called == [1]
+
+
+@pytest.mark.asyncio
+async def test_github_404_on_issue_thread_runs_issue_deleted_cleanup_first(
+    fake_store, monkeypatch
+) -> None:
+    """An issue deleted between webhook fire and delivery shows up to intake as a 404 — the
+    cleanup must run (so the ticket isn't left stuck in `intake`) before the delivery is acked."""
+    cleanup_calls = []
+
+    async def fake_create_ticket(issue_number, title, body, url):
+        return "ART-1", f"[GH#{issue_number}] {title}"
+
+    async def fake_get_issue_thread(repo, issue_number):
+        raise _request_failed(404)
+
+    async def fake_handle_issue_deleted(repo, issue_number, jira_key, *, pr_number):
+        cleanup_calls.append((repo, issue_number, jira_key, pr_number))
+
+    monkeypatch.setattr(dispatch.jira_client, "create_ticket", fake_create_ticket)
+    monkeypatch.setattr(dispatch.github_client, "get_issue_thread", fake_get_issue_thread)
+    monkeypatch.setattr(
+        dispatch.completion, "handle_issue_deleted", fake_handle_issue_deleted
+    )
+
+    with pytest.raises(dispatch.NonRetriableEventError):
+        await dispatch.handle_event(_issue_opened())
+
+    # The ticket was created before intake ran, so cleanup got its jira_key (pr_number is None —
+    # no PR had been opened yet).
+    assert cleanup_calls == [("acme/demo", 1, "ART-1", None)]
 
 
 @pytest.mark.asyncio
@@ -672,6 +728,72 @@ async def test_merged_untracked_pull_request_is_a_noop(monkeypatch) -> None:
     await dispatch.handle_event(_merged_pull_request_event())
 
     assert called == []
+
+
+@pytest.mark.asyncio
+async def test_deleted_issue_dispatches_cleanup_for_tracked_ticket(fake_store, monkeypatch) -> None:
+    now = datetime.now(timezone.utc)
+    fake_store.tickets["acme/demo__1"] = TicketDoc(
+        github_issue_number=1, github_repo="acme/demo", jira_key="ART-1", status="pr_open",
+        pr_number=42, created_at=now, updated_at=now,
+    )
+
+    cleanup_calls = []
+    sink = _RecordingSink()
+    monkeypatch.setattr(dispatch.firestore_client, "new_event_sink", lambda *a, **k: sink)
+
+    async def fake_handle_issue_deleted(repo, issue_number, jira_key, *, pr_number):
+        cleanup_calls.append((repo, issue_number, jira_key, pr_number))
+
+    monkeypatch.setattr(
+        dispatch.completion, "handle_issue_deleted", fake_handle_issue_deleted
+    )
+
+    await dispatch.handle_event(_deleted_issue_event())
+
+    assert cleanup_calls == [("acme/demo", 1, "ART-1", 42)]
+
+
+@pytest.mark.asyncio
+async def test_deleted_untracked_issue_is_a_noop(fake_store, monkeypatch) -> None:
+    called = []
+    monkeypatch.setattr(
+        dispatch.completion, "handle_issue_deleted", lambda *a, **k: called.append(1)
+    )
+
+    await dispatch.handle_event(_deleted_issue_event())
+
+    assert called == []
+
+
+@pytest.mark.asyncio
+async def test_opened_issue_reusing_a_deleted_number_starts_fresh(fake_store, monkeypatch) -> None:
+    """A deleted issue frees its number for reuse; the cleanup leaves the old doc in `done`, so a
+    new `opened` for that number must start a fresh ticket rather than inheriting the dead doc."""
+    now = datetime.now(timezone.utc)
+    fake_store.tickets["acme/demo__1"] = TicketDoc(
+        github_issue_number=1, github_repo="acme/demo", jira_key="ART-OLD", status="done",
+        created_at=now, updated_at=now,
+    )
+
+    created = []
+
+    async def fake_create_ticket(issue_number, title, body, url):
+        created.append((issue_number, title))
+        return "ART-NEW", f"[GH#{issue_number}] {title}"
+
+    async def fake_evaluate_intake(repo, issue_number, jira_key):
+        pass
+
+    monkeypatch.setattr(dispatch.jira_client, "create_ticket", fake_create_ticket)
+    monkeypatch.setattr(dispatch, "evaluate_intake", fake_evaluate_intake)
+
+    await dispatch.handle_event(_issue_opened())
+
+    assert created == [(1, "Bug")]
+    ticket = await fake_store.get_ticket("acme/demo", 1)
+    assert ticket.jira_key == "ART-NEW"
+    assert ticket.status == "intake"
 
 
 class _RecordingSink(NoOpEventSink):

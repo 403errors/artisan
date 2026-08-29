@@ -539,3 +539,89 @@ async def test_start_gate2_retry_generation_nonzero_avoids_branch_collision(
         REPO, ISSUE_NUMBER, JIRA_KEY, issue_title="T", issue_body="B", retry_generation=1
     )
     assert branches == [f"artisan/{JIRA_KEY}-r1-attempt-1"]
+
+
+@pytest.mark.asyncio
+async def test_start_gate2_aborts_retry_loop_when_ticket_already_done(
+    fake_store, stub_jira_and_github, monkeypatch
+) -> None:
+    """Issue deleted while Gate 2 was mid-flight lands the ticket in `done` — the retry loop must
+    not burn a sandbox run on a dead issue."""
+    fake_store.doc = fake_store.doc.model_copy(update={"status": "done"})
+
+    async def fake_run_routing(**kwargs):
+        return RoutingDecision(domains=["backend"], parallel=False)
+
+    async def fake_run_domain_expert(*, domain, issue_title, issue_body, repo_context=None):
+        return _domain_output(domain)
+
+    async def fake_run_planning(**kwargs):
+        raise AssertionError("planning must not run for a deleted issue")
+
+    async def fake_trigger_execution(**kwargs):
+        raise AssertionError("execution must not run for a deleted issue")
+
+    monkeypatch.setattr(gate2, "run_routing", fake_run_routing)
+    monkeypatch.setattr(gate2, "run_domain_expert", fake_run_domain_expert)
+    monkeypatch.setattr(gate2, "run_planning", fake_run_planning)
+    monkeypatch.setattr(gate2.cloud_run_jobs, "trigger_execution", fake_trigger_execution)
+
+    await gate2.start_gate2(REPO, ISSUE_NUMBER, JIRA_KEY, issue_title="T", issue_body="B")
+
+    assert fake_store.doc.status == "done"
+
+
+@pytest.mark.asyncio
+async def test_open_pr_is_skipped_when_ticket_deleted_during_execution(
+    fake_store, stub_jira_and_github, monkeypatch
+) -> None:
+    """The deletion can land between the retry-loop's status check and the PR open — `_open_pr_and_sync`
+    re-checks so a PR for a dead issue is never opened."""
+    prs, _jira_comments, _github_comments, _github_labels, _jira_labels = stub_jira_and_github
+
+    async def fake_run_routing(**kwargs):
+        return RoutingDecision(domains=["backend"], parallel=False)
+
+    async def fake_run_domain_expert(*, domain, issue_title, issue_body, repo_context=None):
+        return _domain_output(domain)
+
+    async def fake_run_planning(**kwargs):
+        return _PLAN
+
+    async def fake_trigger_execution(**kwargs):
+        return ExecutionResult(branch="artisan/x", diff_summary="x", tests_passed=True, logs_uri="gs://x")
+
+    async def fake_run_verification(**kwargs):
+        from artisan_shared.models import VerificationVerdict
+
+        # The deletion happens while verification runs (after the loop-top check).
+        fake_store.doc = fake_store.doc.model_copy(update={"status": "done"})
+        return VerificationVerdict(green=True)
+
+    monkeypatch.setattr(gate2, "run_routing", fake_run_routing)
+    monkeypatch.setattr(gate2, "run_domain_expert", fake_run_domain_expert)
+    monkeypatch.setattr(gate2, "run_planning", fake_run_planning)
+    monkeypatch.setattr(gate2.cloud_run_jobs, "trigger_execution", fake_trigger_execution)
+    monkeypatch.setattr(gate2, "run_verification", fake_run_verification)
+
+    await gate2.start_gate2(REPO, ISSUE_NUMBER, JIRA_KEY, issue_title="T", issue_body="B")
+
+    assert prs == []  # no PR opened for a deleted issue
+    assert fake_store.doc.status == "done"
+
+
+@pytest.mark.asyncio
+async def test_escalate_is_skipped_when_ticket_deleted(
+    fake_store, stub_jira_and_github, monkeypatch
+) -> None:
+    """Escalating a deleted issue would flip `done` back to `escalated` and 404 on the
+    reporter-facing comment — the cleanup already closed the ticket out, so skip it."""
+    _prs, jira_comments, github_comments, _github_labels, _jira_labels = stub_jira_and_github
+    fake_store.doc = fake_store.doc.model_copy(update={"status": "done"})
+
+    await gate2._escalate(REPO, ISSUE_NUMBER, JIRA_KEY, reason="boom")
+
+    assert fake_store.doc.escalation_history == []
+    assert fake_store.doc.status == "done"  # not resurrected to escalated
+    assert jira_comments == []
+    assert github_comments == []

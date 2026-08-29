@@ -123,6 +123,54 @@ flowchart TD
     O -- No --> D
 ```
 
+**Terminal transitions — how a ticket reaches `done` (Sprint 7/8):** exactly two triggers land a
+ticket in `done`, each funneled through one idempotent function in `completion.py` so concurrent
+triggers can never race each other into disagreeing:
+
+1. **Merge (the success path).** `pull_request` webhook with `closed` + `merged: true` →
+   `dispatch._handle_pull_request_merged` resolves the ticket via the `pr_index` pointer (no
+   pointer → no-op) → `completion.mark_ticket_done` → Firestore `status: done` + `ticket_done`
+   event, then Jira `Done` (best-effort, never rolls back Firestore). The dashboard's manual
+   "mark resolved" action calls the same function with `trigger="manual"`.
+2. **Issue deleted by its author (the withdrawn path).** `issues` webhook with `deleted` →
+   `dispatch._handle_issue_deleted` (no ticket → no-op) → `completion.handle_issue_deleted` →
+   Firestore `status: done` + `issue_deleted` event, any open Artisan PR closed (comment first,
+   then `pulls.update(state=closed)`; best-effort — it's Artisan's own PR, so closing it stays
+   within PRD.md §5's ownership rule), then a Jira comment + `Done` transition (best-effort).
+
+**Deletion mid-flight (the race) is handled at three guard points**, since the execution job runs
+for minutes and the `issues.deleted` webhook can land while a gate is still working the ticket:
+
+- Gate 1: a 404 from `get_issue_thread` in `evaluate_intake` runs the same cleanup before
+  re-raising `dispatch.NonRetriableEventError` — the delivery is acked (never retried) *and* the
+  ticket isn't left stuck in `intake`.
+- Gate 2: the retry loop checks the ticket status at the top of each iteration, before opening the
+  PR (`_open_pr_and_sync`), and before escalating (`_escalate`) — `done` mid-Gate-2 can only mean
+  deletion (no PR exists yet, so a merge is impossible), and the checks stop wasted sandbox runs,
+  PR opens for dead issues, and escalations that would flip `done` back to `escalated`.
+
+**Number-reuse correctness:** a deleted issue frees its number for reuse, and the ticket doc is
+keyed by `(repo, issue_number)` — so the cleanup deliberately leaves the old doc in the same
+terminal `done` a merge would, and `_handle_issue_opened` treats any pre-existing `done` doc on a
+fresh `opened` delivery as a reused number, starting a brand-new ticket (a *live* resolved issue
+keeps its number forever, so `done` + a new `opened` can only mean the original was deleted).
+
+**Flowchart (issue-deleted):**
+
+```mermaid
+flowchart TD
+    A["GitHub: issues deleted\n(author removed the issue)"] --> B["Pub/Sub: artisan-github-events"]
+    B --> C{"ticket exists?"}
+    C -- No --> Z1(["No-op — not tracked"])
+    C -- Yes --> D["completion.handle_issue_deleted"]
+    D --> E["Firestore: status done,\ncurrent_step cleared,\nissue_deleted event"]
+    E --> F{"PR open?"}
+    F -- Yes --> G["Close Artisan PR\n(comment, then state=closed,\nbest-effort)"]
+    F -- No --> H
+    G --> H["Jira: comment + transition to Done\n(best-effort — Firestore already written)"]
+    H --> I(["Ticket closed out"])
+```
+
 ## 5. Data Flow — Gate 3 (Merge Conflicts)
 
 1. `pull_request` webhook (`opened`/`synchronize`) → Pub/Sub → orchestrator. The orchestrator resolves the PR number to its owning ticket via the `pr_index/{repo}__{prNumber}` pointer doc (written when Gate 2 opens the PR); a PR with no pointer isn't Artisan's concern and is a no-op — Artisan never operates on repo state it doesn't own (PRD.md §5).
@@ -289,9 +337,9 @@ resolves to its ticket via a direct `.get()`, never a query.
 ## 9. Failure Handling & Escalation
 
 - Every retryable step has an explicit cap (3 clarification rounds, N execution retries, 1 attempt at trivial-conflict resolution) — caps live in Firestore, so they survive process restarts.
-- The Pub/Sub push subscription has a dead-letter policy (max 5 delivery attempts → `artisan-github-events-dlq`), added in Sprint 2 after a message referencing a nonexistent GitHub issue looped for ~95 minutes with no dead-letter configured — a non-retriable failure (e.g. a 404 that will never resolve) must not retry forever just because the handler raises instead of terminating gracefully. As of Sprint 6, the known-permanent case (a GitHub 404 for an issue that doesn't exist) is caught at the source and re-raised as `dispatch.NonRetriableEventError`; `/pubsub/push` acks it immediately (marks the delivery `completed`, returns 200) instead of letting it burn through the dead-letter budget. Other exception types still rely on the dead-letter policy as the backstop.
+- The Pub/Sub push subscription has a dead-letter policy (max 5 delivery attempts → `artisan-github-events-dlq`), added in Sprint 2 after a message referencing a nonexistent GitHub issue looped for ~95 minutes with no dead-letter configured — a non-retriable failure (e.g. a 404 that will never resolve) must not retry forever just because the handler raises instead of terminating gracefully. As of Sprint 6, the known-permanent case (a GitHub 404 for an issue that doesn't exist) is caught at the source and re-raised as `dispatch.NonRetriableEventError`; `/pubsub/push` acks it immediately (marks the delivery `completed`, returns 200) instead of letting it burn through the dead-letter budget. As of Sprint 7/8, the 404 path first runs `completion.handle_issue_deleted` (the ticket may exist and must not be left stuck mid-gate when the issue was deleted between webhook fire and delivery), *then* acks. Other exception types still rely on the dead-letter policy as the backstop.
 - Every escalation writes a structured reason (`gate`, `reason`, timestamp) to `escalation_history` and posts a human-readable comment on the GitHub issue/PR and a Jira comment — escalation is always visible in both systems, though the GitHub-side content isn't always identical to Jira's: Gate 3 mirrors full detail on both (its audience is PR-review-native), while Gate 2's cap-exceeded escalation posts a short reporter-facing GitHub issue comment alongside the full-detail Jira comment (no PR exists yet at that point in Gate 2's loop).
-- Nothing transitions to Jira *Done* except a human merge event (`pull_request.closed` with `merged: true`) — this is enforced in the orchestrator, not left to agent judgment. **Correction (Sprint 6, Milestone 9):** this was aspirational prose through Sprint 5 — no code path anywhere actually set `status: "done"`, since `dispatch.handle_event` never had a `pull_request.closed` branch at all. Now genuinely true: `dispatch.py` has that branch, resolving the ticket via the existing `firestore_client.get_ticket_by_pr` pointer and calling a new, idempotent `completion.mark_ticket_done` (Firestore write, then a Jira "Done" transition that tolerates its own failure without rolling back Firestore). The dashboard's manual "mark resolved" action calls the exact same function with `trigger="manual"` instead of `trigger="merge"`, specifically so the two can never race each other into disagreeing.
+- Nothing transitions to Jira *Done* except a human merge event (`pull_request.closed` with `merged: true`) — this is enforced in the orchestrator, not left to agent judgment. **Correction (Sprint 6, Milestone 9):** this was aspirational prose through Sprint 5 — no code path anywhere actually set `status: "done"`, since `dispatch.handle_event` never had a `pull_request.closed` branch at all. Now genuinely true: `dispatch.py` has that branch, resolving the ticket via the existing `firestore_client.get_ticket_by_pr` pointer and calling a new, idempotent `completion.mark_ticket_done` (Firestore write, then a Jira "Done" transition that tolerates its own failure without rolling back Firestore). The dashboard's manual "mark resolved" action calls the exact same function with `trigger="manual"` instead of `trigger="merge"`, specifically so the two can never race each other into disagreeing. **Second trigger (Sprint 7/8, issue-deleted):** `completion.handle_issue_deleted` is the only other path into Jira `Done` — a `issues.deleted` webhook (or the mid-flight 404 race) means the work was *withdrawn*, not completed, and this is recorded distinctly via the `issue_deleted`/`pr_closed` events even though Firestore `status` lands on the same terminal `done`.
 
 ## 10. Observability
 

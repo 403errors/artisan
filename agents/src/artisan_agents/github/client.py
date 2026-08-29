@@ -59,6 +59,16 @@ async def open_pull_request(
     return response.parsed_data.number, response.parsed_data.html_url
 
 
+async def close_pull_request(repo: str, pr_number: int, body: str) -> None:
+    """Closes an Artisan-owned PR, explaining why in a comment first (the issue-deleted cleanup in
+    completion.py). Called only on PRs Artisan itself opened — never on PRs it doesn't own, per
+    PRD.md §5's never-operate-on-repo-state-it-doesn't-own rule."""
+    owner, name = _split_repo(repo)
+    gh = get_installation_client()
+    await gh.rest.issues.async_create_comment(owner, name, pr_number, body=body)
+    await gh.rest.pulls.async_update(owner, name, pr_number, state="closed")
+
+
 async def add_label(repo: str, issue_number: int, label: str) -> None:
     """Adds `label` to an issue/PR, creating it on the repo first if it doesn't exist yet
     (WS6's ready-for-review signal). GitHub's add-labels endpoint 422s when a named label isn't

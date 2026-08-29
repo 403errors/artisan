@@ -1,5 +1,7 @@
 """Unit tests for completion.mark_ticket_done (Sprint 6): idempotent no-op if already done, and a
-Jira failure doesn't roll back the Firestore write — Firestore is the source of truth, not Jira."""
+Jira failure doesn't roll back the Firestore write — Firestore is the source of truth, not Jira.
+Plus completion.handle_issue_deleted (Sprint 7/8): same shape for the issuer-deleted-issue
+terminal state, with an Artisan PR close and Jira comment on top."""
 
 from datetime import datetime, timezone
 
@@ -12,6 +14,15 @@ from artisan_shared.firestore_schema import TicketDoc
 REPO = "acme/demo"
 ISSUE_NUMBER = 1
 JIRA_KEY = "ART-1"
+
+
+class _RecordingSink:
+    def __init__(self) -> None:
+        self.events: list[dict] = []
+
+    async def emit(self, **kwargs):
+        self.events.append(kwargs)
+        return f"doc-{len(self.events)}"
 
 
 class _FakeTicketStore:
@@ -83,3 +94,113 @@ async def test_jira_failure_does_not_roll_back_the_firestore_write(fake_store, m
     await completion.mark_ticket_done(REPO, ISSUE_NUMBER, JIRA_KEY, trigger="merge")
 
     assert fake_store.doc.status == "done"
+
+
+@pytest.mark.asyncio
+async def test_issue_deleted_marks_done_closes_pr_and_transitions_jira(
+    fake_store, monkeypatch
+) -> None:
+    sink = _RecordingSink()
+    monkeypatch.setattr(completion, "current_sink", lambda: sink)
+    jira_calls: list[tuple] = []
+    jira_comments: list[tuple] = []
+    pr_closed: list[tuple] = []
+
+    async def fake_transition(jira_key, status_name):
+        jira_calls.append((jira_key, status_name))
+
+    async def fake_add_comment(jira_key, body):
+        jira_comments.append((jira_key, body))
+
+    async def fake_close_pr(repo, pr_number, body):
+        pr_closed.append((repo, pr_number, body))
+
+    monkeypatch.setattr(completion.jira_client, "transition_ticket", fake_transition)
+    monkeypatch.setattr(completion.jira_client, "add_comment", fake_add_comment)
+    monkeypatch.setattr(completion.github_client, "close_pull_request", fake_close_pr)
+
+    await completion.handle_issue_deleted(REPO, ISSUE_NUMBER, JIRA_KEY, pr_number=42)
+
+    assert fake_store.doc.status == "done"
+    assert fake_store.doc.current_step is None
+    assert pr_closed == [(REPO, 42, "Closing this PR — the issue it resolves (#1) was deleted by "
+                         "its author, so there's nothing left to merge.")]
+    assert jira_calls == [(JIRA_KEY, "Done")]
+    assert "deleted by its author" in jira_comments[0][1]
+    assert [e["type"] for e in sink.events] == ["issue_deleted", "pr_closed", "jira_synced"]
+
+
+@pytest.mark.asyncio
+async def test_issue_deleted_without_pr_skips_the_pr_close(fake_store, monkeypatch) -> None:
+    pr_closed = []
+
+    async def fake_close_pr(repo, pr_number, body):
+        pr_closed.append((repo, pr_number, body))
+
+    async def fake_transition(jira_key, status_name):
+        pass
+
+    monkeypatch.setattr(completion.github_client, "close_pull_request", fake_close_pr)
+    monkeypatch.setattr(completion.jira_client, "transition_ticket", fake_transition)
+
+    await completion.handle_issue_deleted(REPO, ISSUE_NUMBER, JIRA_KEY)
+
+    assert pr_closed == []
+
+
+@pytest.mark.asyncio
+async def test_issue_deleted_noop_when_already_done(fake_store, monkeypatch) -> None:
+    fake_store.doc = fake_store.doc.model_copy(update={"status": "done"})
+    pr_closed = []
+    jira_calls = []
+
+    async def fake_close_pr(repo, pr_number, body):
+        pr_closed.append(pr_number)
+
+    async def fake_transition(jira_key, status_name):
+        jira_calls.append(status_name)
+
+    monkeypatch.setattr(completion.github_client, "close_pull_request", fake_close_pr)
+    monkeypatch.setattr(completion.jira_client, "transition_ticket", fake_transition)
+
+    await completion.handle_issue_deleted(REPO, ISSUE_NUMBER, JIRA_KEY, pr_number=42)
+
+    assert pr_closed == []  # short-circuited before any PR/Jira side effects
+    assert jira_calls == []
+
+
+@pytest.mark.asyncio
+async def test_issue_deleted_jira_failure_does_not_roll_back_firestore(
+    fake_store, monkeypatch
+) -> None:
+    async def fake_transition(jira_key, status_name):
+        raise JiraClientError("jira is down")
+
+    monkeypatch.setattr(completion.jira_client, "transition_ticket", fake_transition)
+
+    await completion.handle_issue_deleted(REPO, ISSUE_NUMBER, JIRA_KEY)
+
+    assert fake_store.doc.status == "done"
+
+
+@pytest.mark.asyncio
+async def test_issue_deleted_pr_close_failure_is_best_effort(fake_store, monkeypatch) -> None:
+    sink = _RecordingSink()
+    monkeypatch.setattr(completion, "current_sink", lambda: sink)
+    jira_calls = []
+
+    async def fake_close_pr(repo, pr_number, body):
+        raise RuntimeError("github is down")
+
+    async def fake_transition(jira_key, status_name):
+        jira_calls.append(status_name)
+
+    monkeypatch.setattr(completion.github_client, "close_pull_request", fake_close_pr)
+    monkeypatch.setattr(completion.jira_client, "transition_ticket", fake_transition)
+
+    await completion.handle_issue_deleted(REPO, ISSUE_NUMBER, JIRA_KEY, pr_number=42)
+
+    # PR close is best-effort — a GitHub hiccup neither aborts the cleanup nor blocks Jira.
+    assert fake_store.doc.status == "done"
+    assert jira_calls == ["Done"]
+    assert any(e["type"] == "error" for e in sink.events)

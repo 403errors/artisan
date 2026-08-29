@@ -22,6 +22,8 @@ TicketEventType = Literal[
     "clarification_asked",
     "clarification_answered",
     "pr_opened",
+    "pr_closed",
+    "issue_deleted",
     "jira_synced",
     "escalated",
     "ticket_done",

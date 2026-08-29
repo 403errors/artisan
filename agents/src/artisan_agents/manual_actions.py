@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 from artisan_agents import dispatch, event_context, gate2, gate3
 from artisan_agents.completion import mark_ticket_done
+from artisan_agents.dispatch import infer_gate
 from artisan_agents.gcp import firestore_client
 from artisan_agents.github import client as github_client
 from artisan_agents.jira import client as jira_client
@@ -21,34 +22,12 @@ from artisan_shared.models import ManualActionEnvelope
 # rejected rather than launching an overlapping run.
 _IN_FLIGHT_GUARD_SECONDS = 30
 
-_GATE2_STEPS = {"routing", "domain_expert", "planning", "executing", "verifying", "opening_pr"}
-_GATE3_STEPS = {"detecting_conflict", "classifying_conflict", "resolving_conflict"}
-
 
 class ManualActionRejected(Exception):
     """Raised when a manual action can't proceed right now (e.g. no PR to retry Gate 3 against,
     or the ticket looks like it's already actively running) — recorded as an `error` event and
     swallowed, not re-raised: Pub/Sub must not keep retrying a request that will fail identically
     forever, unlike a genuine transient failure (which propagates normally)."""
-
-
-def _infer_gate(ticket: TicketDoc) -> str:
-    """Mirrors dashboard/src/lib/ticket-derived.ts::currentGate exactly, so a force-escalate's
-    EscalationEntry.gate matches what the dashboard would already show for this ticket."""
-    prefix = (ticket.current_step or "").split(" ")[0]
-    if prefix in _GATE3_STEPS:
-        return "3"
-    if prefix in _GATE2_STEPS:
-        return "2"
-    if ticket.status == "intake":
-        return "1"
-    if ticket.escalation_history:
-        return ticket.escalation_history[-1].gate
-    if ticket.last_conflict_detection is not None:
-        return "3"
-    if ticket.pr_url:
-        return "2"
-    return "1"
 
 
 def _looks_actively_running(ticket: TicketDoc) -> bool:
@@ -65,7 +44,7 @@ async def handle_action(envelope: ManualActionEnvelope) -> None:
 
     ticket_id = firestore_client.ticket_doc_id(envelope.repo, envelope.issue_number)
     sink = firestore_client.new_event_sink(
-        ticket_id, gate=_infer_gate(ticket), actor=f"user:{envelope.actor}"
+        ticket_id, gate=infer_gate(ticket), actor=f"user:{envelope.actor}"
     )
     event_context.set_sink(sink)
     await sink.emit(
@@ -159,7 +138,7 @@ async def _escalate(envelope: ManualActionEnvelope, ticket: TicketDoc) -> None:
     entry = EscalationEntry(
         at=datetime.now(timezone.utc),
         reason=f"Manually escalated by {envelope.actor}: {reason}",
-        gate=_infer_gate(ticket),
+        gate=infer_gate(ticket),
     )
     await firestore_client.append_escalation(envelope.repo, envelope.issue_number, entry)
     # Same dual GitHub+Jira notify agents already do on escalation (SYSTEM_DESIGN.md §9:

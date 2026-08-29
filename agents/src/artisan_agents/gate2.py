@@ -67,6 +67,14 @@ async def start_gate2(
 
     feedback: str | None = None
     for attempt in range(1, MAX_EXECUTION_RETRIES + 1):
+        # Issue-deleted race (Sprint 7/8): the execution job runs for minutes, and the `deleted`
+        # cleanup lands the ticket in `done`. `done` mid-Gate-2 can only mean deletion — no PR
+        # exists yet at this point, so a merge is impossible — so stop working the ticket rather
+        # than burning a sandbox run on a dead issue.
+        ticket = await firestore_client.get_ticket(repo, issue_number)
+        if ticket is not None and ticket.status == "done":
+            return
+
         await firestore_client.update_ticket(
             repo, issue_number, current_step=f"planning (attempt {attempt})"
         )
@@ -178,6 +186,13 @@ async def _open_pr_and_sync(
     plan: Plan,
     execution_result: ExecutionResult,
 ) -> None:
+    # Issue-deleted race: never open a PR for an issue that was deleted while the sandbox ran —
+    # the cleanup has already closed the ticket out (`done`), so a PR referencing nothing would
+    # just sit open forever.
+    ticket = await firestore_client.get_ticket(repo, issue_number)
+    if ticket is not None and ticket.status == "done":
+        return
+
     pr_number, pr_url = await github_client.open_pull_request(
         repo,
         head=execution_result.branch,
@@ -216,6 +231,13 @@ async def _open_pr_and_sync(
 
 
 async def _escalate(repo: str, issue_number: int, jira_key: str, *, reason: str) -> None:
+    ticket = await firestore_client.get_ticket(repo, issue_number)
+    if ticket is not None and ticket.status == "done":
+        # Issue deleted mid-Gate-2 — the cleanup already closed the ticket out. Skip the
+        # escalation entirely: flipping `done` back to `escalated` would resurrect a dead ticket,
+        # and the reporter-facing comment would 404 against the deleted issue.
+        return
+
     entry = EscalationEntry(at=datetime.now(timezone.utc), reason=reason, gate="2")
     await firestore_client.append_escalation(repo, issue_number, entry)
     # Short reporter-facing notice on the issue itself — no PR exists yet at this point in the

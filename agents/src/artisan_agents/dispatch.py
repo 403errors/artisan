@@ -1,8 +1,10 @@
-"""Gate 1 dispatch: routes a decoded GitHub webhook envelope through ticket bootstrap (2.2),
+"""Event dispatch: routes a decoded GitHub webhook envelope through ticket bootstrap (2.2),
 the Intake Agent (2.3), and the clarification loop + caps (2.4), tracing every decision (2.5).
 Called from the /pubsub/push route only, after idempotency has already been checked. A sufficient
 verdict hands off into Gate 2 (gate2.start_gate2, Sprint 3) in the same call. `pull_request` events
-hand off into Gate 3 (gate3.handle_pull_request_event, Sprint 4)."""
+hand off into Gate 3 (gate3.handle_pull_request_event, Sprint 4). The two terminal triggers live
+here too: `pull_request.closed && merged` -> completion.mark_ticket_done (Sprint 6) and
+`issues.deleted` -> completion.handle_issue_deleted (Sprint 7/8)."""
 
 from githubkit.exception import RequestFailed
 
@@ -13,6 +15,7 @@ from artisan_agents.gcp.firestore_client import ClarificationCapExceeded
 from artisan_agents.github import client as github_client
 from artisan_agents.jira import client as jira_client
 from artisan_shared import prompt_safety
+from artisan_shared.firestore_schema import TicketDoc
 from artisan_shared.models import GitHubWebhookEnvelope
 
 
@@ -21,6 +24,32 @@ class NonRetriableEventError(Exception):
     redelivers it (e.g. the referenced GitHub issue doesn't exist). Distinct from every other
     exception in this codebase, which is domain-level (caps, crashed jobs) — this one exists
     purely so app.py's push handler can ack instead of retrying a doomed delivery."""
+
+
+#: Step prefixes per gate — shared with manual_actions.infer_gate so a force-escalate's
+#: EscalationEntry.gate and the issue-deleted event sink's gate both match what the dashboard
+#: would already show for this ticket (dashboard/src/lib/ticket-derived.ts::currentGate).
+_GATE2_STEPS = {"routing", "domain_expert", "planning", "executing", "verifying", "opening_pr"}
+_GATE3_STEPS = {"detecting_conflict", "classifying_conflict", "resolving_conflict"}
+
+
+def infer_gate(ticket: TicketDoc) -> str:
+    """Mirrors dashboard/src/lib/ticket-derived.ts::currentGate exactly, so events/entries tagged
+    from a ticket's current state land on the same gate the dashboard would show for it."""
+    prefix = (ticket.current_step or "").split(" ")[0]
+    if prefix in _GATE3_STEPS:
+        return "3"
+    if prefix in _GATE2_STEPS:
+        return "2"
+    if ticket.status == "intake":
+        return "1"
+    if ticket.escalation_history:
+        return ticket.escalation_history[-1].gate
+    if ticket.last_conflict_detection is not None:
+        return "3"
+    if ticket.pr_url:
+        return "2"
+    return "1"
 
 
 async def handle_event(envelope: GitHubWebhookEnvelope) -> None:
@@ -36,6 +65,26 @@ async def handle_event(envelope: GitHubWebhookEnvelope) -> None:
         and envelope.payload["pull_request"].get("merged") is True
     ):
         await _handle_pull_request_merged(envelope)
+    elif envelope.event == "issues" and envelope.action == "deleted":
+        await _handle_issue_deleted(envelope)
+
+
+async def _handle_issue_deleted(envelope: GitHubWebhookEnvelope) -> None:
+    """`issues.deleted` webhook (Sprint 7/8): the issuer removed the issue, so the ticket is moot
+    — neutralize it via completion.handle_issue_deleted (Firestore `done` + event, close any
+    Artisan PR, Jira `Done` + comment). A ticket Artisan never tracked is a no-op, mirroring the
+    untracked-PR no-op in `_handle_pull_request_merged`. Unlike `_handle_pull_request_merged`, this
+    installs a real event sink — the `issue_deleted`/`pr_closed` audit trail is the point of the
+    path, not an incidental."""
+    issue_number = envelope.payload["issue"]["number"]
+    ticket = await firestore_client.get_ticket(envelope.repo, issue_number)
+    if ticket is None:
+        return  # not a ticket Artisan tracks
+    ticket_id = firestore_client.ticket_doc_id(envelope.repo, issue_number)
+    event_context.set_sink(firestore_client.new_event_sink(ticket_id, gate=infer_gate(ticket)))
+    await completion.handle_issue_deleted(
+        envelope.repo, issue_number, ticket.jira_key, pr_number=ticket.pr_number
+    )
 
 
 async def _handle_pull_request_merged(envelope: GitHubWebhookEnvelope) -> None:
@@ -56,7 +105,11 @@ async def _handle_issue_opened(envelope: GitHubWebhookEnvelope) -> None:
     issue = envelope.payload["issue"]
     issue_number = issue["number"]
     ticket = await firestore_client.get_ticket(envelope.repo, issue_number)
-    if ticket is None:
+    if ticket is None or ticket.status == "done":
+        # A pre-existing `done` doc on a *new* `opened` delivery means the original issue was
+        # deleted — a live issue keeps its number forever, so a number is only ever reusable
+        # after deletion (the issue-deleted cleanup lands the old doc in `done`). Start fresh
+        # rather than letting a future issue #N inherit the dead ticket's stale plan/PR state.
         jira_key, jira_summary = await jira_client.create_ticket(
             issue_number, issue["title"], issue["body"] or "", issue["html_url"]
         )
@@ -103,6 +156,14 @@ async def evaluate_intake(repo: str, issue_number: int, jira_key: str) -> None:
         title, body, author_login, thread = await github_client.get_issue_thread(repo, issue_number)
     except RequestFailed as exc:
         if exc.response.status_code == 404:
+            # The issue was deleted between the webhook firing and this delivery being processed —
+            # neutralize the ticket (the `issues.deleted` webhook may not have been processed yet)
+            # before acking, so it isn't left stuck in `intake` forever.
+            ticket = await firestore_client.get_ticket(repo, issue_number)
+            if ticket is not None:
+                await completion.handle_issue_deleted(
+                    repo, issue_number, ticket.jira_key, pr_number=ticket.pr_number
+                )
             raise NonRetriableEventError(f"issue {repo}#{issue_number} not found") from exc
         raise
 

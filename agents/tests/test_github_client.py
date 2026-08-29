@@ -1,6 +1,7 @@
-"""Unit test for github/client.py's `open_pull_request` (Gate 2, MILESTONE.md Phase 3.6), plus WS3's
-repo-context helpers (`get_default_branch_head_sha`/`get_repo_tree`/`get_file_content`). Fakes the
-installation client so no real GitHub call is made."""
+"""Unit test for github/client.py's `open_pull_request`/`close_pull_request` (Gate 2 Phase 3.6 +
+the issue-deleted cleanup), plus WS3's repo-context helpers
+(`get_default_branch_head_sha`/`get_repo_tree`/`get_file_content`). Fakes the installation client
+so no real GitHub call is made."""
 
 import base64
 
@@ -11,6 +12,7 @@ from githubkit.exception import RequestFailed
 from artisan_agents.github import client as github_client_module
 from artisan_agents.github.client import (
     add_label,
+    close_pull_request,
     count_markdown_images,
     extract_and_download_images,
     get_default_branch_head_sha,
@@ -50,6 +52,7 @@ class _FakePulls:
     def __init__(self) -> None:
         self.calls = []
         self.get_calls = []
+        self.update_calls = []
         self._full_pr = None
 
     async def async_create(self, owner, repo, *, title, head, base, body):
@@ -60,10 +63,22 @@ class _FakePulls:
         self.get_calls.append((owner, repo, pr_number))
         return _FakeResponse(self._full_pr)
 
+    async def async_update(self, owner, repo, pr_number, *, state):
+        self.update_calls.append((owner, repo, pr_number, state))
+
+
+class _FakeIssues:
+    def __init__(self) -> None:
+        self.comment_calls = []
+
+    async def async_create_comment(self, owner, repo, issue_number, *, body):
+        self.comment_calls.append((owner, repo, issue_number, body))
+
 
 class _FakeRest:
     def __init__(self) -> None:
         self.pulls = _FakePulls()
+        self.issues = _FakeIssues()
 
 
 class _FakeGitHub:
@@ -85,6 +100,22 @@ async def test_open_pull_request_returns_number_and_html_url(monkeypatch) -> Non
     assert fake_gh.rest.pulls.calls == [
         ("acme", "demo", "Artisan: fix bug", "artisan/ART-1-attempt-1", "main", "body")
     ]
+
+
+@pytest.mark.asyncio
+async def test_close_pull_request_comments_then_closes(monkeypatch) -> None:
+    """Issue-deleted cleanup (completion.handle_issue_deleted): the explanation comment is posted
+    before the close, and the close uses pulls.update(state="closed") — never a force-push or
+    anything that touches the branch."""
+    fake_gh = _FakeGitHub()
+    monkeypatch.setattr(github_client_module, "get_installation_client", lambda: fake_gh)
+
+    await close_pull_request("acme/demo", 42, "closing because the issue was deleted")
+
+    assert fake_gh.rest.issues.comment_calls == [
+        ("acme", "demo", 42, "closing because the issue was deleted")
+    ]
+    assert fake_gh.rest.pulls.update_calls == [("acme", "demo", 42, "closed")]
 
 
 @pytest.mark.asyncio
