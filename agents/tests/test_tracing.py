@@ -21,7 +21,7 @@ class _RecordingSink(NoOpEventSink):
 
 @pytest.fixture(autouse=True)
 def _stub_append_trace_id(monkeypatch):
-    async def _noop(ticket_id: str, trace_id: str) -> None:
+    async def _noop(ticket_id: str, trace_id: str, label: str) -> None:
         return None
 
     monkeypatch.setattr(tracing.firestore_client, "append_trace_id", _noop)
@@ -44,6 +44,23 @@ async def test_gate_span_emits_a_gate_decision_event(recording_sink) -> None:
     assert event["type"] == "gate_decision"
     assert event["gate"] == "2"
     assert "proceed" in event["summary"]
+
+
+@pytest.mark.asyncio
+async def test_gate_span_records_explicit_label_when_given(monkeypatch) -> None:
+    recorded = []
+
+    async def _record(ticket_id: str, trace_id: str, label: str) -> None:
+        recorded.append(label)
+
+    monkeypatch.setattr(tracing.firestore_client, "append_trace_id", _record)
+
+    async with tracing.gate_span("ticket-1", "2", "proceed", label="Gate 2: routing decided"):
+        pass
+    async with tracing.gate_span("ticket-1", "2", "proceed"):
+        pass
+
+    assert recorded == ["Gate 2: routing decided", "Gate 2: proceed"]
 
 
 @pytest.mark.asyncio

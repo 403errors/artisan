@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { groupByGate, normalizeEvent } from "@/lib/ticket-events";
+import { groupByGate, groupToolCalls, isToolCallGroup, normalizeEvent } from "@/lib/ticket-events";
 
 describe("normalizeEvent", () => {
   it("reads snake_case fields", () => {
@@ -61,6 +61,12 @@ describe("normalizeEvent", () => {
     const event = normalizeEvent({ type: "tool_call", weird_field: "value" }, 0);
     expect(event.extra).toEqual({ weird_field: "value" });
   });
+
+  it("reads run_id as a first-class field, not into extra", () => {
+    const event = normalizeEvent({ type: "tool_call", run_id: "run-1" }, 0);
+    expect(event.runId).toBe("run-1");
+    expect(event.extra).toBeUndefined();
+  });
 });
 
 describe("groupByGate", () => {
@@ -80,5 +86,36 @@ describe("groupByGate", () => {
 
   it("returns an empty array for no events", () => {
     expect(groupByGate([])).toEqual([]);
+  });
+});
+
+describe("groupToolCalls", () => {
+  it("collapses consecutive tool_call events sharing a run_id into one group", () => {
+    const events = [
+      { id: "1", at: "t1", type: "gate_started", gate: "2" as const, summary: "start" },
+      { id: "2", at: "t2", type: "tool_call", gate: "2" as const, summary: "read_file", runId: "run-1" },
+      { id: "3", at: "t3", type: "tool_call", gate: "2" as const, summary: "write_file", runId: "run-1" },
+      { id: "4", at: "t4", type: "gate_decision", gate: "2" as const, summary: "proceed" },
+    ];
+    const items = groupToolCalls(events);
+    expect(items).toHaveLength(3);
+    expect(items[0]).toBe(events[0]);
+    expect(isToolCallGroup(items[1]) && items[1].events).toEqual([events[1], events[2]]);
+    expect(items[2]).toBe(events[3]);
+  });
+
+  it("splits into separate groups when run_id changes", () => {
+    const events = [
+      { id: "1", at: "t1", type: "tool_call", gate: "2" as const, summary: "a", runId: "run-1" },
+      { id: "2", at: "t2", type: "tool_call", gate: "2" as const, summary: "b", runId: "run-2" },
+    ];
+    const items = groupToolCalls(events);
+    expect(items).toHaveLength(2);
+    expect(isToolCallGroup(items[0]) && items[0].events).toEqual([events[0]]);
+    expect(isToolCallGroup(items[1]) && items[1].events).toEqual([events[1]]);
+  });
+
+  it("returns an empty array for no events", () => {
+    expect(groupToolCalls([])).toEqual([]);
   });
 });

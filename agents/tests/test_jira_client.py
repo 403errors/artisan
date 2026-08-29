@@ -13,6 +13,7 @@ from artisan_agents.jira.client import (
     add_label,
     create_ticket,
     transition_ticket,
+    update_description,
 )
 
 
@@ -40,10 +41,11 @@ async def test_create_ticket_returns_issue_key(monkeypatch) -> None:
         assert request.url.path == "/rest/api/2/issue"
         body = request.read()
         assert b'"project"' in body
+        assert json.loads(body)["fields"]["summary"] == "[GH#7] Title"
         return httpx.Response(201, json={"key": "ART-42"})
 
     monkeypatch.setattr(jira_client_module.httpx, "AsyncClient", _client_factory(handler))
-    key = await create_ticket("Title", "Body", "https://github.com/x/y/issues/1")
+    key = await create_ticket(7, "Title", "Body", "https://github.com/x/y/issues/1")
     assert key == "ART-42"
 
 
@@ -54,7 +56,7 @@ async def test_create_ticket_raises_on_error_response(monkeypatch) -> None:
 
     monkeypatch.setattr(jira_client_module.httpx, "AsyncClient", _client_factory(handler))
     with pytest.raises(JiraClientError):
-        await create_ticket("Title", "Body", "https://github.com/x/y/issues/1")
+        await create_ticket(7, "Title", "Body", "https://github.com/x/y/issues/1")
 
 
 @pytest.mark.asyncio
@@ -83,6 +85,18 @@ async def test_transition_ticket_raises_when_status_name_not_found(monkeypatch) 
     monkeypatch.setattr(jira_client_module.httpx, "AsyncClient", _client_factory(handler))
     with pytest.raises(JiraClientError):
         await transition_ticket("ART-1", "In Progress")
+
+
+@pytest.mark.asyncio
+async def test_update_description_puts_the_new_description(monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "PUT"
+        assert request.url.path == "/rest/api/2/issue/ART-1"
+        assert json.loads(request.read()) == {"fields": {"description": "new description"}}
+        return httpx.Response(204)
+
+    monkeypatch.setattr(jira_client_module.httpx, "AsyncClient", _client_factory(handler))
+    await update_description("ART-1", "new description")
 
 
 @pytest.mark.asyncio

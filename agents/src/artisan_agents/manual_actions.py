@@ -120,7 +120,9 @@ async def _retry_gate2(envelope: ManualActionEnvelope, ticket: TicketDoc) -> Non
         status="in_progress",
         manual_retry_generation=new_generation,
     )
-    title, body, _thread = await github_client.get_issue_thread(envelope.repo, envelope.issue_number)
+    title, body, _author, _thread = await github_client.get_issue_thread(
+        envelope.repo, envelope.issue_number
+    )
     await gate2.start_gate2(
         envelope.repo,
         envelope.issue_number,

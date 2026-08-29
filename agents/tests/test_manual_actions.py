@@ -149,7 +149,7 @@ async def test_retry_gate2_resets_retry_count_increments_generation_and_calls_st
     state["ticket"] = _ticket(status="escalated", retry_count=3, manual_retry_generation=0)
 
     async def fake_get_issue_thread(repo, issue_number):
-        return "Title", "Body", []
+        return "Title", "Body", "octocat", []
 
     calls = []
 

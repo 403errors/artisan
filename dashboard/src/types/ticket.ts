@@ -41,6 +41,13 @@ export interface EscalationEntry {
   gate: "1" | "2" | "3";
 }
 
+// One Cloud Trace span per gate decision (not one per gate) — `label` names which decision this
+// is, e.g. "Gate 2: verification passed", since a bare trace id alone doesn't say what it's for.
+export interface TraceEntry {
+  traceId: string;
+  label: string;
+}
+
 export interface TicketDoc {
   id: string; // Firestore doc id (ticket_doc_id)
   githubIssueNumber: number;
@@ -59,7 +66,7 @@ export interface TicketDoc {
   lastConflictDetection: ConflictDetectionResult | null;
   lastConflictResolution: ExecutionResult | null;
   escalationHistory: EscalationEntry[];
-  traceIds: string[];
+  traceIds: TraceEntry[];
   createdAt: string;
   updatedAt: string;
 }

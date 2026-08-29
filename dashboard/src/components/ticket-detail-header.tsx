@@ -1,3 +1,6 @@
+import { GitPullRequestArrowIcon } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 import { GateBadge } from "@/components/gate-badge";
 import { LiveStepIndicator } from "@/components/live-step-indicator";
 import { TicketActions } from "@/components/ticket-actions";
@@ -18,7 +21,17 @@ export function TicketDetailHeader({
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="font-heading text-2xl font-semibold tracking-tight">{ticket.jiraKey}</h1>
         <TicketStatusBadge status={ticket.status} stalled={stalled} />
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          {ticket.status === "pr_open" && ticket.prUrl ? (
+            <Button
+              variant="default"
+              size="sm"
+              render={<a href={ticket.prUrl} target="_blank" rel="noreferrer" />}
+            >
+              <GitPullRequestArrowIcon />
+              View PR on GitHub
+            </Button>
+          ) : null}
           <TicketActions ticket={ticket} />
         </div>
       </div>

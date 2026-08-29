@@ -14,4 +14,7 @@ export interface TicketEvent {
   result?: unknown;
   status?: "ok" | "error" | "pending";
   extra?: Record<string, unknown>;
+  /** Groups every event emitted by one logical backend run (e.g. one coding-agent execution
+   * attempt) — used to cluster a run's `tool_call` events under one collapsible section. */
+  runId?: string;
 }

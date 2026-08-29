@@ -34,14 +34,16 @@ async def post_issue_comment(repo: str, issue_number: int, body: str) -> None:
     await gh.rest.issues.async_create_comment(owner, name, issue_number, body=body)
 
 
-async def get_issue_thread(repo: str, issue_number: int) -> tuple[str, str, list[str]]:
-    """Returns (title, body, comment_bodies) for the Intake Agent's context window."""
+async def get_issue_thread(repo: str, issue_number: int) -> tuple[str, str, str, list[str]]:
+    """Returns (title, body, author_login, comment_bodies) for the Intake Agent's context window
+    and for @-mentioning the reporter on Artisan's own comments."""
     owner, name = _split_repo(repo)
     gh = get_installation_client()
     issue = (await gh.rest.issues.async_get(owner, name, issue_number)).parsed_data
     comments_resp = await gh.rest.issues.async_list_comments(owner, name, issue_number)
     comment_bodies = [c.body or "" for c in comments_resp.parsed_data]
-    return issue.title, issue.body or "", comment_bodies
+    author_login = issue.user.login if issue.user else "there"
+    return issue.title, issue.body or "", author_login, comment_bodies
 
 
 async def open_pull_request(

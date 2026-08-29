@@ -2,7 +2,23 @@
 monorepo justifies the dependency, `git` is present in any reasonable base image, and subprocess
 calls are trivially inspectable/loggable (feeds `ExecutionResult.logs_uri`)."""
 
+import re
 import subprocess
+
+_STATUS_TAGS = {"A": "new file", "M": "modified", "D": "deleted", "R": "renamed", "C": "copied"}
+
+# `git diff --numstat`'s rename notation abbreviates a shared path prefix/suffix, e.g.
+# "src/{old.py => new.py}" — this pulls out the post-rename path so it matches --name-status's key.
+_RENAME_BRACE_RE = re.compile(r"\{(?:.*) => (.*)\}")
+
+
+def _resolve_new_path(raw_path: str) -> str:
+    match = _RENAME_BRACE_RE.search(raw_path)
+    if match:
+        return raw_path[: match.start()] + match.group(1) + raw_path[match.end() :]
+    if " => " in raw_path:
+        return raw_path.split(" => ", 1)[1]
+    return raw_path
 
 _COMMIT_AUTHOR_ARGS = ["-c", "user.email=artisan-bot@users.noreply.github.com", "-c", "user.name=artisan-bot"]
 
@@ -34,9 +50,34 @@ def create_branch(repo_dir: str, branch_name: str) -> None:
 
 def stage_all_and_diff_stat(repo_dir: str) -> str:
     """Stages every change (including new untracked files, which a plain `git diff --stat` would
-    miss) and returns the staged diff summary, before any commit is made."""
+    miss) and returns a per-file summary — one `path (tag) +added -deleted` line per file — before
+    any commit is made. Built from `--numstat` (line counts) and `--name-status` (new/modified/
+    deleted/renamed), zipped by path, rather than raw `git diff --stat` text: that text's own
+    `+`/`-`/`|` bar-chart characters get misinterpreted as Jira wiki markup (underline/strikethrough)
+    when a comment embeds it verbatim."""
     _run(["add", "-A"], cwd=repo_dir)
-    return _run(["diff", "--stat", "--cached"], cwd=repo_dir)
+    numstat = _run(["diff", "--numstat", "--cached"], cwd=repo_dir)
+    name_status = _run(["diff", "--name-status", "--cached"], cwd=repo_dir)
+
+    statuses: dict[str, str] = {}
+    for line in name_status.splitlines():
+        if not line:
+            continue
+        fields = line.split("\t")
+        statuses[fields[-1]] = fields[0]
+
+    lines = []
+    for line in numstat.splitlines():
+        if not line:
+            continue
+        added, deleted, raw_path = line.split("\t", 2)
+        path = _resolve_new_path(raw_path)
+        tag = _STATUS_TAGS.get(statuses.get(path, "M")[0], "modified")
+        if added == "-" and deleted == "-":
+            lines.append(f"{path} ({tag}, binary)")
+        else:
+            lines.append(f"{path} ({tag}) +{added} -{deleted}")
+    return "\n".join(lines)
 
 
 def has_staged_changes(repo_dir: str) -> bool:

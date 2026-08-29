@@ -58,7 +58,7 @@ async def _handle_issue_opened(envelope: GitHubWebhookEnvelope) -> None:
     ticket = await firestore_client.get_ticket(envelope.repo, issue_number)
     if ticket is None:
         jira_key = await jira_client.create_ticket(
-            issue["title"], issue["body"] or "", issue["html_url"]
+            issue_number, issue["title"], issue["body"] or "", issue["html_url"]
         )
         ticket = await firestore_client.create_ticket(envelope.repo, issue_number, jira_key)
     if ticket.status == "intake":
@@ -100,7 +100,7 @@ async def evaluate_intake(repo: str, issue_number: int, jira_key: str) -> None:
     event_context.set_sink(firestore_client.new_event_sink(ticket_id, gate="1"))
     await event_context.current_sink().emit(type="gate_started", summary="Gate 1: evaluating intake")
     try:
-        title, body, thread = await github_client.get_issue_thread(repo, issue_number)
+        title, body, author_login, thread = await github_client.get_issue_thread(repo, issue_number)
     except RequestFailed as exc:
         if exc.response.status_code == 404:
             raise NonRetriableEventError(f"issue {repo}#{issue_number} not found") from exc
@@ -132,9 +132,32 @@ async def evaluate_intake(repo: str, issue_number: int, jira_key: str) -> None:
     )
 
     if verdict.verdict == "sufficient":
+        ticket = await firestore_client.get_ticket(repo, issue_number)
+        if ticket is not None and ticket.clarification_rounds > 0:
+            await github_client.post_issue_comment(
+                repo,
+                issue_number,
+                f"@{author_login} Thanks — that's enough to proceed. Artisan is taking over "
+                "from here to resolve this issue.",
+            )
+            # The Jira description is otherwise write-once from the original (often vague) issue
+            # body — fold the reply thread in now so a Jira-only reader can see what was clarified
+            # without needing to cross-reference the GitHub issue.
+            clarifications = "\n\n".join(thread)
+            await jira_client.update_description(
+                jira_key,
+                f"{body}\n\n---\nClarifications (from GitHub issue thread):\n{clarifications}",
+            )
+            # Sprint 7: the dashboard's activity feed had nowhere to show the issuer's replies —
+            # `clarification_asked` only ever carried the *questions*. This carries the answers.
+            await event_context.current_sink().emit(
+                type="clarification_answered",
+                summary="Issuer replied with clarifying information",
+                detail=clarifications,
+            )
         await jira_client.transition_ticket(jira_key, "In Progress")
         await firestore_client.update_ticket(repo, issue_number, status="in_progress")
-        async with tracing.gate_span(ticket_id, "1", "proceed"):
+        async with tracing.gate_span(ticket_id, "1", "proceed", label="Gate 1: intake sufficient"):
             pass
         await gate2.start_gate2(repo, issue_number, jira_key, issue_title=title, issue_body=body)
         return
@@ -151,19 +174,22 @@ async def evaluate_intake(repo: str, issue_number: int, jira_key: str) -> None:
         return
 
     # verdict.verdict == "needs_info"
-    questions_comment = "\n".join(
+    questions_list = "\n".join(
         f"{i}. {question}" for i, question in enumerate(verdict.missing_context_questions, start=1)
     )
+    questions_comment = f"@{author_login} could you help clarify a few things?\n\n{questions_list}"
     await github_client.post_issue_comment(repo, issue_number, questions_comment)
-    await event_context.current_sink().emit(type="clarification_asked", summary=questions_comment)
+    await event_context.current_sink().emit(type="clarification_asked", summary=questions_list)
     try:
         await firestore_client.increment_clarification_round(repo, issue_number)
-        async with tracing.gate_span(ticket_id, "1", "ask"):
+        async with tracing.gate_span(ticket_id, "1", "ask", label="Gate 1: clarification requested"):
             pass
     except ClarificationCapExceeded:
         await jira_client.add_comment(
             jira_key,
             "Artisan needs manual pickup: 3 clarification rounds without sufficient context.",
         )
-        async with tracing.gate_span(ticket_id, "1", "escalate"):
+        async with tracing.gate_span(
+            ticket_id, "1", "escalate", label="Gate 1: clarification cap exceeded"
+        ):
             pass

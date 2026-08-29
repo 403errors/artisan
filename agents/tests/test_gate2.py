@@ -71,8 +71,9 @@ class _FakeTicketStore:
         self.pr_pointers = getattr(self, "pr_pointers", [])
         self.pr_pointers.append((repo, pr_number, issue_number))
 
-    async def append_trace_id(self, ticket_id: str, trace_id: str) -> None:
-        self.doc = self.doc.model_copy(update={"trace_ids": [*self.doc.trace_ids, trace_id]})
+    async def append_trace_id(self, ticket_id: str, trace_id: str, label: str) -> None:
+        entry = {"trace_id": trace_id, "label": label}
+        self.doc = self.doc.model_copy(update={"trace_ids": [*self.doc.trace_ids, entry]})
 
 
 @pytest.fixture
@@ -163,6 +164,49 @@ async def test_single_domain_routes_sequentially_and_multi_domain_dispatches_in_
     assert call_order == ["start:frontend", "start:backend", "end:backend", "end:frontend"]
     assert fake_store.doc.domains == ["frontend", "backend"]
     assert fake_store.doc.status == "pr_open"
+
+
+@pytest.mark.asyncio
+async def test_pr_open_jira_comment_wraps_diff_summary_in_noformat(
+    fake_store, stub_jira_and_github, monkeypatch
+) -> None:
+    """Jira wiki markup misreads a raw diffstat's own `+`/`-` characters as underline/strikethrough
+    — wrapping it in {noformat} keeps it literal."""
+    _prs, jira_comments, _github_comments, _github_labels, _jira_labels = stub_jira_and_github
+
+    async def fake_run_routing(**kwargs):
+        return RoutingDecision(domains=["backend"], parallel=False)
+
+    async def fake_run_domain_expert(*, domain, issue_title, issue_body, repo_context=None):
+        return _domain_output(domain)
+
+    async def fake_run_planning(**kwargs):
+        return _PLAN
+
+    async def fake_trigger_execution(**kwargs):
+        return ExecutionResult(
+            branch="artisan/x",
+            diff_summary="README.md (modified) +141 -26",
+            tests_passed=True,
+            logs_uri="gs://x",
+        )
+
+    async def fake_run_verification(**kwargs):
+        from artisan_shared.models import VerificationVerdict
+
+        return VerificationVerdict(green=True)
+
+    monkeypatch.setattr(gate2, "run_routing", fake_run_routing)
+    monkeypatch.setattr(gate2, "run_domain_expert", fake_run_domain_expert)
+    monkeypatch.setattr(gate2, "run_planning", fake_run_planning)
+    monkeypatch.setattr(gate2.cloud_run_jobs, "trigger_execution", fake_trigger_execution)
+    monkeypatch.setattr(gate2, "run_verification", fake_run_verification)
+
+    await gate2.start_gate2(REPO, ISSUE_NUMBER, JIRA_KEY, issue_title="T", issue_body="B")
+
+    assert len(jira_comments) == 1
+    _jira_key, body = jira_comments[0]
+    assert "{noformat}\nREADME.md (modified) +141 -26\n{noformat}" in body
 
 
 @pytest.mark.asyncio

@@ -58,6 +58,11 @@ export interface ActionAvailability {
   kind: TicketActionKind;
   enabled: boolean;
   disabledReason?: string;
+  /** Overrides `ACTION_META[kind]`'s label/confirm copy for a specific ticket status, when the
+   * generic wording would be misleading in that context (e.g. "Force escalate" once a PR is
+   * already open and just stalled, rather than genuinely broken). */
+  label?: string;
+  confirm?: ActionMeta["confirm"];
 }
 
 interface TicketForActions {
@@ -82,8 +87,22 @@ export function availableActions(ticket: TicketForActions, now: number | null): 
     actions.push({ kind: "retry", enabled: true });
   }
 
-  if (ticket.status === "intake" || ticket.status === "in_progress" || ticket.status === "pr_open") {
+  if (ticket.status === "intake" || ticket.status === "in_progress") {
     actions.push({ kind: "escalate", enabled: true });
+  } else if (ticket.status === "pr_open") {
+    // A PR is already open — this isn't "Artisan is stuck", it's "this PR has gone quiet and a
+    // human should pick it up", so the generic escalate wording/confirm would be misleading here.
+    actions.push({
+      kind: "escalate",
+      enabled: true,
+      label: "Flag for manual review",
+      confirm: {
+        title: "Flag this PR for manual review?",
+        body: "Use this if the open PR has stalled and needs a human to pick it up. This notifies via GitHub and Jira — it does not close or modify the PR itself.",
+        confirmLabel: "Flag for review",
+        destructive: true,
+      },
+    });
   }
 
   if (
@@ -92,7 +111,11 @@ export function availableActions(ticket: TicketForActions, now: number | null): 
     ticket.status === "manual_pickup" ||
     ticket.status === "needs_human_review"
   ) {
-    actions.push({ kind: "mark-done", enabled: true });
+    actions.push({
+      kind: "mark-done",
+      enabled: true,
+      label: ticket.status === "pr_open" ? "Close ticket" : "Mark resolved",
+    });
   } else if (live) {
     actions.push({
       kind: "mark-done",

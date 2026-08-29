@@ -93,4 +93,33 @@ describe("TicketActivityFeed", () => {
     render(<TicketActivityFeed ticket={TICKET} />);
     expect(screen.getByText("No recorded activity yet.")).toBeInTheDocument();
   });
+
+  it("groups consecutive same-run tool calls under one 'Show tool calls' toggle", async () => {
+    vi.stubGlobal("EventSource", FakeEventSource);
+    render(<TicketActivityFeed ticket={TICKET} />);
+
+    FakeEventSource.instances[0].emit([
+      { id: "1", at: "2026-01-01T00:00:00Z", type: "gate_started", gate: "2", summary: "Gate 2 started" },
+      {
+        id: "2",
+        at: "2026-01-01T00:00:01Z",
+        type: "tool_call",
+        gate: "2",
+        summary: "read_file(a.py)",
+        run_id: "run-1",
+      },
+      {
+        id: "3",
+        at: "2026-01-01T00:00:02Z",
+        type: "tool_call",
+        gate: "2",
+        summary: "write_file(a.py)",
+        run_id: "run-1",
+      },
+    ]);
+
+    expect(await screen.findByText("Gate 2 started")).toBeInTheDocument();
+    expect(screen.getByText("Show tool calls (2)")).toBeInTheDocument();
+    expect(screen.queryByText("read_file(a.py)")).not.toBeInTheDocument();
+  });
 });

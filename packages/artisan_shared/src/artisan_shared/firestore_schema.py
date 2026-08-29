@@ -26,6 +26,16 @@ class EscalationEntry(BaseModel):
     gate: Literal["1", "2", "3"]
 
 
+class TraceEntry(BaseModel):
+    """One Cloud Trace span recorded per gate *decision* (tracing.gate_span) — `label` names which
+    decision this is (e.g. "Gate 2: verification passed") since a bare trace id alone doesn't say
+    what it corresponds to, and a ticket can accumulate several per gate (one per decision point,
+    not one per gate)."""
+
+    trace_id: str
+    label: str
+
+
 class TicketDoc(BaseModel):
     github_issue_number: int
     github_repo: str
@@ -60,7 +70,7 @@ class TicketDoc(BaseModel):
     # decision trail.
     last_conflict_resolution: ExecutionResult | None = None
     escalation_history: list[EscalationEntry] = []
-    trace_ids: list[str] = []
+    trace_ids: list[TraceEntry] = []
     processed_delivery_ids: list[str] = []
     created_at: datetime
     updated_at: datetime
