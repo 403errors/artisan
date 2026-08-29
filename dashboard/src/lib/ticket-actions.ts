@@ -73,7 +73,12 @@ export function availableActions(ticket: TicketForActions, now: number | null): 
   const stalled = isStalled(ticket, now);
   const actively = isActivelyWorking(ticket, now);
 
-  if (ticket.status === "escalated" || ticket.status === "manual_pickup" || stalled) {
+  if (
+    ticket.status === "escalated" ||
+    ticket.status === "manual_pickup" ||
+    ticket.status === "needs_human_review" ||
+    stalled
+  ) {
     actions.push({ kind: "retry", enabled: true });
   }
 
@@ -81,7 +86,12 @@ export function availableActions(ticket: TicketForActions, now: number | null): 
     actions.push({ kind: "escalate", enabled: true });
   }
 
-  if (ticket.status === "pr_open" || ticket.status === "escalated" || ticket.status === "manual_pickup") {
+  if (
+    ticket.status === "pr_open" ||
+    ticket.status === "escalated" ||
+    ticket.status === "manual_pickup" ||
+    ticket.status === "needs_human_review"
+  ) {
     actions.push({ kind: "mark-done", enabled: true });
   } else if (live) {
     actions.push({

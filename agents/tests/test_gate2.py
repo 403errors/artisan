@@ -18,6 +18,18 @@ REPO = "acme/demo"
 ISSUE_NUMBER = 1
 JIRA_KEY = "ART-1"
 
+
+@pytest.fixture(autouse=True)
+def stub_repo_context(monkeypatch):
+    """WS3: start_gate2 now fetches a RepoContext before routing. These control-flow tests aren't
+    exercising repo_context.py itself (see test_repo_context.py for that) — stub it to a no-op so
+    every existing test here doesn't also need a GitHub/Firestore double for it."""
+
+    async def fake_get_repo_context(repo: str):
+        return None
+
+    monkeypatch.setattr(gate2.repo_context_module, "get_repo_context", fake_get_repo_context)
+
 _PLAN = Plan(steps=["do the thing"], touched_files=["a.py"], test_cases=["t1"], doc_updates=["d1"])
 
 
@@ -81,6 +93,8 @@ def stub_jira_and_github(monkeypatch):
     prs = []
     jira_comments = []
     github_comments = []
+    github_labels = []
+    jira_labels = []
 
     async def fake_open_pull_request(repo, *, head, base, title, body):
         prs.append((repo, head, base, title, body))
@@ -92,10 +106,18 @@ def stub_jira_and_github(monkeypatch):
     async def fake_post_issue_comment(repo, issue_number, body):
         github_comments.append((repo, issue_number, body))
 
+    async def fake_add_github_label(repo, issue_number, label):
+        github_labels.append((repo, issue_number, label))
+
+    async def fake_add_jira_label(jira_key, label):
+        jira_labels.append((jira_key, label))
+
     monkeypatch.setattr(gate2.github_client, "open_pull_request", fake_open_pull_request)
     monkeypatch.setattr(gate2.jira_client, "add_comment", fake_add_comment)
     monkeypatch.setattr(gate2.github_client, "post_issue_comment", fake_post_issue_comment)
-    return prs, jira_comments, github_comments
+    monkeypatch.setattr(gate2.github_client, "add_label", fake_add_github_label)
+    monkeypatch.setattr(gate2.jira_client, "add_label", fake_add_jira_label)
+    return prs, jira_comments, github_comments, github_labels, jira_labels
 
 
 def _domain_output(domain: str) -> DomainExpertOutput:
@@ -111,7 +133,7 @@ async def test_single_domain_routes_sequentially_and_multi_domain_dispatches_in_
     async def fake_run_routing(**kwargs):
         return RoutingDecision(domains=["frontend", "backend"], parallel=True)
 
-    async def fake_run_domain_expert(*, domain, issue_title, issue_body):
+    async def fake_run_domain_expert(*, domain, issue_title, issue_body, repo_context=None):
         call_order.append(f"start:{domain}")
         await asyncio.sleep(0.01 if domain == "frontend" else 0)
         call_order.append(f"end:{domain}")
@@ -152,7 +174,7 @@ async def test_single_domain_dispatch_runs_sequentially_with_one_call(
     async def fake_run_routing(**kwargs):
         return RoutingDecision(domains=["frontend"], parallel=False)
 
-    async def fake_run_domain_expert(*, domain, issue_title, issue_body):
+    async def fake_run_domain_expert(*, domain, issue_title, issue_body, repo_context=None):
         calls.append(domain)
         return _domain_output(domain)
 
@@ -182,13 +204,13 @@ async def test_single_domain_dispatch_runs_sequentially_with_one_call(
 async def test_n_consecutive_failures_end_in_escalated_with_no_nplus1th_attempt(
     fake_store, stub_jira_and_github, monkeypatch
 ) -> None:
-    _, jira_comments, github_comments = stub_jira_and_github
+    _, jira_comments, github_comments, _, _ = stub_jira_and_github
     execution_calls = []
 
     async def fake_run_routing(**kwargs):
         return RoutingDecision(domains=["backend"], parallel=False)
 
-    async def fake_run_domain_expert(*, domain, issue_title, issue_body):
+    async def fake_run_domain_expert(*, domain, issue_title, issue_body, repo_context=None):
         return _domain_output(domain)
 
     async def fake_run_planning(**kwargs):
@@ -224,13 +246,13 @@ async def test_n_consecutive_failures_end_in_escalated_with_no_nplus1th_attempt(
 async def test_green_on_second_attempt_reaches_pr_open_with_retry_count_one(
     fake_store, stub_jira_and_github, monkeypatch
 ) -> None:
-    prs, jira_comments, github_comments = stub_jira_and_github
+    prs, jira_comments, github_comments, github_labels, jira_labels = stub_jira_and_github
     execution_calls = []
 
     async def fake_run_routing(**kwargs):
         return RoutingDecision(domains=["backend"], parallel=False)
 
-    async def fake_run_domain_expert(*, domain, issue_title, issue_body):
+    async def fake_run_domain_expert(*, domain, issue_title, issue_body, repo_context=None):
         return _domain_output(domain)
 
     async def fake_run_planning(**kwargs):
@@ -265,6 +287,94 @@ async def test_green_on_second_attempt_reaches_pr_open_with_retry_count_one(
     assert len(prs) == 1
     assert len(jira_comments) == 1
     assert len(github_comments) == 0
+    assert github_labels == [(REPO, 42, "artisan:ready-for-review")]
+    assert jira_labels == [(JIRA_KEY, "artisan-pr-open")]
+
+
+@pytest.mark.asyncio
+async def test_open_pr_and_sync_github_label_failure_does_not_abort_pr_flow(
+    fake_store, stub_jira_and_github, monkeypatch
+) -> None:
+    """Labeling is a nice-to-have signal, not load-bearing — a label API hiccup must never prevent
+    the PR/Jira-comment work that already succeeded from being reported as done."""
+    prs, jira_comments, github_comments, github_labels, jira_labels = stub_jira_and_github
+
+    async def failing_add_github_label(repo, issue_number, label):
+        raise RuntimeError("github label API is down")
+
+    monkeypatch.setattr(gate2.github_client, "add_label", failing_add_github_label)
+
+    async def fake_run_routing(**kwargs):
+        return RoutingDecision(domains=["backend"], parallel=False)
+
+    async def fake_run_domain_expert(*, domain, issue_title, issue_body, repo_context=None):
+        return _domain_output(domain)
+
+    async def fake_run_planning(**kwargs):
+        return _PLAN
+
+    async def fake_trigger_execution(**kwargs):
+        return ExecutionResult(branch="artisan/x-1", diff_summary="x", tests_passed=True, logs_uri="gs://x")
+
+    async def fake_run_verification(**kwargs):
+        from artisan_shared.models import VerificationVerdict
+
+        return VerificationVerdict(green=True)
+
+    monkeypatch.setattr(gate2, "run_routing", fake_run_routing)
+    monkeypatch.setattr(gate2, "run_domain_expert", fake_run_domain_expert)
+    monkeypatch.setattr(gate2, "run_planning", fake_run_planning)
+    monkeypatch.setattr(gate2.cloud_run_jobs, "trigger_execution", fake_trigger_execution)
+    monkeypatch.setattr(gate2, "run_verification", fake_run_verification)
+
+    await gate2.start_gate2(REPO, ISSUE_NUMBER, JIRA_KEY, issue_title="T", issue_body="B")
+
+    assert fake_store.doc.status == "pr_open"
+    assert len(prs) == 1
+    assert len(jira_comments) == 1
+    assert jira_labels == [(JIRA_KEY, "artisan-pr-open")]
+
+
+@pytest.mark.asyncio
+async def test_open_pr_and_sync_jira_label_failure_does_not_abort_pr_flow(
+    fake_store, stub_jira_and_github, monkeypatch
+) -> None:
+    prs, jira_comments, github_comments, github_labels, jira_labels = stub_jira_and_github
+
+    async def failing_add_jira_label(jira_key, label):
+        raise RuntimeError("jira label API is down")
+
+    monkeypatch.setattr(gate2.jira_client, "add_label", failing_add_jira_label)
+
+    async def fake_run_routing(**kwargs):
+        return RoutingDecision(domains=["backend"], parallel=False)
+
+    async def fake_run_domain_expert(*, domain, issue_title, issue_body, repo_context=None):
+        return _domain_output(domain)
+
+    async def fake_run_planning(**kwargs):
+        return _PLAN
+
+    async def fake_trigger_execution(**kwargs):
+        return ExecutionResult(branch="artisan/x-1", diff_summary="x", tests_passed=True, logs_uri="gs://x")
+
+    async def fake_run_verification(**kwargs):
+        from artisan_shared.models import VerificationVerdict
+
+        return VerificationVerdict(green=True)
+
+    monkeypatch.setattr(gate2, "run_routing", fake_run_routing)
+    monkeypatch.setattr(gate2, "run_domain_expert", fake_run_domain_expert)
+    monkeypatch.setattr(gate2, "run_planning", fake_run_planning)
+    monkeypatch.setattr(gate2.cloud_run_jobs, "trigger_execution", fake_trigger_execution)
+    monkeypatch.setattr(gate2, "run_verification", fake_run_verification)
+
+    await gate2.start_gate2(REPO, ISSUE_NUMBER, JIRA_KEY, issue_title="T", issue_body="B")
+
+    assert fake_store.doc.status == "pr_open"
+    assert len(prs) == 1
+    assert len(jira_comments) == 1
+    assert github_labels == [(REPO, 42, "artisan:ready-for-review")]
 
 
 class _RecordingSink(NoOpEventSink):
@@ -288,7 +398,7 @@ async def test_start_gate2_emits_gate_started_then_pr_opened_and_jira_synced(
     async def fake_run_routing(**kwargs):
         return RoutingDecision(domains=["backend"], parallel=False)
 
-    async def fake_run_domain_expert(*, domain, issue_title, issue_body):
+    async def fake_run_domain_expert(*, domain, issue_title, issue_body, repo_context=None):
         return _domain_output(domain)
 
     async def fake_run_planning(**kwargs):
@@ -326,7 +436,7 @@ async def test_start_gate2_retry_generation_zero_keeps_original_branch_format(
     async def fake_run_routing(**kwargs):
         return RoutingDecision(domains=["backend"], parallel=False)
 
-    async def fake_run_domain_expert(*, domain, issue_title, issue_body):
+    async def fake_run_domain_expert(*, domain, issue_title, issue_body, repo_context=None):
         return _domain_output(domain)
 
     async def fake_run_planning(**kwargs):
@@ -360,7 +470,7 @@ async def test_start_gate2_retry_generation_nonzero_avoids_branch_collision(
     async def fake_run_routing(**kwargs):
         return RoutingDecision(domains=["backend"], parallel=False)
 
-    async def fake_run_domain_expert(*, domain, issue_title, issue_body):
+    async def fake_run_domain_expert(*, domain, issue_title, issue_body, repo_context=None):
         return _domain_output(domain)
 
     async def fake_run_planning(**kwargs):

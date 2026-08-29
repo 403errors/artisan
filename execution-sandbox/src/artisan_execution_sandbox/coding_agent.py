@@ -15,6 +15,7 @@ afterward via `git diff --stat` into `ExecutionResult.diff_summary`, not a singl
 verdict. That's a deliberate exception to "typed I/O only" (SPRINT.md cross-cutting rule 2), which
 targets *inter-agent* exchange, not a tool-use side-effect loop like this one."""
 
+import shlex
 import subprocess
 import uuid
 from pathlib import Path
@@ -26,20 +27,29 @@ from google.genai import types
 from artisan_execution_sandbox.config import GEMINI_MODEL_ID, MAX_CODING_AGENT_TOOL_CALLS
 from artisan_shared.event_log import EventSink, NoOpEventSink
 from artisan_shared.models import Plan
+from artisan_shared.prompt_safety import UNTRUSTED_CONTENT_NOTICE, wrap_untrusted
 
 APP_NAME = "artisan-execution-coding-agent"
 _USER_ID = "artisan-execution-sandbox"
 
 CODING_INSTRUCTION = """You are Artisan's coding agent, working inside a cloned git checkout on a \
 fresh branch. You will be given an implementation plan: an ordered list of steps, files you're \
-expected to touch, test cases to add/update, and documentation to update. Use `read_file`, \
-`write_file`, `list_directory`, and `run_shell_command` to carry out every step of the plan \
-against the files on disk, including writing the test cases and updating the documentation the \
-plan calls for. Never run `git commit`, `git push`, or modify git remotes yourself — committing \
-and pushing happen outside your control, after you finish. When you have completed every step of \
-the plan, call `finish` exactly once with a short summary of what you changed, and stop."""
+expected to touch, test cases to add/update, documentation to update, and any code the plan \
+identifies as stale and safe to remove. Use `read_file`, `write_file`, `list_directory`, and \
+`run_shell_command` to carry out every step of the plan against the files on disk, including \
+writing the test cases, updating the documentation, and deleting the stale code the plan calls \
+for. Never run `git commit`, `git push`, or modify git remotes yourself — committing and pushing \
+happen outside your control, after you finish. When you have completed every step of the plan, \
+call `finish` exactly once with a short summary of what you changed, and stop."""
 
-_FORBIDDEN_SHELL_SNIPPETS = ("git commit", "git push", "git remote")
+CODING_INSTRUCTION = CODING_INSTRUCTION + "\n\n" + UNTRUSTED_CONTENT_NOTICE
+
+#: Fail-closed allowlist for `run_shell_command` (Sprint 7 WS2) — replaces a bypassable blocklist
+#: of forbidden git subcommands with an explicit allowlist of permitted top-level commands, since
+#: issue text flows issue -> Plan -> this agent's prompt -> a tool with shell-command access, and a
+#: blocklist can always be defeated (aliasing, quoting tricks, etc.) in a way an allowlist can't.
+_ALLOWED_COMMANDS = {"npm", "pnpm", "python", "python3", "pytest", "node", "yarn"}
+_ALLOWED_GIT_SUBCOMMANDS = {"status", "diff", "add", "log", "show", "checkout"}
 
 
 class ToolCallLimitExceeded(Exception):
@@ -80,13 +90,27 @@ def _build_tools(workdir: Path):
 
     def run_shell_command(command: str) -> str:
         """Runs a shell command with cwd set to the repo checkout root — e.g. to run a linter or
-        a quick syntax check. Never use this for git commit/push/remote commands; those are not
-        permitted here and happen outside your control after you finish."""
+        a quick syntax check. Only an allowlisted set of commands is permitted (npm/pnpm/python/
+        python3/pytest/node/yarn, plus a narrow set of read-only/staging git subcommands); git
+        commit/push/remote and any other command are not permitted here and happen outside your
+        control after you finish."""
         _tick()
-        if any(snippet in command for snippet in _FORBIDDEN_SHELL_SNIPPETS):
-            return "error: git commit/push/remote are not permitted from this tool"
+        try:
+            argv = shlex.split(command)
+        except ValueError as exc:
+            return f"error: could not parse command: {exc}"
+
+        if not argv:
+            return "error: empty command"
+
+        if argv[0] == "git":
+            if len(argv) < 2 or argv[1] not in _ALLOWED_GIT_SUBCOMMANDS:
+                return "error: command not permitted"
+        elif argv[0] not in _ALLOWED_COMMANDS:
+            return "error: command not permitted"
+
         result = subprocess.run(
-            command, shell=True, cwd=str(workdir), capture_output=True, text=True, timeout=120
+            argv, shell=False, cwd=str(workdir), capture_output=True, text=True, timeout=120
         )
         return f"exit={result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
 
@@ -101,14 +125,28 @@ def _build_tools(workdir: Path):
 
 
 def _build_prompt(plan: Plan, prior_feedback: str | None) -> str:
+    steps = "\n".join(f"- {s}" for s in plan.steps)
+    touched_files = ", ".join(plan.touched_files) or "(unspecified)"
+    test_cases = "\n".join(f"- {t}" for t in plan.test_cases)
+    doc_updates = "\n".join(f"- {d}" for d in plan.doc_updates)
+    removed_code = (
+        "\n".join(
+            f"- {item.file} — {item.symbol} ({item.reason})" for item in plan.removed_code
+        )
+        or "(none)"
+    )
     prompt = (
-        f"Steps:\n" + "\n".join(f"- {s}" for s in plan.steps) + "\n\n"
-        f"Files you're expected to touch: {', '.join(plan.touched_files) or '(unspecified)'}\n\n"
-        f"Test cases to add/update:\n" + "\n".join(f"- {t}" for t in plan.test_cases) + "\n\n"
-        f"Documentation to update:\n" + "\n".join(f"- {d}" for d in plan.doc_updates)
+        f"Steps:\n{wrap_untrusted(steps)}\n\n"
+        f"Files you're expected to touch: {wrap_untrusted(touched_files)}\n\n"
+        f"Test cases to add/update:\n{wrap_untrusted(test_cases)}\n\n"
+        f"Documentation to update:\n{wrap_untrusted(doc_updates)}\n\n"
+        "Code to remove (this change makes it stale — delete it as part of this work):\n"
+        f"{wrap_untrusted(removed_code)}"
     )
     if prior_feedback:
-        prompt += f"\n\nPRIOR ATTEMPT FEEDBACK (address this explicitly):\n{prior_feedback}"
+        prompt += (
+            f"\n\nPRIOR ATTEMPT FEEDBACK (address this explicitly):\n{wrap_untrusted(prior_feedback)}"
+        )
     return prompt
 
 

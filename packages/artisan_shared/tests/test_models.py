@@ -24,20 +24,39 @@ def test_routing_decision_round_trips_through_json() -> None:
     assert RoutingDecision.model_validate_json(decision.model_dump_json()) == decision
 
 
-def test_routing_decision_rejects_unknown_domain() -> None:
+def test_routing_decision_accepts_non_web_domain() -> None:
+    # WS4: domains are open-ended strings now — the routing agent derives a fitting domain name
+    # from repo context rather than being constrained to a fixed 3-way Literal.
+    decision = RoutingDecision(domains=["mobile"], parallel=False)
+    assert decision.domains == ["mobile"]
+    assert decision.subproject is None
+
+
+def test_routing_decision_subproject_defaults_to_none_and_round_trips() -> None:
+    decision = RoutingDecision(domains=["backend"], parallel=False, subproject="services/api")
+    assert RoutingDecision.model_validate_json(decision.model_dump_json()) == decision
+
+
+def test_intake_verdict_needs_info_carries_missing_context_questions() -> None:
+    verdict = IntakeVerdict(verdict="needs_info", missing_context_questions=["which endpoint?"])
+    assert verdict.verdict == "needs_info"
+    assert verdict.missing_context_questions == ["which endpoint?"]
+
+
+def test_intake_verdict_sufficient_defaults_to_no_questions() -> None:
+    verdict = IntakeVerdict(verdict="sufficient")
+    assert verdict.missing_context_questions == []
+
+
+def test_intake_verdict_rejects_unknown_verdict_value() -> None:
     with pytest.raises(ValidationError):
-        RoutingDecision(domains=["mobile"], parallel=False)
+        IntakeVerdict(verdict="maybe")
 
 
-def test_intake_verdict_insufficient_requires_no_question_field_by_default() -> None:
-    verdict = IntakeVerdict(sufficient=False, missing_context_question="which endpoint?")
-    assert verdict.sufficient is False
-    assert verdict.missing_context_question == "which endpoint?"
-
-
-def test_domain_expert_output_rejects_unknown_domain() -> None:
-    with pytest.raises(ValidationError):
-        DomainExpertOutput(domain="devops-unknown", technical_summary="x", relevant_files=[])
+def test_domain_expert_output_accepts_non_web_domain() -> None:
+    # WS4: `domain` is an open-ended string matching `RoutingDecision.domains`'s new type.
+    output = DomainExpertOutput(domain="devops-unknown", technical_summary="x", relevant_files=[])
+    assert output.domain == "devops-unknown"
 
 
 def test_plan_roundtrip() -> None:

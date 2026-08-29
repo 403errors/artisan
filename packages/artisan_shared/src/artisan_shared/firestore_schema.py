@@ -10,7 +10,13 @@ from pydantic import BaseModel
 from artisan_shared.models import ConflictDetectionResult, ExecutionResult, Plan
 
 TicketStatus = Literal[
-    "intake", "in_progress", "pr_open", "escalated", "manual_pickup", "done"
+    "intake",
+    "in_progress",
+    "pr_open",
+    "escalated",
+    "manual_pickup",
+    "needs_human_review",
+    "done",
 ]
 
 

@@ -1,10 +1,24 @@
-"""Unit test for github/client.py's `open_pull_request` (Gate 2, MILESTONE.md Phase 3.6). Fakes the
+"""Unit test for github/client.py's `open_pull_request` (Gate 2, MILESTONE.md Phase 3.6), plus WS3's
+repo-context helpers (`get_default_branch_head_sha`/`get_repo_tree`/`get_file_content`). Fakes the
 installation client so no real GitHub call is made."""
 
+import base64
+
+import httpx
 import pytest
+from githubkit.exception import RequestFailed
 
 from artisan_agents.github import client as github_client_module
-from artisan_agents.github.client import get_pull_request, open_pull_request
+from artisan_agents.github.client import (
+    add_label,
+    count_markdown_images,
+    extract_and_download_images,
+    get_default_branch_head_sha,
+    get_file_content,
+    get_pull_request,
+    get_repo_tree,
+    open_pull_request,
+)
 
 
 class _FakePullRequest:
@@ -103,3 +117,367 @@ async def test_get_pull_request_treats_a_null_body_as_empty_string(monkeypatch) 
 
     _title, body, *_rest = await get_pull_request("acme/demo", 5)
     assert body == ""
+
+
+def _request_failed(status_code: int) -> RequestFailed:
+    # RequestFailed.__init__ needs a real githubkit Response wrapping an httpx one; bypassing it
+    # (same pattern as test_dispatch.py's `_request_failed`) lets the test assert purely on the
+    # `.response.status_code` classification get_file_content branches on.
+    exc = RequestFailed.__new__(RequestFailed)
+    exc.response = httpx.Response(status_code, request=httpx.Request("GET", "https://example.com"))
+    return exc
+
+
+class _FakeRepoInfo:
+    def __init__(self, default_branch: str) -> None:
+        self.default_branch = default_branch
+
+
+class _FakeGitObject:
+    def __init__(self, sha: str) -> None:
+        self.sha = sha
+
+
+class _FakeGitRef:
+    def __init__(self, sha: str) -> None:
+        self.object_ = _FakeGitObject(sha)
+
+
+class _FakeReposForContext:
+    def __init__(self) -> None:
+        self.get_calls = []
+        self.content_calls = []
+        self._default_branch = "main"
+        self._content: str | None = None
+        self._raise: Exception | None = None
+
+    async def async_get(self, owner, repo):
+        self.get_calls.append((owner, repo))
+        return _FakeResponse(_FakeRepoInfo(self._default_branch))
+
+    async def async_get_content(self, owner, repo, *, path, ref):
+        self.content_calls.append((owner, repo, path, ref))
+        if self._raise is not None:
+            raise self._raise
+        return _FakeResponse(type("_Content", (), {"content": self._content})())
+
+
+class _FakeTreeEntry:
+    def __init__(self, path: str, type_: str) -> None:
+        self.path = path
+        self.type = type_
+
+
+class _FakeTreeResponseData:
+    def __init__(self, entries: list[_FakeTreeEntry]) -> None:
+        self.tree = entries
+
+
+class _FakeGit:
+    def __init__(self) -> None:
+        self.ref_calls = []
+        self.tree_calls = []
+        self._ref_sha = "deadbeef"
+        self._tree_entries: list[_FakeTreeEntry] = []
+
+    async def async_get_ref(self, owner, repo, *, ref):
+        self.ref_calls.append((owner, repo, ref))
+        return _FakeResponse(_FakeGitRef(self._ref_sha))
+
+    async def async_get_tree(self, owner, repo, sha, *, recursive):
+        self.tree_calls.append((owner, repo, sha, recursive))
+        return _FakeResponse(_FakeTreeResponseData(self._tree_entries))
+
+
+class _FakeGitHubForContext:
+    def __init__(self) -> None:
+        self.rest = type("_Rest", (), {})()
+        self.rest.repos = _FakeReposForContext()
+        self.rest.git = _FakeGit()
+
+
+@pytest.mark.asyncio
+async def test_get_default_branch_head_sha_resolves_default_branch_then_its_ref(monkeypatch) -> None:
+    fake_gh = _FakeGitHubForContext()
+    fake_gh.rest.repos._default_branch = "develop"
+    fake_gh.rest.git._ref_sha = "abc123"
+    monkeypatch.setattr(github_client_module, "get_installation_client", lambda: fake_gh)
+
+    sha = await get_default_branch_head_sha("acme/demo")
+
+    assert sha == "abc123"
+    assert fake_gh.rest.repos.get_calls == [("acme", "demo")]
+    assert fake_gh.rest.git.ref_calls == [("acme", "demo", "heads/develop")]
+
+
+@pytest.mark.asyncio
+async def test_get_repo_tree_filters_directories_node_modules_and_git_and_caps_length(
+    monkeypatch,
+) -> None:
+    fake_gh = _FakeGitHubForContext()
+    entries = [
+        _FakeTreeEntry("src/index.ts", "blob"),
+        _FakeTreeEntry("src", "tree"),
+        _FakeTreeEntry("node_modules/left-pad/index.js", "blob"),
+        _FakeTreeEntry(".git/HEAD", "blob"),
+        _FakeTreeEntry("package.json", "blob"),
+    ]
+    fake_gh.rest.git._tree_entries = entries
+    monkeypatch.setattr(github_client_module, "get_installation_client", lambda: fake_gh)
+
+    paths = await get_repo_tree("acme/demo", "sha1")
+
+    assert paths == ["src/index.ts", "package.json"]
+    assert fake_gh.rest.git.tree_calls == [("acme", "demo", "sha1", "true")]
+
+
+@pytest.mark.asyncio
+async def test_get_repo_tree_caps_to_max_entries(monkeypatch) -> None:
+    fake_gh = _FakeGitHubForContext()
+    fake_gh.rest.git._tree_entries = [
+        _FakeTreeEntry(f"file{i}.py", "blob")
+        for i in range(github_client_module.REPO_TREE_MAX_ENTRIES + 10)
+    ]
+    monkeypatch.setattr(github_client_module, "get_installation_client", lambda: fake_gh)
+
+    paths = await get_repo_tree("acme/demo", "sha1")
+
+    assert len(paths) == github_client_module.REPO_TREE_MAX_ENTRIES
+
+
+@pytest.mark.asyncio
+async def test_get_file_content_decodes_base64_content(monkeypatch) -> None:
+    fake_gh = _FakeGitHubForContext()
+    fake_gh.rest.repos._content = base64.b64encode(b'{"name": "demo"}').decode("ascii")
+    monkeypatch.setattr(github_client_module, "get_installation_client", lambda: fake_gh)
+
+    content = await get_file_content("acme/demo", "package.json", "sha1")
+
+    assert content == '{"name": "demo"}'
+    assert fake_gh.rest.repos.content_calls == [("acme", "demo", "package.json", "sha1")]
+
+
+@pytest.mark.asyncio
+async def test_get_file_content_returns_none_on_404(monkeypatch) -> None:
+    fake_gh = _FakeGitHubForContext()
+    fake_gh.rest.repos._raise = _request_failed(404)
+    monkeypatch.setattr(github_client_module, "get_installation_client", lambda: fake_gh)
+
+    content = await get_file_content("acme/demo", "missing.json", "sha1")
+
+    assert content is None
+
+
+@pytest.mark.asyncio
+async def test_get_file_content_reraises_non_404_failures(monkeypatch) -> None:
+    fake_gh = _FakeGitHubForContext()
+    fake_gh.rest.repos._raise = _request_failed(500)
+    monkeypatch.setattr(github_client_module, "get_installation_client", lambda: fake_gh)
+
+    with pytest.raises(RequestFailed):
+        await get_file_content("acme/demo", "package.json", "sha1")
+
+
+class _FakeIssuesForLabels:
+    def __init__(self, *, fail_first_add_with: int | None = None) -> None:
+        self.add_labels_calls = []
+        self.create_label_calls = []
+        self._fail_first_add_with = fail_first_add_with
+
+    async def async_add_labels(self, owner, repo, issue_number, *, labels):
+        self.add_labels_calls.append((owner, repo, issue_number, labels))
+        if self._fail_first_add_with is not None and len(self.add_labels_calls) == 1:
+            raise _request_failed(self._fail_first_add_with)
+        return _FakeResponse(None)
+
+    async def async_create_label(self, owner, repo, *, name, color):
+        self.create_label_calls.append((owner, repo, name, color))
+        return _FakeResponse(None)
+
+
+class _FakeGitHubForLabels:
+    def __init__(self, *, fail_first_add_with: int | None = None) -> None:
+        self.rest = type("_Rest", (), {})()
+        self.rest.issues = _FakeIssuesForLabels(fail_first_add_with=fail_first_add_with)
+
+
+@pytest.mark.asyncio
+async def test_add_label_success_path_does_not_create_label(monkeypatch) -> None:
+    fake_gh = _FakeGitHubForLabels()
+    monkeypatch.setattr(github_client_module, "get_installation_client", lambda: fake_gh)
+
+    await add_label("acme/demo", 42, "artisan:ready-for-review")
+
+    assert fake_gh.rest.issues.add_labels_calls == [
+        ("acme", "demo", 42, ["artisan:ready-for-review"])
+    ]
+    assert fake_gh.rest.issues.create_label_calls == []
+
+
+@pytest.mark.asyncio
+async def test_add_label_creates_label_then_retries_when_label_does_not_exist(monkeypatch) -> None:
+    fake_gh = _FakeGitHubForLabels(fail_first_add_with=422)
+    monkeypatch.setattr(github_client_module, "get_installation_client", lambda: fake_gh)
+
+    await add_label("acme/demo", 42, "artisan:ready-for-review")
+
+    assert fake_gh.rest.issues.create_label_calls == [
+        ("acme", "demo", "artisan:ready-for-review", "0e8a16")
+    ]
+    assert len(fake_gh.rest.issues.add_labels_calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_add_label_reraises_non_422_failures(monkeypatch) -> None:
+    fake_gh = _FakeGitHubForLabels(fail_first_add_with=500)
+    monkeypatch.setattr(github_client_module, "get_installation_client", lambda: fake_gh)
+
+    with pytest.raises(RequestFailed):
+        await add_label("acme/demo", 42, "artisan:ready-for-review")
+
+    assert fake_gh.rest.issues.create_label_calls == []
+
+
+# --- WS1: count_markdown_images / extract_and_download_images -------------------------------
+
+
+def test_count_markdown_images_counts_across_body_and_comments() -> None:
+    body = "see ![screenshot](https://example.com/a.png) for context"
+    comments = [
+        "also ![this](https://example.com/b.png) and ![that](https://example.com/c.png)",
+        "no images here",
+    ]
+    assert count_markdown_images(body, comments) == 3
+
+
+def test_count_markdown_images_dedupes_repeated_urls() -> None:
+    body = "![a](https://example.com/a.png) again: ![a](https://example.com/a.png)"
+    assert count_markdown_images(body, []) == 1
+
+
+def test_count_markdown_images_ignores_non_markdown_image_text() -> None:
+    body = "a bare link https://example.com/a.png isn't markdown image syntax"
+    assert count_markdown_images(body, []) == 0
+
+
+def _mock_transport(handler):
+    return httpx.MockTransport(handler)
+
+
+@pytest.mark.asyncio
+async def test_extract_and_download_images_downloads_and_dedupes(monkeypatch) -> None:
+    body = (
+        "title has none. ![a](https://img.example.com/one.png) "
+        "duplicate: ![a again](https://img.example.com/one.png)"
+    )
+    comments = ["![b](https://img.example.com/two.jpg)"]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"bytes", headers={"content-type": "image/png"})
+
+    class _FakeAsyncClient(httpx.AsyncClient):
+        def __init__(self, *args, **kwargs):
+            kwargs["transport"] = _mock_transport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(github_client_module.httpx, "AsyncClient", _FakeAsyncClient)
+
+    images = await extract_and_download_images("title", body, comments)
+
+    assert len(images) == 2  # deduped: only 2 unique URLs
+    assert all(data == b"bytes" and mime == "image/png" for data, mime in images)
+
+
+@pytest.mark.asyncio
+async def test_extract_and_download_images_stops_after_three_successes(monkeypatch) -> None:
+    body = "".join(f"![i{i}](https://img.example.com/{i}.png)" for i in range(6))
+
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url)
+        return httpx.Response(200, content=b"x", headers={"content-type": "image/png"})
+
+    class _FakeAsyncClient(httpx.AsyncClient):
+        def __init__(self, *args, **kwargs):
+            kwargs["transport"] = _mock_transport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(github_client_module.httpx, "AsyncClient", _FakeAsyncClient)
+
+    images = await extract_and_download_images("title", body, [])
+
+    assert len(images) == 3
+    assert len(calls) == 3
+
+
+@pytest.mark.asyncio
+async def test_extract_and_download_images_skips_oversized_downloads(monkeypatch) -> None:
+    body = "![big](https://img.example.com/big.png)"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b"x" * 10,
+            headers={
+                "content-type": "image/png",
+                "content-length": str(github_client_module.MAX_IMAGE_BYTES + 1),
+            },
+        )
+
+    class _FakeAsyncClient(httpx.AsyncClient):
+        def __init__(self, *args, **kwargs):
+            kwargs["transport"] = _mock_transport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(github_client_module.httpx, "AsyncClient", _FakeAsyncClient)
+
+    images = await extract_and_download_images("title", body, [])
+
+    assert images == []
+
+
+@pytest.mark.asyncio
+async def test_extract_and_download_images_skips_failed_downloads(monkeypatch) -> None:
+    body = (
+        "![broken](https://img.example.com/broken.png) "
+        "![ok](https://img.example.com/ok.png)"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "broken" in str(request.url):
+            return httpx.Response(500)
+        return httpx.Response(200, content=b"ok", headers={"content-type": "image/png"})
+
+    class _FakeAsyncClient(httpx.AsyncClient):
+        def __init__(self, *args, **kwargs):
+            kwargs["transport"] = _mock_transport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(github_client_module.httpx, "AsyncClient", _FakeAsyncClient)
+
+    images = await extract_and_download_images("title", body, [])
+
+    assert len(images) == 1
+    assert images[0] == (b"ok", "image/png")
+
+
+@pytest.mark.asyncio
+async def test_extract_and_download_images_falls_back_to_url_extension_when_content_type_missing(
+    monkeypatch,
+) -> None:
+    body = "![a](https://img.example.com/photo.jpg)"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"jpgbytes")
+
+    class _FakeAsyncClient(httpx.AsyncClient):
+        def __init__(self, *args, **kwargs):
+            kwargs["transport"] = _mock_transport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(github_client_module.httpx, "AsyncClient", _FakeAsyncClient)
+
+    images = await extract_and_download_images("title", body, [])
+
+    assert images == [(b"jpgbytes", "image/jpeg")]

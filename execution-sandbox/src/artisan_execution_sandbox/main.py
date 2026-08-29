@@ -21,7 +21,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from artisan_execution_sandbox import firestore_write, git_ops, test_runner
+from artisan_execution_sandbox import firestore_write, git_ops, security_scan, test_runner
 from artisan_execution_sandbox.coding_agent import run_coding_agent, run_conflict_resolution_agent
 from artisan_execution_sandbox.config import CLOUD_RUN_REGION, GCP_PROJECT_ID
 from artisan_execution_sandbox.firestore_write import (
@@ -151,6 +151,29 @@ async def run_attempt(
 
         git_ops.commit_all(str(workdir), f"Artisan: {summary}"[:200])
 
+        print("[artisan-execution-sandbox] running security scans...")
+        secrets_clean, secrets_findings = security_scan.scan_secrets(str(workdir))
+        if not secrets_clean:
+            return ExecutionResult(
+                branch=branch, diff_summary=diff_summary, tests_passed=False,
+                logs_uri=f"security scan blocked: secret detected — {secrets_findings}",
+            )
+
+        static_ok, static_findings = security_scan.scan_static(str(workdir))
+        if not static_ok:
+            return ExecutionResult(
+                branch=branch, diff_summary=diff_summary, tests_passed=False,
+                logs_uri=f"security scan blocked: static analysis finding — {static_findings}",
+            )
+
+        new_deps = security_scan.scan_new_dependencies(str(workdir))
+        if new_deps:
+            diff_summary += "\n\n⚠️ New dependencies detected:\n" + "\n".join(
+                f"- {d}" for d in new_deps
+            )
+        if static_findings:
+            diff_summary += "\n\nStatic analysis notes (non-blocking):\n" + static_findings
+
         print("[artisan-execution-sandbox] pushing...")
         try:
             git_ops.push(str(workdir), branch, token=token, repo=repo)
@@ -276,6 +299,29 @@ async def run_conflict_resolution(
                 branch=head_branch, diff_summary=diff_summary, tests_passed=False,
                 logs_uri=_logs_uri(),
             )
+
+        print("[artisan-execution-sandbox] running security scans...")
+        secrets_clean, secrets_findings = security_scan.scan_secrets(str(workdir))
+        if not secrets_clean:
+            return ExecutionResult(
+                branch=head_branch, diff_summary=diff_summary, tests_passed=False,
+                logs_uri=f"security scan blocked: secret detected — {secrets_findings}",
+            )
+
+        static_ok, static_findings = security_scan.scan_static(str(workdir))
+        if not static_ok:
+            return ExecutionResult(
+                branch=head_branch, diff_summary=diff_summary, tests_passed=False,
+                logs_uri=f"security scan blocked: static analysis finding — {static_findings}",
+            )
+
+        new_deps = security_scan.scan_new_dependencies(str(workdir))
+        if new_deps:
+            diff_summary += "\n\n⚠️ New dependencies detected:\n" + "\n".join(
+                f"- {d}" for d in new_deps
+            )
+        if static_findings:
+            diff_summary += "\n\nStatic analysis notes (non-blocking):\n" + static_findings
 
         try:
             git_ops.push(str(workdir), head_branch, token=token, repo=repo)

@@ -17,7 +17,7 @@ export default async function EscalationsPage() {
         <TicketGridLive
           initial={tickets}
           emptyMessage="Nothing is waiting on a human right now."
-          streamUrl="/api/tickets/stream?status=escalated,manual_pickup"
+          streamUrl="/api/tickets/stream?status=escalated,manual_pickup,needs_human_review"
           showFilter={false}
         />
       </main>

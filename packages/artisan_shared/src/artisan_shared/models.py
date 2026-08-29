@@ -4,29 +4,50 @@ Shared between `agents/` (orchestrator) and `execution-sandbox/` (Sprint 3's exe
 both sides need `Plan`/`ExecutionResult`'s exact shape to stay in sync — see docs/CONTEXT.md's
 Sprint 3 shared-package decision for why this isn't duplicated in each project instead."""
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel
 
 
 class IntakeVerdict(BaseModel):
-    sufficient: bool
-    missing_context_question: str | None = None
+    verdict: Literal["sufficient", "needs_info", "not_actionable"]
+    # Only populated (1-3 entries) when verdict == "needs_info" — see intake_agent.py's
+    # INTAKE_INSTRUCTION for the exact bar each question must clear.
+    missing_context_questions: list[str] = []
 
 
 class RoutingDecision(BaseModel):
     """Gate 2's orchestrator-routing output (MILESTONE.md Phase 3.1). `parallel` is explicit rather
     than inferred from `len(domains) > 1` — the routing decision is a real judgment call (e.g. two
-    domains touching the same files may still warrant sequential dispatch)."""
+    domains touching the same files may still warrant sequential dispatch).
 
-    domains: list[Literal["frontend", "backend", "infra-devops"]]
+    `domains` is open-ended (WS4, domain generalization) rather than a fixed 3-way `Literal` — the
+    routing agent derives a fitting domain name from the issue text and repo context, so
+    "frontend"/"backend"/"infra-devops" remain the common defaults but aren't the only valid
+    answers (e.g. "mobile", "data-ml", "cli"). `subproject` gives basic monorepo support: it points
+    at a relevant subdirectory when the repo has multiple manifest roots, else stays `None`."""
+
+    domains: list[str]
     parallel: bool
+    subproject: str | None = None
 
 
 class DomainExpertOutput(BaseModel):
-    domain: Literal["frontend", "backend", "infra-devops"]
+    # Open-ended (WS4) to match `RoutingDecision.domains` — see that model's docstring.
+    domain: str
     technical_summary: str
     relevant_files: list[str]
+
+
+class RemovedCodeItem(BaseModel):
+    """A stale function/branch/exported symbol the Planning Agent identified as fully superseded
+    by the new requirement (WS5). The coding agent deletes it as part of carrying out the same
+    `Plan` rather than leaving dead code behind."""
+
+    file: str
+    symbol: str
+    reason: str
 
 
 class Plan(BaseModel):
@@ -34,6 +55,7 @@ class Plan(BaseModel):
     touched_files: list[str]
     test_cases: list[str]
     doc_updates: list[str]
+    removed_code: list[RemovedCodeItem] = []
 
 
 class ExecutionResult(BaseModel):
@@ -82,6 +104,20 @@ class GitHubWebhookEnvelope(BaseModel):
     action: str
     repo: str
     payload: dict
+
+
+class RepoContext(BaseModel):
+    """A cheap, cacheable snapshot of a repo's shape (WS3) — fetched once per repo (subject to
+    `REPO_CONTEXT_TTL_SECONDS`/head-sha staleness) so routing/domain-expert/planning agents can
+    ground their reasoning in the repo's actual file tree/manifests rather than the issue text
+    alone. See `artisan_agents.repo_context.get_repo_context`."""
+
+    repo: str
+    head_sha: str
+    file_tree: list[str]
+    manifests: dict[str, str]
+    languages: dict[str, int]
+    fetched_at: datetime
 
 
 class ManualActionEnvelope(BaseModel):

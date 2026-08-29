@@ -17,3 +17,10 @@ def pr_pointer_doc_id(repo: str, pr_number: int) -> str:
     resolves a `pull_request` webhook straight to a ticket doc id without a query, same philosophy
     as `ticket_doc_id` above."""
     return f"{_SLUG_RE.sub('_', repo)}__{pr_number}"
+
+
+def repo_context_doc_id(repo: str) -> str:
+    """Deterministic id for the top-level `repo_context` collection (WS3) — same "/" -> "_"
+    slugging as `ticket_doc_id`/`pr_pointer_doc_id` above, since a repo name isn't itself a valid
+    Firestore doc id."""
+    return _SLUG_RE.sub("_", repo)

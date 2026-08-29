@@ -21,10 +21,21 @@ _USER_ID = "artisan-orchestrator"
 
 
 async def run_structured(
-    *, agent: Agent, app_name: str, output_key: str, output_model: type[T], prompt: str
+    *,
+    agent: Agent,
+    app_name: str,
+    output_key: str,
+    output_model: type[T],
+    prompt: str,
+    images: list[tuple[bytes, str]] | None = None,
 ) -> T:
     """Runs `agent` once against `prompt` in a fresh session and validates
     `final_session.state[output_key]` into `output_model`.
+
+    `images` (WS1) is an optional list of `(raw_bytes, mime_type)` tuples — e.g. screenshots
+    downloaded from a GitHub issue thread — appended as extra inline `Part`s after the text prompt
+    so the Intake Agent can reason over them multimodally. Omitted entirely when empty/None so
+    every other caller's request shape is unchanged.
 
     Sprint 6: emits `agent_invoked`/`agent_completed` around the call. No ADK event-stream
     interception needed here — these agents use `output_schema`/`output_key` with no `tools`, so
@@ -40,7 +51,10 @@ async def run_structured(
         app_name=app_name, user_id=_USER_ID, session_id=str(uuid.uuid4())
     )
     runner = Runner(agent=agent, app_name=app_name, session_service=session_service)
-    message = types.Content(role="user", parts=[types.Part(text=prompt)])
+    parts = [types.Part(text=prompt)]
+    if images:
+        parts.extend(types.Part.from_bytes(data=data, mime_type=mime) for data, mime in images)
+    message = types.Content(role="user", parts=parts)
     async for _event in runner.run_async(
         user_id=_USER_ID, session_id=session.id, new_message=message
     ):
