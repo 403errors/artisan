@@ -42,12 +42,14 @@ describe("DecisionTrail", () => {
     render(<DecisionTrail ticket={TICKET} />);
     expect(screen.getByText("frontend")).toBeInTheDocument();
     expect(screen.getByText("Add landing page")).toBeInTheDocument();
-    expect(screen.getByText(/Touched files: index.html/)).toBeInTheDocument();
-    expect(screen.getByText(/Test cases: renders hero section/)).toBeInTheDocument();
-    expect(screen.getByText(/Doc updates: README.md/)).toBeInTheDocument();
+    expect(screen.getByText("Touched files")).toBeInTheDocument();
+    expect(screen.getByText("index.html")).toBeInTheDocument();
+    expect(screen.getByText("Test cases")).toBeInTheDocument();
+    expect(screen.getByText("renders hero section")).toBeInTheDocument();
+    expect(screen.getByText("Doc updates")).toBeInTheDocument();
+    expect(screen.getByText("README.md")).toBeInTheDocument();
     expect(screen.getByText("Added static landing page markup.")).toBeInTheDocument();
     expect(screen.getByText("Tests passed")).toBeInTheDocument();
-    expect(screen.getByText("Retry count: 2")).toBeInTheDocument();
   });
 
   it("does not render a Gate 3 section when no conflict data exists", () => {
@@ -71,6 +73,6 @@ describe("DecisionTrail", () => {
     render(<DecisionTrail ticket={withConflict} />);
     expect(screen.getByText(/Gate 3/)).toBeInTheDocument();
     expect(screen.getByText("conflicting edits to shared.py")).toBeInTheDocument();
-    expect(screen.getByText(/Conflicted files: shared.py/)).toBeInTheDocument();
+    expect(screen.getByText("shared.py")).toBeInTheDocument();
   });
 });

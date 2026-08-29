@@ -1,5 +1,6 @@
 import { getFirestore } from "@/lib/firestore";
 import { TARGET_REPO } from "@/lib/config";
+import { currentGate, lastDecision } from "@/lib/ticket-derived";
 import type {
   ConflictDetectionResult,
   EscalationEntry,
@@ -118,45 +119,6 @@ function toTicketDoc(id: string, raw: RawTicketDoc): TicketDoc {
   };
 }
 
-const GATE2_STEPS = new Set([
-  "routing",
-  "domain_expert",
-  "planning",
-  "executing",
-  "verifying",
-  "opening_pr",
-]);
-const GATE3_STEPS = new Set(["detecting_conflict", "classifying_conflict", "resolving_conflict"]);
-
-function stepPrefix(step: string | null): string | null {
-  // "planning (attempt 2)" etc. -> "planning" for set lookup.
-  return step ? step.split(" ")[0] : null;
-}
-
-export function currentGate(doc: TicketDoc): "1" | "2" | "3" {
-  const prefix = stepPrefix(doc.currentStep);
-  if (prefix && GATE3_STEPS.has(prefix)) return "3";
-  if (prefix && GATE2_STEPS.has(prefix)) return "2";
-  if (doc.status === "intake") return "1";
-  // Terminal ticket with no live current_step: fall back to the last escalation's recorded gate,
-  // else infer from what data exists.
-  const lastGate = doc.escalationHistory.at(-1)?.gate;
-  if (lastGate) return lastGate;
-  if (doc.lastConflictDetection) return "3";
-  if (doc.prUrl) return "2";
-  return "1";
-}
-
-export function lastDecision(doc: TicketDoc): string {
-  const lastEscalation = doc.escalationHistory.at(-1);
-  if (doc.status === "escalated" || doc.status === "manual_pickup") {
-    return lastEscalation?.reason ?? "awaiting manual pickup";
-  }
-  if (doc.status === "pr_open") return `PR opened: ${doc.prUrl}`;
-  if (doc.status === "done") return "merged";
-  return doc.status;
-}
-
 function toTicketSummary(doc: TicketDoc): TicketSummary {
   return {
     id: doc.id,
@@ -197,5 +159,5 @@ export async function getTicket(id: string): Promise<TicketDoc | null> {
   return toTicketDoc(snapshot.id, snapshot.data() as RawTicketDoc);
 }
 
-export { toTicketDoc, toTicketSummary };
+export { toTicketDoc, toTicketSummary, currentGate, lastDecision };
 export type { RawTicketDoc };

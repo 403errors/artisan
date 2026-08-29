@@ -7,7 +7,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-quicksand);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
   --color-ring: var(--ring);
@@ -26,6 +26,11 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-status-active: var(--status-active);
+  --color-status-review: var(--status-review);
+  --color-status-urgent: var(--status-urgent);
+  --color-status-resolved: var(--status-resolved);
+  --color-status-idle: var(--status-idle);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -55,6 +60,14 @@
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
   --radius: 0.625rem;
+
+  /* Ticket status buckets: active = being worked, review = needs a human look,
+     urgent = failure/escalated, resolved = done, idle = live-but-stalled. */
+  --status-active: oklch(0.62 0.17 255);
+  --status-review: oklch(0.72 0.16 68);
+  --status-urgent: oklch(0.58 0.22 25);
+  --status-resolved: oklch(0.63 0.16 150);
+  --status-idle: var(--muted-foreground);
 }
 
 .dark {
@@ -76,6 +89,12 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
+
+  --status-active: oklch(0.72 0.15 255);
+  --status-review: oklch(0.8 0.15 68);
+  --status-urgent: oklch(0.7 0.19 25);
+  --status-resolved: oklch(0.74 0.15 150);
+  --status-idle: var(--muted-foreground);
 }
 
 @layer base {
@@ -84,8 +103,14 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-weight: 500;
   }
   html {
     @apply font-sans;
+  }
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.01em;
   }
 }

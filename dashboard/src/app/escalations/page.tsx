@@ -18,6 +18,7 @@ export default async function EscalationsPage() {
           initial={tickets}
           emptyMessage="Nothing is waiting on a human right now."
           streamUrl="/api/tickets/stream?status=escalated,manual_pickup"
+          showFilter={false}
         />
       </main>
     </>

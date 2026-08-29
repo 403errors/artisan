@@ -1,6 +1,8 @@
+import { ArrowLeftIcon } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { Button } from "@/components/ui/button";
 import { DashboardNav } from "@/components/dashboard-nav";
 import { TicketDetailLive } from "@/components/ticket-detail-live";
 import { getTicket } from "@/lib/tickets";
@@ -17,11 +19,12 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
   return (
     <>
       <DashboardNav />
-      <main className="mx-auto flex max-w-3xl flex-col gap-8 p-8">
+      <main className="mx-auto flex max-w-6xl flex-col gap-6 p-8">
         <div>
-          <Link href="/tickets" className="text-sm underline underline-offset-4">
-            ← All tickets
-          </Link>
+          <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/tickets" />}>
+            <ArrowLeftIcon aria-hidden="true" />
+            All tickets
+          </Button>
         </div>
         <TicketDetailLive initial={ticket} />
       </main>
