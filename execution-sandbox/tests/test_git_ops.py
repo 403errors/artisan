@@ -193,6 +193,31 @@ def test_merge_raises_git_command_error_for_a_genuine_error_not_a_conflict(tmp_p
         merge(str(workdir), "does-not-exist")
 
 
+def test_merge_passes_bot_identity_to_the_subprocess(monkeypatch, tmp_path) -> None:
+    """`--no-commit` never creates a commit, but some git environments still preflight-check
+    committer identity for a `--no-ff` merge regardless — found live when a container with no
+    global git identity configured raised "Committer identity unknown" on every conflict-detection
+    attempt, real conflict or not (see docs/CONTEXT.md). `merge()` must pass the same
+    `_COMMIT_AUTHOR_ARGS` `commit_all()` already uses, so the subprocess never depends on the
+    environment having a global identity configured."""
+    import artisan_execution_sandbox.git_ops as git_ops_module
+
+    captured_args: list[str] = []
+
+    def fake_run(args, **kwargs):
+        captured_args.extend(args)
+        return subprocess.CompletedProcess(args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(git_ops_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(git_ops_module, "list_conflicted_files", lambda repo_dir: [])
+
+    merge(str(tmp_path), "main")
+
+    assert "-c" in captured_args
+    assert "user.email=artisan-bot@users.noreply.github.com" in captured_args
+    assert "user.name=artisan-bot" in captured_args
+
+
 def test_abort_merge_restores_clean_state(tmp_path) -> None:
     origin = tmp_path / "origin"
     workdir = tmp_path / "workdir"

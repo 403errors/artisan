@@ -74,9 +74,18 @@ def merge(repo_dir: str, branch_name: str) -> tuple[bool, str]:
     subprocess failure — unlike every other wrapper in this module, a nonzero exit does not
     automatically raise. It's distinguished from a genuine git-level error (e.g. an unknown ref) by
     checking whether `list_conflicted_files` actually reports conflicted files; only a genuine
-    error raises GitCommandError. Returns (merged_clean, combined_output)."""
+    error raises GitCommandError. Returns (merged_clean, combined_output).
+
+    Passes `_COMMIT_AUTHOR_ARGS` even though `--no-commit` means no commit is ever created here:
+    found live that the execution-sandbox container (no global git identity configured, unlike a
+    dev machine) raised "Committer identity unknown" on this exact merge for a real two-file
+    conflict, despite `--no-commit` — not reproduced locally with the same repo content on a
+    different git build, so this looks like a container/git-version-specific identity check rather
+    than universal `--no-ff` behavior. Passing identity here (matching `commit_all`'s existing
+    pattern) is safe regardless of the precise cause and directly resolves the observed failure —
+    see docs/CONTEXT.md."""
     result = subprocess.run(
-        ["git", "merge", "--no-commit", "--no-ff", f"origin/{branch_name}"],
+        ["git", *_COMMIT_AUTHOR_ARGS, "merge", "--no-commit", "--no-ff", f"origin/{branch_name}"],
         cwd=repo_dir,
         capture_output=True,
         text=True,
