@@ -10,9 +10,6 @@ export function DashboardNav() {
         <Link href="/tickets" className="text-sm underline underline-offset-4">
           Tickets
         </Link>
-        <Link href="/escalations" className="text-sm underline underline-offset-4">
-          Awaiting human
-        </Link>
       </div>
       <SignOutButton />
     </nav>

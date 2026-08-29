@@ -158,16 +158,6 @@ export async function listTickets(): Promise<TicketSummary[]> {
   return snapshot.docs.map((d) => toTicketSummary(toTicketDoc(d.id, d.data() as RawTicketDoc)));
 }
 
-export async function listEscalatedTickets(): Promise<TicketSummary[]> {
-  const snapshot = await getFirestore()
-    .collection("tickets")
-    .where("github_repo", "==", TARGET_REPO)
-    .where("status", "in", ["escalated", "manual_pickup", "needs_human_review"])
-    .orderBy("updated_at", "desc")
-    .get();
-  return snapshot.docs.map((d) => toTicketSummary(toTicketDoc(d.id, d.data() as RawTicketDoc)));
-}
-
 export async function getTicket(id: string): Promise<TicketDoc | null> {
   const snapshot = await getFirestore().collection("tickets").doc(id).get();
   if (!snapshot.exists) return null;
