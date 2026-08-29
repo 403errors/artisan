@@ -232,18 +232,12 @@ Built the two backend pieces Sprint 5's dashboard couldn't show without them: a 
 
 250 tests passing across all four packages (`packages/artisan_shared`: 34, `agents`: 100, `execution-sandbox`: 33, `dashboard`: 83), plus a clean production build. All new/changed backend tests are unit-level, mocking `firestore_client`/`jira_client`/`github_client`/the Firestore client directly — deliberately did not run `agents/tests/test_firestore_client.py` (it's a real integration suite against the live `artisan-multiagent-ai` database) or any live GCP call this round.
 
-**Not yet done, and explicitly out of scope for this round:**
+**Not yet done:**
 1. **The dashboard's action buttons were never clicked in a live browser.** This environment has live ADC credentials for the real `artisan-multiagent-ai` project, so a live click would publish a real Pub/Sub message the deployed orchestrator could act on (a real retry/escalation/Jira transition against a real ticket) — verification was mocked unit tests + a production build only. **Whoever picks this up next should manually smoke-test all three actions against a real (ideally scratch) ticket before considering this shippable**, the same way Milestone 7's live conflicting-PR tests caught the git-identity bug that unit tests alone couldn't have.
-2. **The dashboard's service account does not yet have `roles/pubsub.publisher`** on the `artisan-github-events` topic, so the new action routes will fail (silently, from the UI's perspective — they still return 202, since publish failures aren't surfaced back to the button) until this is granted:
-   ```
-   gcloud pubsub topics add-iam-policy-binding artisan-github-events \
-     --member="serviceAccount:dashboard@artisan-multiagent-ai.iam.gserviceaccount.com" \
-     --role="roles/pubsub.publisher"
-   ```
-   (Service account email assumed from the existing `dashboard@` naming in "External accounts & identifiers" below — confirm against the deployed Cloud Run service's actual runtime SA before running.) No other new IAM/index/topic is needed — the dashboard stays Firestore read-only, exactly as `SYSTEM_DESIGN.md` §8 documents.
+2. ~~The dashboard's service account does not yet have `roles/pubsub.publisher`~~ **Resolved (2026-08-29):** `roles/pubsub.publisher` on `artisan-github-events` granted to `dashboard@artisan-multiagent-ai.iam.gserviceaccount.com` via `gcloud pubsub topics add-iam-policy-binding`. No other new IAM/index/topic is needed — the dashboard stays Firestore read-only otherwise, exactly as `SYSTEM_DESIGN.md` §8 documents.
 3. Building/redeploying `orchestrator`/`execution-sandbox`/`dashboard` images and running one real manual action through the full pipeline live — not attempted this round for the reasons in item 1.
 
-Next: grant the IAM binding above, redeploy all three images, then do the live smoke-test in item 1 to actually close Sprint 6.
+Next: redeploy all three images (the dashboard image needs to pick up no code change, but `orchestrator`/`execution-sandbox` should already be current from Milestone 7 — confirm), then do the live smoke-test in item 1 to actually close Sprint 6.
 
 *(Add the next milestone below as it completes — keep entries short: what shipped, what decisions it forced, what's next.)*
 
@@ -265,7 +259,7 @@ Next: grant the IAM binding above, redeploy all three images, then do the live s
 - **`MAX_TRIVIAL_CONFLICT_ATTEMPTS` = 1** (decided Phase 1.5, matches the design's stated cap; claimed via `increment_trivial_conflict_attempt`'s `>` comparison — see Milestone 6 for why `>=` would have been a bug here, unlike the other two caps).
 - **Dashboard GitHub OAuth App** (Sprint 5, Milestone 8) — separate from `artisan-bot-403errors`. Client ID/secret + `AUTH_SECRET` currently live only in `dashboard/.env.local` (local dev), not Secret Manager — move in Sprint 7.
 - **Firestore composite indexes** (Sprint 5, Milestone 8, created via `gcloud`, not yet in IaC): `tickets` on `(github_repo ASC, updated_at DESC)` and `(github_repo ASC, status ASC, updated_at DESC)`.
-- **Pending IAM grant, not yet applied (Sprint 6, Milestone 9):** `dashboard@` needs `roles/pubsub.publisher` on the `artisan-github-events` topic so the dashboard's new manual-action routes (retry/escalate/mark-done) can actually publish. Until this is granted, those routes will return 202 but the publish will fail. See Milestone 9 for the exact `gcloud` command. `dashboard@` otherwise stays exactly `datastore.viewer` — no Firestore write grant, deliberately.
+- **IAM grant applied (Sprint 6, Milestone 9, 2026-08-29):** `dashboard@` granted `roles/pubsub.publisher` on the `artisan-github-events` topic, so the dashboard's manual-action routes (retry/escalate/mark-done) can now actually publish. `dashboard@` otherwise stays exactly `datastore.viewer` — no Firestore write grant, deliberately.
 
 ## Open Decisions / Risks
 
@@ -282,4 +276,4 @@ Next: grant the IAM binding above, redeploy all three images, then do the live s
 
 ## Next Milestone Target
 
-**Sprint 6 is code-complete but not closed (Milestone 9).** Next: grant `dashboard@` the pending `roles/pubsub.publisher` IAM binding (see "External accounts & identifiers" above), redeploy `orchestrator`/`execution-sandbox`/`dashboard`, then manually smoke-test all three dashboard actions (retry/escalate/mark-done) against a real ticket before considering the manual-action API shippable — none of that was done this round, deliberately (see Milestone 9). Sprint 6's other worklist items are still open too: the still-unresolved Cloud Trace custom-span export issue (IAM is fine; `gate.*` spans still don't reach Cloud Trace even though ADK's own spans do — the new per-ticket event log is a durable complement to this, not a fix for it), the IAM least-privilege audit, the Secret Manager audit (including migrating the dashboard's OAuth App credentials off `.env.local`), the semantic-escalation dedup gap, and the `pull_request.opened`/`write_pr_pointer` race. None of these block Sprint 7 (deployment/CI-CD) except the Secret Manager migration, which Sprint 7's live deploy needs.
+**Sprint 6 is code-complete but not closed (Milestone 9).** The `dashboard@` → `roles/pubsub.publisher` IAM grant is now applied (see "External accounts & identifiers" above). Next: redeploy `orchestrator`/`execution-sandbox`/`dashboard`, then manually smoke-test all three dashboard actions (retry/escalate/mark-done) against a real ticket before considering the manual-action API shippable — that live smoke-test is the one item still deliberately not done (see Milestone 9). Sprint 6's other worklist items are still open too: the still-unresolved Cloud Trace custom-span export issue (IAM is fine; `gate.*` spans still don't reach Cloud Trace even though ADK's own spans do — the new per-ticket event log is a durable complement to this, not a fix for it), the IAM least-privilege audit, the Secret Manager audit (including migrating the dashboard's OAuth App credentials off `.env.local`), the semantic-escalation dedup gap, and the `pull_request.opened`/`write_pr_pointer` race. None of these block Sprint 7 (deployment/CI-CD) except the Secret Manager migration, which Sprint 7's live deploy needs.
