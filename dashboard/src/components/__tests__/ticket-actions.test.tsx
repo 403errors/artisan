@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TicketActions } from "@/components/ticket-actions";
+import { TicketDetailHeader } from "@/components/ticket-detail-header";
 import type { TicketDoc } from "@/types/ticket";
 
 function ticket(overrides: Partial<TicketDoc>): TicketDoc {
@@ -96,5 +97,25 @@ describe("TicketActions", () => {
 
     resolveFetch({ ok: true });
     await waitFor(() => expect(screen.queryByText("Retry this gate?")).not.toBeInTheDocument());
+  });
+
+  it("does not warn when the PR link is rendered as an anchor", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    render(
+      <TicketDetailHeader
+        ticket={ticket({
+          status: "pr_open",
+          prUrl: "https://github.com/403errors/artisan-demo/pull/42",
+        })}
+        stalled={false}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /View PR on GitHub/i })).toHaveAttribute(
+      "href",
+      "https://github.com/403errors/artisan-demo/pull/42",
+    );
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 });

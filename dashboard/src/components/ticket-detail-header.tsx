@@ -26,6 +26,7 @@ export function TicketDetailHeader({
             <Button
               variant="default"
               size="sm"
+              nativeButton={false}
               render={<a href={ticket.prUrl} target="_blank" rel="noreferrer" />}
             >
               <GitPullRequestArrowIcon />
