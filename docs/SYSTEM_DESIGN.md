@@ -64,7 +64,7 @@ OpenTelemetry → Cloud Trace / Cloud Logging (every gate decision)
 2. Orchestrator's Pub/Sub handler deduplicates on GitHub's `X-GitHub-Delivery` header (idempotency key stored in Firestore) and loads/creates the ticket's Firestore document.
 3. If the ticket has no Jira key yet, the orchestrator creates one via a direct Jira Cloud REST API call and stores the mapping.
 4. Intake Agent reads the GitHub issue thread + Jira ticket and returns a structured verdict: `sufficient` or `insufficient` (with a specific question).
-5. **Sufficient:** Jira ticket transitions to *In Progress*; Gate 2 is triggered. If this verdict was reached after at least one clarification round, Artisan first posts a GitHub comment @-mentioning the issue's reporter, thanking them and stating it's taking over resolution — otherwise (sufficient on the very first pass) no such comment is needed.
+5. **Sufficient:** Artisan posts a GitHub comment @-mentioning the issue's reporter confirming it has enough context and is taking over resolution — after one or more clarification rounds it thanks the reporter for the clarifying replies; on the very first pass it just confirms pickup (the reporter otherwise gets no acknowledgement that automation engaged until a PR appears). Jira ticket transitions to *In Progress*; Gate 2 is triggered.
 6. **Insufficient:** Artisan posts the specific question as a GitHub issue comment, @-mentioning the issue's reporter, increments `clarification_rounds` in Firestore, and stops. A reply re-triggers step 4. After 3 rounds still insufficient, the ticket is flagged `manual_pickup` and Jira is annotated accordingly — no further automated attempts.
 
 **Flowchart:**

@@ -155,6 +155,17 @@ async def evaluate_intake(repo: str, issue_number: int, jira_key: str) -> None:
                 summary="Issuer replied with clarifying information",
                 detail=clarifications,
             )
+        else:
+            # First-pass sufficient: no clarification round preceded this, so the reporter never
+            # got any acknowledgement that automation engaged — without this comment the first
+            # thing they'd see is a PR appearing out of nowhere. Post a short notification so the
+            # issuer always knows Artisan picked the issue up.
+            await github_client.post_issue_comment(
+                repo,
+                issue_number,
+                f"@{author_login} Thanks for the details — Artisan has everything it needs and "
+                "is taking over to resolve this issue.",
+            )
         await jira_client.transition_ticket(jira_key, "In Progress")
         await firestore_client.update_ticket(repo, issue_number, status="in_progress")
         async with tracing.gate_span(ticket_id, "1", "proceed", label="Gate 1: intake sufficient"):

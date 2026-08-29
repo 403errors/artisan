@@ -360,6 +360,9 @@ async def test_sufficient_verdict_transitions_to_in_progress_and_hands_off_to_ga
     async def fake_get_issue_thread(repo, issue_number):
         return "title", "a very well specified body", "octocat", []
 
+    async def fake_post_issue_comment(repo, issue_number, body):
+        pass
+
     async def fake_run_intake(**kwargs):
         return IntakeVerdict(verdict="sufficient")
 
@@ -369,6 +372,7 @@ async def test_sufficient_verdict_transitions_to_in_progress_and_hands_off_to_ga
     monkeypatch.setattr(dispatch.jira_client, "create_ticket", fake_create_ticket)
     monkeypatch.setattr(dispatch.jira_client, "transition_ticket", fake_transition_ticket)
     monkeypatch.setattr(dispatch.github_client, "get_issue_thread", fake_get_issue_thread)
+    monkeypatch.setattr(dispatch.github_client, "post_issue_comment", fake_post_issue_comment)
     monkeypatch.setattr(dispatch, "run_intake", fake_run_intake)
     monkeypatch.setattr(dispatch.gate2, "start_gate2", fake_start_gate2)
 
@@ -378,6 +382,47 @@ async def test_sufficient_verdict_transitions_to_in_progress_and_hands_off_to_ga
     assert ticket.status == "in_progress"
     assert transitioned == [("ART-1", "In Progress")]
     assert gate2_calls == [("acme/demo", 1, "ART-1", "title", "a very well specified body")]
+
+
+@pytest.mark.asyncio
+async def test_sufficient_on_first_pass_posts_taking_over_comment(fake_store, monkeypatch) -> None:
+    """A first-pass sufficient verdict must still notify the issuer that Artisan is taking over —
+    without this, an issue with enough detail gets no acknowledgement until a PR appears."""
+    posted_comments = []
+
+    async def fake_create_ticket(issue_number, title, body, url):
+        return "ART-1", f"[GH#{issue_number}] {title}"
+
+    async def fake_transition_ticket(jira_key, status_name):
+        pass
+
+    async def fake_get_issue_thread(repo, issue_number):
+        return "title", "a very well specified body", "octocat", []
+
+    async def fake_post_issue_comment(repo, issue_number, body):
+        posted_comments.append(body)
+
+    async def fake_run_intake(**kwargs):
+        return IntakeVerdict(verdict="sufficient")
+
+    async def fake_start_gate2(repo, issue_number, jira_key, *, issue_title, issue_body):
+        pass
+
+    monkeypatch.setattr(dispatch.jira_client, "create_ticket", fake_create_ticket)
+    monkeypatch.setattr(dispatch.jira_client, "transition_ticket", fake_transition_ticket)
+    monkeypatch.setattr(dispatch.github_client, "get_issue_thread", fake_get_issue_thread)
+    monkeypatch.setattr(dispatch.github_client, "post_issue_comment", fake_post_issue_comment)
+    monkeypatch.setattr(dispatch, "run_intake", fake_run_intake)
+    monkeypatch.setattr(dispatch.gate2, "start_gate2", fake_start_gate2)
+
+    await dispatch.handle_event(_issue_opened())
+
+    assert posted_comments == [
+        "@octocat Thanks for the details — Artisan has everything it needs and "
+        "is taking over to resolve this issue."
+    ]
+    ticket = await fake_store.get_ticket("acme/demo", 1)
+    assert ticket.status == "in_progress"
 
 
 @pytest.mark.asyncio
@@ -469,6 +514,9 @@ async def test_sufficient_on_first_pass_does_not_touch_jira_description(
     async def fake_get_issue_thread(repo, issue_number):
         return "title", "a very well specified body", "octocat", []
 
+    async def fake_post_issue_comment(repo, issue_number, body):
+        pass
+
     async def fake_run_intake(**kwargs):
         return IntakeVerdict(verdict="sufficient")
 
@@ -479,6 +527,7 @@ async def test_sufficient_on_first_pass_does_not_touch_jira_description(
     monkeypatch.setattr(dispatch.jira_client, "transition_ticket", fake_transition_ticket)
     monkeypatch.setattr(dispatch.jira_client, "update_description", fake_update_description)
     monkeypatch.setattr(dispatch.github_client, "get_issue_thread", fake_get_issue_thread)
+    monkeypatch.setattr(dispatch.github_client, "post_issue_comment", fake_post_issue_comment)
     monkeypatch.setattr(dispatch, "run_intake", fake_run_intake)
     monkeypatch.setattr(dispatch.gate2, "start_gate2", fake_start_gate2)
 
@@ -675,6 +724,9 @@ async def test_injection_flagged_body_emits_event_and_is_passed_to_run_intake(
     async def fake_extract_and_download_images(title, body, comments):
         return []
 
+    async def fake_post_issue_comment(repo, issue_number, body):
+        pass
+
     async def fake_run_intake(**kwargs):
         intake_calls.append(kwargs)
         return IntakeVerdict(verdict="sufficient")
@@ -689,6 +741,7 @@ async def test_injection_flagged_body_emits_event_and_is_passed_to_run_intake(
     monkeypatch.setattr(
         dispatch.github_client, "extract_and_download_images", fake_extract_and_download_images
     )
+    monkeypatch.setattr(dispatch.github_client, "post_issue_comment", fake_post_issue_comment)
     monkeypatch.setattr(dispatch, "run_intake", fake_run_intake)
     monkeypatch.setattr(dispatch.gate2, "start_gate2", fake_start_gate2)
 
