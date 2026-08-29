@@ -8,7 +8,7 @@ clarification loop (which re-enters via a new webhook event)."""
 import asyncio
 from datetime import datetime, timezone
 
-from artisan_agents import tracing
+from artisan_agents import event_context, tracing
 from artisan_agents.agents.domain_expert_agent import run_domain_expert
 from artisan_agents.agents.planning_agent import run_planning
 from artisan_agents.agents.routing_agent import run_routing
@@ -32,9 +32,19 @@ PR_BASE_BRANCH = "main"
 
 
 async def start_gate2(
-    repo: str, issue_number: int, jira_key: str, *, issue_title: str, issue_body: str
+    repo: str,
+    issue_number: int,
+    jira_key: str,
+    *,
+    issue_title: str,
+    issue_body: str,
+    retry_generation: int = 0,
 ) -> None:
     ticket_id = firestore_client.ticket_doc_id(repo, issue_number)
+    event_context.set_sink(firestore_client.new_event_sink(ticket_id, gate="2"))
+    await event_context.current_sink().emit(
+        type="gate_started", summary="Gate 2: plan -> execute -> verify"
+    )
 
     await firestore_client.update_ticket(repo, issue_number, current_step="routing")
     decision = await run_routing(issue_title=issue_title, issue_body=issue_body, jira_key=jira_key)
@@ -58,7 +68,16 @@ async def start_gate2(
         )
         await firestore_client.update_ticket(repo, issue_number, plan=plan.model_dump(mode="json"))
 
-        branch = f"artisan/{jira_key}-attempt-{attempt}"
+        # A manual retry (Sprint 6's manual_actions.py) re-enters start_gate2 for a ticket that may
+        # have already pushed artisan/{jira_key}-attempt-1 in a prior run — attempt always restarts
+        # at 1 on re-entry, so without retry_generation the retry's branch collides with that stale
+        # branch and its git push fails non-fast-forward (force-push is disallowed). gen==0 renders
+        # today's exact format, so a normal (non-retried) run is byte-identical to before.
+        branch = (
+            f"artisan/{jira_key}-attempt-{attempt}"
+            if retry_generation == 0
+            else f"artisan/{jira_key}-r{retry_generation}-attempt-{attempt}"
+        )
         await firestore_client.update_ticket(
             repo, issue_number, current_step=f"executing (attempt {attempt})"
         )
@@ -143,12 +162,16 @@ async def _open_pr_and_sync(
     await firestore_client.update_ticket(
         repo, issue_number, status="pr_open", pr_url=pr_url, pr_number=pr_number
     )
+    await event_context.current_sink().emit(type="pr_opened", summary=f"Opened PR: {pr_url}")
     # Written so Gate 3 (Sprint 4) can resolve a later `pull_request` webhook straight to this
     # ticket without a Firestore query — see firestore_client.get_ticket_by_pr.
     await firestore_client.write_pr_pointer(repo, pr_number, issue_number)
     await jira_client.add_comment(
         jira_key,
         f"Artisan opened a PR: {pr_url}\n\n{execution_result.diff_summary}",
+    )
+    await event_context.current_sink().emit(
+        type="jira_synced", summary=f"Commented PR link on {jira_key}"
     )
 
 

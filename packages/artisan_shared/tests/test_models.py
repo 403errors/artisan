@@ -12,6 +12,7 @@ from artisan_shared.models import (
     ExecutionResult,
     GitHubWebhookEnvelope,
     IntakeVerdict,
+    ManualActionEnvelope,
     Plan,
     RoutingDecision,
     VerificationVerdict,
@@ -88,4 +89,39 @@ def test_github_webhook_envelope_rejects_unsupported_event() -> None:
             action="created",
             repo="403errors/artisan-demo",
             payload={},
+        )
+
+
+def test_github_webhook_envelope_defaults_kind_for_backward_compat() -> None:
+    envelope = GitHubWebhookEnvelope(
+        delivery_id="abc-123",
+        event="issues",
+        action="opened",
+        repo="403errors/artisan-demo",
+        payload={},
+    )
+    assert envelope.kind == "github_event"
+
+
+def test_manual_action_envelope_roundtrip() -> None:
+    envelope = ManualActionEnvelope(
+        action_id="uuid-1",
+        action="retry_gate2",
+        repo="403errors/artisan-demo",
+        issue_number=10,
+        actor="user:octocat",
+        reason="stuck",
+    )
+    assert envelope.kind == "manual_action"
+    assert ManualActionEnvelope.model_validate_json(envelope.model_dump_json()) == envelope
+
+
+def test_manual_action_envelope_rejects_unknown_action() -> None:
+    with pytest.raises(ValidationError):
+        ManualActionEnvelope(
+            action_id="uuid-1",
+            action="retry_everything",
+            repo="403errors/artisan-demo",
+            issue_number=10,
+            actor="user:octocat",
         )

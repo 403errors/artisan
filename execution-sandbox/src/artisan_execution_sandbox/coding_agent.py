@@ -24,6 +24,7 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
 from artisan_execution_sandbox.config import GEMINI_MODEL_ID, MAX_CODING_AGENT_TOOL_CALLS
+from artisan_shared.event_log import EventSink, NoOpEventSink
 from artisan_shared.models import Plan
 
 APP_NAME = "artisan-execution-coding-agent"
@@ -111,12 +112,34 @@ def _build_prompt(plan: Plan, prior_feedback: str | None) -> str:
     return prompt
 
 
+def _preview_args(args: dict | None) -> str:
+    if not args:
+        return ""
+    parts = []
+    for key, value in args.items():
+        text = str(value)
+        if len(text) > 60:
+            text = text[:60] + "…"
+        parts.append(f"{key}={text}")
+    return ", ".join(parts)
+
+
 async def _run_bounded_agent(
-    *, workdir: Path, instruction: str, prompt: str, model: str | object
+    *, workdir: Path, instruction: str, prompt: str, model: str | object, sink: EventSink | None = None
 ) -> str:
     """Shared ADK Runner/session boilerplate behind both `run_coding_agent` (Gate 2) and
     `run_conflict_resolution_agent` (Gate 3) — only the instruction/prompt differ; the tool set,
-    tool-call cap, and session wiring are identical for both."""
+    tool-call cap, and session wiring are identical for both.
+
+    Sprint 6: translates each streamed ADK event into a `tool_call` event on `sink`, using
+    `event.get_function_calls()`/`get_function_responses()` (confirmed present and their exact
+    behavior in the installed google-adk==2.8.0: `llm_response.py:196-212`). `event.partial` frames
+    are skipped — they're streaming deltas ADK's own session services never persist either. A
+    tool's result is patched onto the SAME event doc as its call, correlated by
+    `FunctionCall.id`/`FunctionResponse.id` (ADK sets the response id to mirror the call's id, so a
+    pair is always both-present or both-absent — never a silent mismatch); if `id` is ever absent,
+    the result becomes its own standalone event instead of being lost."""
+    sink = sink or NoOpEventSink()
     tools, finished = _build_tools(workdir)
     agent = Agent(
         model=model,
@@ -132,19 +155,53 @@ async def _run_bounded_agent(
     runner = Runner(agent=agent, app_name=APP_NAME, session_service=session_service)
     message = types.Content(role="user", parts=[types.Part(text=prompt)])
 
+    pending: dict[str, str] = {}  # FunctionCall.id -> this call's event doc id
+
     try:
-        async for _event in runner.run_async(
+        async for event in runner.run_async(
             user_id=_USER_ID, session_id=session.id, new_message=message
         ):
-            pass
-    except ToolCallLimitExceeded:
-        pass
+            if event.partial:
+                continue
+
+            for call in event.get_function_calls():
+                doc_id = await sink.emit(
+                    type="tool_call",
+                    tool_name=call.name,
+                    tool_args=call.args or {},
+                    summary=f"{call.name}({_preview_args(call.args)})",
+                )
+                if call.id and doc_id:
+                    pending[call.id] = doc_id
+
+            for response in event.get_function_responses():
+                # ADK wraps a non-dict tool return as {"result": <value>} (functions.py:1615-1616)
+                # — every coding-agent tool returns str/list[str], so this is always the shape.
+                raw = (response.response or {}).get("result", response.response)
+                doc_id = pending.pop(response.id, None) if response.id else None
+                if doc_id:
+                    await sink.patch(doc_id, tool_result_summary=str(raw))
+                else:
+                    await sink.emit(
+                        type="tool_call",
+                        tool_name=response.name,
+                        tool_result_summary=str(raw),
+                        summary=f"{response.name} result",
+                    )
+    except ToolCallLimitExceeded as exc:
+        # Previously silently swallowed — a real failure that should be visible, not just capped.
+        await sink.emit(type="error", summary=str(exc))
 
     return finished.get("summary", "(coding agent did not call finish)")
 
 
 async def run_coding_agent(
-    *, workdir: Path, plan: Plan, prior_feedback: str | None = None, model: str | object = GEMINI_MODEL_ID
+    *,
+    workdir: Path,
+    plan: Plan,
+    prior_feedback: str | None = None,
+    model: str | object = GEMINI_MODEL_ID,
+    sink: EventSink | None = None,
 ) -> str:
     """Runs the bounded coding-agent loop against `workdir` (an already-cloned, already-branched
     repo checkout) and returns the agent's final summary string. If the tool-call cap is hit
@@ -161,6 +218,7 @@ async def run_coding_agent(
         instruction=CODING_INSTRUCTION,
         prompt=_build_prompt(plan, prior_feedback),
         model=model,
+        sink=sink,
     )
 
 
@@ -189,6 +247,7 @@ async def run_conflict_resolution_agent(
     conflicted_files: list[str],
     conflict_markers: str,
     model: str | object = GEMINI_MODEL_ID,
+    sink: EventSink | None = None,
 ) -> str:
     """Gate 3's conflict-resolution coding step (MILESTONE.md Phase 4.3) — reuses the exact same
     bounded tool set/cap as `run_coding_agent`, with a conflict-specific instruction/prompt instead
@@ -198,4 +257,5 @@ async def run_conflict_resolution_agent(
         instruction=CONFLICT_RESOLUTION_INSTRUCTION,
         prompt=_build_conflict_resolution_prompt(conflicted_files, conflict_markers),
         model=model,
+        sink=sink,
     )

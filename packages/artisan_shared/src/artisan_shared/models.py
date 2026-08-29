@@ -70,10 +70,31 @@ class ConflictDetectionResult(BaseModel):
 
 class GitHubWebhookEnvelope(BaseModel):
     """The message published to `artisan-github-events`. Per SYSTEM_DESIGN.md §6.1 — the
-    ingestion route's only job is producing this typed envelope, never a raw dict."""
+    ingestion route's only job is producing this typed envelope, never a raw dict.
 
+    `kind` is defaulted so messages published before `ManualActionEnvelope` existed still validate
+    — `gcp/pubsub.py::decode_push_message` peeks at this field to pick which model to validate
+    against."""
+
+    kind: Literal["github_event"] = "github_event"
     delivery_id: str
     event: Literal["issues", "issue_comment", "pull_request"]
     action: str
     repo: str
     payload: dict
+
+
+class ManualActionEnvelope(BaseModel):
+    """A dashboard-triggered action, published to the same `artisan-github-events` topic as real
+    GitHub webhook events so it gets the same OIDC-authenticated ingress, at-least-once delivery,
+    and `claim_delivery` idempotency for free — see docs/SYSTEM_DESIGN.md §8 for the trust-boundary
+    rationale (HMAC verification is a GitHub-origin check; this envelope never claims that origin,
+    so skipping it here isn't a bypass)."""
+
+    kind: Literal["manual_action"] = "manual_action"
+    action_id: str  # uuid4, minted by the dashboard; doubles as the claim_delivery key
+    action: Literal["retry_gate1", "retry_gate2", "retry_gate3", "escalate", "mark_done"]
+    repo: str
+    issue_number: int
+    actor: str
+    reason: str | None = None

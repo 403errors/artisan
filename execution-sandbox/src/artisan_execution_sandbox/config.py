@@ -19,3 +19,7 @@ MAX_CODING_AGENT_TOOL_CALLS = 40
 # v1 is scoped to exactly one fixed demo repo (docs/PRD.md §5), so a single configured test
 # command is legitimate rather than building generic multi-language test detection.
 DEMO_REPO_TEST_COMMAND = os.environ.get("ARTISAN_DEMO_REPO_TEST_COMMAND", "npm test")
+
+# Kill switch for the agent-execution event log (Sprint 6) — mirrors agents/config.py's flag of
+# the same name so both services can be disabled independently without a redeploy.
+EVENT_LOG_ENABLED = os.environ.get("ARTISAN_EVENT_LOG_ENABLED", "true").lower() == "true"

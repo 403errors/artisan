@@ -13,6 +13,7 @@ from google.genai import types
 
 from artisan_execution_sandbox.coding_agent import run_coding_agent, run_conflict_resolution_agent
 from artisan_execution_sandbox.config import MAX_CODING_AGENT_TOOL_CALLS
+from artisan_shared.event_log import NoOpEventSink
 from artisan_shared.models import Plan
 
 _PLAN = Plan(
@@ -135,3 +136,58 @@ async def test_forbidden_git_commands_are_rejected_by_the_shell_tool(tmp_path) -
 
     result = run_shell_command("git commit -am 'sneaky'")
     assert "not permitted" in result
+
+
+class _RecordingSink(NoOpEventSink):
+    """Records emit/patch calls by index, so tests can assert a tool call's result got patched
+    onto the SAME event doc as its call, not appended as a separate one."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._enabled = True
+        self.events: list[dict] = []
+
+    async def emit(self, **kwargs):
+        self.events.append(dict(kwargs))
+        return str(len(self.events) - 1)
+
+    async def patch(self, doc_id, **fields):
+        self.events[int(doc_id)].update(fields)
+
+
+@pytest.mark.asyncio
+async def test_tool_calls_are_logged_with_results_patched_onto_the_same_event(tmp_path) -> None:
+    sink = _RecordingSink()
+
+    summary = await run_coding_agent(workdir=tmp_path, plan=_PLAN, model=_ScriptedLlm(), sink=sink)
+
+    assert summary == "wrote hello.txt"
+    tool_calls = [e for e in sink.events if e["type"] == "tool_call"]
+
+    write_call = next(e for e in tool_calls if e["tool_name"] == "write_file")
+    assert write_call["tool_args"] == {"path": "hello.txt", "content": "hi\n"}
+    assert write_call["tool_result_summary"] == "wrote hello.txt"
+
+    finish_call = next(e for e in tool_calls if e["tool_name"] == "finish")
+    assert finish_call["tool_args"] == {"summary": "wrote hello.txt"}
+    assert finish_call["tool_result_summary"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_stuck_model_emits_an_error_event_at_the_tool_call_ceiling(tmp_path) -> None:
+    sink = _RecordingSink()
+
+    await run_coding_agent(
+        workdir=tmp_path, plan=_PLAN, model=_AlwaysRequestsAnotherToolCallLlm(), sink=sink
+    )
+
+    error_events = [e for e in sink.events if e["type"] == "error"]
+    assert len(error_events) == 1
+    assert str(MAX_CODING_AGENT_TOOL_CALLS) in error_events[0]["summary"]
+
+
+@pytest.mark.asyncio
+async def test_no_sink_given_still_runs_normally(tmp_path) -> None:
+    """sink defaults to None -> a NoOpEventSink internally — must not change behavior."""
+    summary = await run_coding_agent(workdir=tmp_path, plan=_PLAN, model=_ScriptedLlm())
+    assert summary == "wrote hello.txt"

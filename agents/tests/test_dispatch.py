@@ -11,6 +11,7 @@ from githubkit.exception import RequestFailed
 
 from artisan_agents import dispatch
 from artisan_agents.gcp.firestore_client import ClarificationCapExceeded
+from artisan_shared.event_log import NoOpEventSink
 from artisan_shared.firestore_schema import TicketDoc
 from artisan_shared.models import GitHubWebhookEnvelope, IntakeVerdict
 
@@ -308,3 +309,30 @@ async def test_other_pull_request_actions_are_ignored(monkeypatch) -> None:
     await dispatch.handle_event(_pull_request_event("closed"))
 
     assert calls == []
+
+
+class _RecordingSink(NoOpEventSink):
+    def __init__(self) -> None:
+        super().__init__()
+        self._enabled = True
+        self.events: list[dict] = []
+
+    async def emit(self, **kwargs):
+        self.events.append(kwargs)
+        return f"doc-{len(self.events)}"
+
+
+@pytest.mark.asyncio
+async def test_evaluate_intake_emits_gate_started_then_clarification_asked(
+    fake_store, stub_collaborators, monkeypatch
+) -> None:
+    sink = _RecordingSink()
+    monkeypatch.setattr(dispatch.firestore_client, "new_event_sink", lambda *a, **k: sink)
+
+    await dispatch.handle_event(_issue_opened())
+
+    types = [e["type"] for e in sink.events]
+    # gate_decision fires last because tracing.gate_span("1", "ask") wraps the increment call,
+    # which happens after the clarification comment is posted.
+    assert types == ["gate_started", "clarification_asked", "gate_decision"]
+    assert sink.events[1]["summary"] == "which endpoint?"

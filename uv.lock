@@ -256,6 +256,7 @@ version = "0.1.0"
 source = { editable = "packages/artisan_shared" }
 dependencies = [
     { name = "githubkit", extra = ["auth-app"] },
+    { name = "google-cloud-firestore" },
     { name = "google-cloud-secret-manager" },
     { name = "pydantic" },
 ]
@@ -269,6 +270,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "githubkit", extras = ["auth-app"], specifier = "==0.16.1" },
+    { name = "google-cloud-firestore", specifier = "==2.29.0" },
     { name = "google-cloud-secret-manager", specifier = "==2.30.0" },
     { name = "pydantic", specifier = "==2.13.4" },
 ]

@@ -20,10 +20,13 @@ from google.cloud import firestore
 
 from artisan_agents.config import (
     DELIVERY_CLAIM_STALE_AFTER_SECONDS,
+    EVENT_LOG_ENABLED,
     MAX_CLARIFICATION_ROUNDS,
     MAX_EXECUTION_RETRIES,
     MAX_TRIVIAL_CONFLICT_ATTEMPTS,
 )
+from artisan_agents.event_context import current_sink
+from artisan_shared.event_log import EventSink
 from artisan_shared.firestore_schema import EscalationEntry, TicketDoc
 from artisan_shared.ticket_ids import pr_pointer_doc_id, ticket_doc_id
 
@@ -42,6 +45,7 @@ __all__ = [
     "increment_trivial_conflict_attempt",
     "mark_delivery_completed",
     "mark_delivery_failed",
+    "new_event_sink",
     "ticket_doc_id",
     "update_ticket",
     "write_pr_pointer",
@@ -73,6 +77,14 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def new_event_sink(ticket_id: str, *, gate: str, actor: str = "orchestrator") -> EventSink:
+    """Constructs an `EventSink` bound to this module's own Firestore client instance, scoped to
+    one ticket/gate. The entry point for `dispatch.evaluate_intake`/`gate2.start_gate2`/
+    `gate3.start_gate3` to install as the ambient sink (`event_context.set_sink`) at the top of
+    each gate's entry function."""
+    return EventSink(_client(), ticket_id, gate=gate, actor=actor, enabled=EVENT_LOG_ENABLED)
+
+
 async def get_ticket(repo: str, issue_number: int) -> TicketDoc | None:
     snapshot = await _client().collection("tickets").document(ticket_doc_id(repo, issue_number)).get()
     if not snapshot.exists:
@@ -100,6 +112,11 @@ async def create_ticket(repo: str, issue_number: int, jira_key: str) -> TicketDo
 
 
 async def update_ticket(repo: str, issue_number: int, **fields) -> None:
+    if fields.get("current_step"):
+        # Historizes what's otherwise a last-write-wins field — every gate calls update_ticket
+        # inline with current_step=... at each sub-step transition, so this one hook covers all of
+        # them with no call-site changes.
+        await current_sink().emit(type="step_changed", summary=str(fields["current_step"]))
     fields["updated_at"] = _now().isoformat()
     await _client().collection("tickets").document(ticket_doc_id(repo, issue_number)).update(fields)
 
@@ -288,6 +305,7 @@ async def append_escalation(repo: str, issue_number: int, entry: EscalationEntry
             "updated_at": _now().isoformat(),
         }
     )
+    await current_sink().emit(type="escalated", gate=entry.gate, summary=entry.reason)
 
 
 async def append_trace_id(ticket_id: str, trace_id: str) -> None:

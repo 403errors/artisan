@@ -34,6 +34,10 @@ GITHUB_INSTALLATION_ID = os.environ.get("ARTISAN_GITHUB_INSTALLATION_ID", "15712
 CLOUD_RUN_REGION = os.environ.get("ARTISAN_CLOUD_RUN_REGION", "us-central1")
 EXECUTION_SANDBOX_JOB_NAME = os.environ.get("ARTISAN_EXECUTION_SANDBOX_JOB_NAME", "execution-sandbox")
 
+# Kill switch for the agent-execution event log (Sprint 6) — disableable without a redeploy since
+# an audit log going wrong should never require pulling the whole service.
+EVENT_LOG_ENABLED = os.environ.get("ARTISAN_EVENT_LOG_ENABLED", "true").lower() == "true"
+
 # Secret Manager secret names (values fetched at call time, never inlined — SYSTEM_DESIGN.md §8).
 SECRET_GITHUB_APP_PRIVATE_KEY = "github-app-private-key"
 SECRET_GITHUB_WEBHOOK_SECRET = "github-webhook-secret"

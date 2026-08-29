@@ -9,6 +9,7 @@ import pytest
 from artisan_agents import gate3
 from artisan_agents.gcp.cloud_run_jobs import ConflictDetectionCrashed
 from artisan_agents.gcp.firestore_client import TrivialConflictCapExceeded
+from artisan_shared.event_log import NoOpEventSink
 from artisan_shared.firestore_schema import TicketDoc
 from artisan_shared.models import ConflictDetectionResult, ConflictVerdict, ExecutionResult
 
@@ -268,3 +269,30 @@ async def test_detection_crash_escalates_without_attempting_classification(
     assert fake_store.ticket.status == "escalated"
     assert len(pr_comments) == 1
     assert len(jira_comments) == 1
+
+
+class _RecordingSink(NoOpEventSink):
+    def __init__(self) -> None:
+        super().__init__()
+        self._enabled = True
+        self.events: list[dict] = []
+
+    async def emit(self, **kwargs):
+        self.events.append(kwargs)
+        return f"doc-{len(self.events)}"
+
+
+@pytest.mark.asyncio
+async def test_start_gate3_emits_gate_started(fake_store, monkeypatch) -> None:
+    sink = _RecordingSink()
+    monkeypatch.setattr(gate3.firestore_client, "new_event_sink", lambda *a, **k: sink)
+
+    async def fake_trigger_conflict_detection(**kwargs):
+        return _NO_CONFLICT
+
+    monkeypatch.setattr(gate3.cloud_run_jobs, "trigger_conflict_detection", fake_trigger_conflict_detection)
+
+    await _call_start_gate3()
+
+    assert sink.events[0]["type"] == "gate_started"
+    assert "Gate 3" in sink.events[0]["summary"]

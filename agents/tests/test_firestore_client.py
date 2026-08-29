@@ -44,9 +44,12 @@ async def cleanup_ticket():
     yield issue_numbers
     client = firestore_client._client()
     for issue_number in issue_numbers:
-        await client.collection("tickets").document(
-            firestore_client.ticket_doc_id(REPO, issue_number)
-        ).delete()
+        doc_ref = client.collection("tickets").document(firestore_client.ticket_doc_id(REPO, issue_number))
+        # Sprint 6's event log lives in a subcollection — Firestore doesn't cascade-delete, so
+        # deleting the parent doc alone would leak these on every real-Firestore test run.
+        async for event_doc in doc_ref.collection("events").stream():
+            await event_doc.reference.delete()
+        await doc_ref.delete()
 
 
 @pytest_asyncio.fixture

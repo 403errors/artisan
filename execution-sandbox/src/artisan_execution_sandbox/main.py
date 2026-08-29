@@ -21,7 +21,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from artisan_execution_sandbox import git_ops, test_runner
+from artisan_execution_sandbox import firestore_write, git_ops, test_runner
 from artisan_execution_sandbox.coding_agent import run_coding_agent, run_conflict_resolution_agent
 from artisan_execution_sandbox.config import CLOUD_RUN_REGION, GCP_PROJECT_ID
 from artisan_execution_sandbox.firestore_write import (
@@ -31,6 +31,7 @@ from artisan_execution_sandbox.firestore_write import (
 )
 from artisan_execution_sandbox.github_auth import get_installation_token
 from artisan_shared.models import ConflictDetectionResult, ExecutionResult, Plan
+from artisan_shared.ticket_ids import ticket_doc_id
 
 JOB_MODE_EXECUTE = "execute"
 JOB_MODE_DETECT_CONFLICT = "detect_conflict"
@@ -51,7 +52,9 @@ async def _run() -> None:
         plan = Plan.model_validate_json(os.environ["PLAN_JSON"])
         prior_feedback = os.environ.get("PRIOR_FEEDBACK") or None
         print(f"[artisan-execution-sandbox] attempt for {repo}#{issue_number}, branch={branch}")
-        result = await run_attempt(repo=repo, branch=branch, plan=plan, prior_feedback=prior_feedback)
+        result = await run_attempt(
+            repo=repo, branch=branch, plan=plan, prior_feedback=prior_feedback, issue_number=issue_number
+        )
         print(f"[artisan-execution-sandbox] result: tests_passed={result.tests_passed}")
         await write_execution_result(repo, issue_number, result)
     elif mode == JOB_MODE_DETECT_CONFLICT:
@@ -71,7 +74,7 @@ async def _run() -> None:
         print(f"[artisan-execution-sandbox] conflict resolution for {repo}#{issue_number}, "
               f"{head_branch} <- {base_branch}")
         resolution = await run_conflict_resolution(
-            repo=repo, base_branch=base_branch, head_branch=head_branch
+            repo=repo, base_branch=base_branch, head_branch=head_branch, issue_number=issue_number
         )
         print(f"[artisan-execution-sandbox] result: tests_passed={resolution.tests_passed}")
         await write_conflict_resolution_result(repo, issue_number, resolution)
@@ -93,12 +96,26 @@ def _logs_uri() -> str:
 
 
 async def run_attempt(
-    *, repo: str, branch: str, plan: Plan, prior_feedback: str | None
+    *,
+    repo: str,
+    branch: str,
+    plan: Plan,
+    prior_feedback: str | None,
+    issue_number: int | None = None,
 ) -> ExecutionResult:
     """Runs one full attempt (clone -> code -> test -> push) in a fresh temp checkout. Every
     failure path returns a failed `ExecutionResult` rather than raising, so `main()` always
-    reaches its Firestore write."""
+    reaches its Firestore write.
+
+    `issue_number` is optional (tests calling this directly omit it) — when given, a real
+    Sprint-6 EventSink is constructed and every coding-agent tool call gets logged; when absent,
+    the coding agent silently runs with no event log, exactly as before."""
     token = await get_installation_token()
+    sink = (
+        firestore_write.new_event_sink(ticket_doc_id(repo, issue_number), gate="2", redact_token=token)
+        if issue_number is not None
+        else None
+    )
 
     with tempfile.TemporaryDirectory(prefix="artisan-execution-") as tmp:
         workdir = Path(tmp) / "repo"
@@ -115,7 +132,9 @@ async def run_attempt(
             )
 
         print("[artisan-execution-sandbox] running coding agent...")
-        summary = await run_coding_agent(workdir=workdir, plan=plan, prior_feedback=prior_feedback)
+        summary = await run_coding_agent(
+            workdir=workdir, plan=plan, prior_feedback=prior_feedback, sink=sink
+        )
 
         diff_summary = git_ops.stage_all_and_diff_stat(str(workdir))
         if not git_ops.has_staged_changes(str(workdir)):
@@ -195,14 +214,21 @@ async def run_conflict_detection(
 
 
 async def run_conflict_resolution(
-    *, repo: str, base_branch: str, head_branch: str
+    *, repo: str, base_branch: str, head_branch: str, issue_number: int | None = None
 ) -> ExecutionResult:
     """Gate 3's one capped resolution attempt (MILESTONE.md Phase 4.3 — no internal retry, mirrors
     `run_attempt`'s always-return-data shape). Re-does its own fresh clone+merge rather than
     trusting an earlier detection job's result — if the conflict has since cleared (e.g. a human
     already fixed it), this just reports a clean, no-op-ish success rather than blindly trusting a
-    stale classification. Unlike `run_attempt`, never pushes unless the full suite passes."""
+    stale classification. Unlike `run_attempt`, never pushes unless the full suite passes.
+
+    `issue_number` is optional exactly like `run_attempt`'s — see its docstring."""
     token = await get_installation_token()
+    sink = (
+        firestore_write.new_event_sink(ticket_doc_id(repo, issue_number), gate="3", redact_token=token)
+        if issue_number is not None
+        else None
+    )
 
     with tempfile.TemporaryDirectory(prefix="artisan-conflict-resolve-") as tmp:
         workdir = Path(tmp) / "repo"
@@ -226,7 +252,7 @@ async def run_conflict_resolution(
             conflicted_files = git_ops.list_conflicted_files(str(workdir))
             markers = git_ops.read_conflict_markers(str(workdir), conflicted_files)
             summary = await run_conflict_resolution_agent(
-                workdir=workdir, conflicted_files=conflicted_files, conflict_markers=markers
+                workdir=workdir, conflicted_files=conflicted_files, conflict_markers=markers, sink=sink
             )
 
         diff_summary = git_ops.stage_all_and_diff_stat(str(workdir))

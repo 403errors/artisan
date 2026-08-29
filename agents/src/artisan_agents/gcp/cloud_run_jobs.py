@@ -23,6 +23,7 @@ from functools import lru_cache
 from google.cloud import run_v2
 
 from artisan_agents.config import CLOUD_RUN_REGION, EXECUTION_SANDBOX_JOB_NAME, GCP_PROJECT_ID
+from artisan_agents.event_context import current_sink
 from artisan_agents.gcp import firestore_client
 from artisan_shared.models import ConflictDetectionResult, ExecutionResult, Plan
 
@@ -76,6 +77,9 @@ async def trigger_execution(
         ticket_id=ticket_id, repo=repo, issue_number=issue_number, branch=branch, plan=plan,
         attempt=attempt, feedback=feedback,
     )
+    await current_sink().emit(
+        type="job_started", summary=f"execution-sandbox: attempt {attempt} on {branch}"
+    )
     operation = await _jobs_client().run_job(request=request)
     execution = await operation.result()
 
@@ -88,11 +92,18 @@ async def trigger_execution(
         else None
     )
     if fresh_result is not None:
+        await current_sink().emit(
+            type="job_completed",
+            summary=f"execution-sandbox finished: tests_passed={fresh_result.tests_passed}",
+        )
         return fresh_result
 
     # The sandbox crashed or otherwise failed to write a result for this attempt (e.g. OOM, a
     # container-level crash before its final Firestore write) — don't hang or raise; synthesize a
     # failed ExecutionResult so the retry loop can still make a decision.
+    await current_sink().emit(
+        type="error", summary="execution-sandbox did not report a result for this attempt"
+    )
     return ExecutionResult(
         branch=branch,
         diff_summary="execution-sandbox did not report a result for this attempt",
@@ -129,6 +140,7 @@ async def trigger_conflict_detection(
         job_mode="detect_conflict", repo=repo, issue_number=issue_number, base_branch=base_branch,
         head_branch=head_branch, head_sha=head_sha,
     )
+    await current_sink().emit(type="job_started", summary=f"execution-sandbox: detect_conflict at {head_sha}")
     operation = await _jobs_client().run_job(request=request)
     await operation.result()
 
@@ -141,8 +153,14 @@ async def trigger_conflict_detection(
         else None
     )
     if fresh is not None:
+        await current_sink().emit(
+            type="job_completed", summary=f"detect_conflict finished: has_conflict={fresh.has_conflict}"
+        )
         return fresh
 
+    await current_sink().emit(
+        type="error", summary=f"no conflict-detection result at head_sha={head_sha}"
+    )
     raise ConflictDetectionCrashed(
         f"no conflict-detection result for {repo}#{issue_number} at head_sha={head_sha}"
     )
@@ -160,6 +178,7 @@ async def trigger_conflict_resolution(
         job_mode="resolve_conflict", repo=repo, issue_number=issue_number, base_branch=base_branch,
         head_branch=head_branch,
     )
+    await current_sink().emit(type="job_started", summary=f"execution-sandbox: resolve_conflict on {head_branch}")
     operation = await _jobs_client().run_job(request=request)
     execution = await operation.result()
 
@@ -172,8 +191,15 @@ async def trigger_conflict_resolution(
         else None
     )
     if fresh_result is not None:
+        await current_sink().emit(
+            type="job_completed",
+            summary=f"resolve_conflict finished: tests_passed={fresh_result.tests_passed}",
+        )
         return fresh_result
 
+    await current_sink().emit(
+        type="error", summary="execution-sandbox did not report a conflict-resolution result"
+    )
     return ExecutionResult(
         branch=head_branch,
         diff_summary="execution-sandbox did not report a conflict-resolution result",

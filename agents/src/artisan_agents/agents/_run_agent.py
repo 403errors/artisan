@@ -13,6 +13,8 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from pydantic import BaseModel
 
+from artisan_agents.event_context import current_sink
+
 T = TypeVar("T", bound=BaseModel)
 
 _USER_ID = "artisan-orchestrator"
@@ -22,7 +24,17 @@ async def run_structured(
     *, agent: Agent, app_name: str, output_key: str, output_model: type[T], prompt: str
 ) -> T:
     """Runs `agent` once against `prompt` in a fresh session and validates
-    `final_session.state[output_key]` into `output_model`."""
+    `final_session.state[output_key]` into `output_model`.
+
+    Sprint 6: emits `agent_invoked`/`agent_completed` around the call. No ADK event-stream
+    interception needed here — these agents use `output_schema`/`output_key` with no `tools`, so
+    per ADK 2.8.0's own dispatch logic the structured result never arrives as a function call, only
+    as plain `content.parts[].text` that ADK itself folds into `session.state[output_key]`. The
+    completion summary is derived from the already-validated Pydantic result instead, which is
+    deterministic and sidesteps that entirely."""
+    sink = current_sink().child(actor=agent.name)
+    await sink.emit(type="agent_invoked", summary=f"{agent.name} invoked")
+
     session_service = InMemorySessionService()
     session = await session_service.create_session(
         app_name=app_name, user_id=_USER_ID, session_id=str(uuid.uuid4())
@@ -36,4 +48,11 @@ async def run_structured(
     final_session = await session_service.get_session(
         app_name=app_name, user_id=_USER_ID, session_id=session.id
     )
-    return output_model.model_validate(final_session.state[output_key])
+    result = output_model.model_validate(final_session.state[output_key])
+
+    await sink.emit(
+        type="agent_completed",
+        summary=f"{agent.name} completed",
+        detail=result.model_dump_json(),
+    )
+    return result

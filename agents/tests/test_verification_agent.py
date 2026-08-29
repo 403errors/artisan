@@ -4,8 +4,10 @@ of what the model would say. Stubs the underlying model for the green-path call 
 
 import pytest
 
+from artisan_agents import event_context
 from artisan_agents.agents import verification_agent as verification_agent_module
 from artisan_agents.agents.verification_agent import run_verification
+from artisan_shared.event_log import NoOpEventSink
 from artisan_shared.models import ExecutionResult, Plan
 from tests.conftest import FakeLlm
 
@@ -33,6 +35,35 @@ async def test_failed_tests_short_circuits_to_not_green_without_calling_model(mo
     assert verdict.green is False
     assert verdict.feedback is not None
     assert calls == []
+
+
+class _RecordingSink(NoOpEventSink):
+    def __init__(self) -> None:
+        super().__init__()
+        self._enabled = True
+        self.events: list[dict] = []
+
+    async def emit(self, **kwargs):
+        self.events.append(kwargs)
+        return f"doc-{len(self.events)}"
+
+    def child(self, **kwargs):
+        return self
+
+
+@pytest.mark.asyncio
+async def test_short_circuit_still_emits_an_agent_completed_event() -> None:
+    sink = _RecordingSink()
+    event_context.set_sink(sink)
+
+    result = ExecutionResult(
+        branch="artisan/ART-1", diff_summary="x", tests_passed=False, logs_uri="gs://logs/1"
+    )
+    await run_verification(plan=_PLAN, execution_result=result, issue_title="Title", issue_body="Body")
+
+    assert len(sink.events) == 1
+    assert sink.events[0]["type"] == "agent_completed"
+    assert "skipped" in sink.events[0]["summary"]
 
 
 @pytest.mark.asyncio

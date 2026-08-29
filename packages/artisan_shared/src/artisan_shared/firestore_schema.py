@@ -33,6 +33,10 @@ class TicketDoc(BaseModel):
     current_step: str | None = None
     clarification_rounds: int = 0
     retry_count: int = 0
+    # Bumped by a manual "retry" action re-entering Gate 2 for a ticket that already executed once
+    # — folded into the execution branch name (gate2.py) so a retry's branch never collides with a
+    # branch a prior run already pushed. 0 keeps today's branch-name format byte-identical.
+    manual_retry_generation: int = 0
     domains: list[str] = []
     plan: Plan | None = None
     last_execution_result: ExecutionResult | None = None

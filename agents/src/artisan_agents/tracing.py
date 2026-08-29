@@ -10,6 +10,7 @@ from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
+from artisan_agents.event_context import current_sink
 from artisan_agents.gcp import firestore_client
 
 _configured = False
@@ -42,3 +43,10 @@ async def gate_span(
     # Sprint 5: trace_ids was previously write-once-dead — this closes the loop so the dashboard's
     # drill-in view can deep-link to Cloud Trace for this exact decision.
     await firestore_client.append_trace_id(ticket_id, trace_id_hex)
+    # Sprint 6: every gate_span call site becomes a `gate_decision` event for free — the dashboard's
+    # activity feed reads these, not the (currently broken) Cloud Trace export.
+    await current_sink().emit(
+        type="gate_decision",
+        gate=gate,
+        summary=f"Gate {gate}: {decision}",
+    )

@@ -10,6 +10,7 @@ dependencies = [
     "pydantic==2.13.4",
     "githubkit[auth-app]==0.16.1",
     "google-cloud-secret-manager==2.30.0",
+    "google-cloud-firestore==2.29.0",
 ]
 
 [build-system]

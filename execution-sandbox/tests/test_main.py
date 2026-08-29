@@ -248,3 +248,70 @@ async def test_conflict_resolution_merge_error_returns_failed_result_without_rai
 
     assert result.tests_passed is False
     assert "clone/merge failed" in result.diff_summary
+
+
+@pytest.mark.asyncio
+async def test_run_attempt_constructs_a_sink_and_passes_it_to_the_coding_agent_when_issue_number_given(
+    monkeypatch,
+) -> None:
+    """firestore_write.new_event_sink constructs a real Firestore client — monkeypatched here so
+    this test never touches the real database, mirroring agents/tests/conftest.py's approach."""
+    monkeypatch.setattr(main_module.git_ops, "clone", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.git_ops, "create_branch", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.git_ops, "stage_all_and_diff_stat", lambda repo_dir: "1 file changed")
+    monkeypatch.setattr(main_module.git_ops, "has_staged_changes", lambda repo_dir: True)
+    monkeypatch.setattr(main_module.git_ops, "commit_all", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.git_ops, "push", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.test_runner, "run_tests", lambda repo_dir: (True, "ok"))
+
+    sentinel_sink = object()
+    new_event_sink_calls = []
+
+    def fake_new_event_sink(ticket_id, *, gate, redact_token):
+        new_event_sink_calls.append((ticket_id, gate, redact_token))
+        return sentinel_sink
+
+    monkeypatch.setattr(main_module.firestore_write, "new_event_sink", fake_new_event_sink)
+
+    received_sink = []
+
+    async def fake_run_coding_agent(**kwargs):
+        received_sink.append(kwargs.get("sink"))
+        return "did the thing"
+
+    monkeypatch.setattr(main_module, "run_coding_agent", fake_run_coding_agent)
+
+    await main_module.run_attempt(
+        repo="acme/demo", branch="artisan/x-1", plan=_PLAN, prior_feedback=None, issue_number=7
+    )
+
+    assert new_event_sink_calls == [("acme_demo__7", "2", "fake-token")]
+    assert received_sink == [sentinel_sink]
+
+
+@pytest.mark.asyncio
+async def test_run_attempt_passes_no_sink_when_issue_number_is_omitted(monkeypatch) -> None:
+    monkeypatch.setattr(main_module.git_ops, "clone", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.git_ops, "create_branch", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.git_ops, "stage_all_and_diff_stat", lambda repo_dir: "1 file changed")
+    monkeypatch.setattr(main_module.git_ops, "has_staged_changes", lambda repo_dir: True)
+    monkeypatch.setattr(main_module.git_ops, "commit_all", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.git_ops, "push", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.test_runner, "run_tests", lambda repo_dir: (True, "ok"))
+
+    def fail_if_called(*a, **k):
+        raise AssertionError("must not construct a real event sink when issue_number is omitted")
+
+    monkeypatch.setattr(main_module.firestore_write, "new_event_sink", fail_if_called)
+
+    received_sink = []
+
+    async def fake_run_coding_agent(**kwargs):
+        received_sink.append(kwargs.get("sink"))
+        return "did the thing"
+
+    monkeypatch.setattr(main_module, "run_coding_agent", fake_run_coding_agent)
+
+    await main_module.run_attempt(repo="acme/demo", branch="artisan/x-1", plan=_PLAN, prior_feedback=None)
+
+    assert received_sink == [None]

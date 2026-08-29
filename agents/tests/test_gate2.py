@@ -10,6 +10,7 @@ import pytest
 
 from artisan_agents import gate2
 from artisan_agents.gcp.firestore_client import RetryCapExceeded
+from artisan_shared.event_log import NoOpEventSink
 from artisan_shared.firestore_schema import TicketDoc
 from artisan_shared.models import DomainExpertOutput, ExecutionResult, Plan, RoutingDecision
 
@@ -264,3 +265,123 @@ async def test_green_on_second_attempt_reaches_pr_open_with_retry_count_one(
     assert len(prs) == 1
     assert len(jira_comments) == 1
     assert len(github_comments) == 0
+
+
+class _RecordingSink(NoOpEventSink):
+    def __init__(self) -> None:
+        super().__init__()
+        self._enabled = True
+        self.events: list[dict] = []
+
+    async def emit(self, **kwargs):
+        self.events.append(kwargs)
+        return f"doc-{len(self.events)}"
+
+
+@pytest.mark.asyncio
+async def test_start_gate2_emits_gate_started_then_pr_opened_and_jira_synced(
+    fake_store, stub_jira_and_github, monkeypatch
+) -> None:
+    sink = _RecordingSink()
+    monkeypatch.setattr(gate2.firestore_client, "new_event_sink", lambda *a, **k: sink)
+
+    async def fake_run_routing(**kwargs):
+        return RoutingDecision(domains=["backend"], parallel=False)
+
+    async def fake_run_domain_expert(*, domain, issue_title, issue_body):
+        return _domain_output(domain)
+
+    async def fake_run_planning(**kwargs):
+        return _PLAN
+
+    async def fake_trigger_execution(**kwargs):
+        return ExecutionResult(branch="artisan/x-1", diff_summary="x", tests_passed=True, logs_uri="gs://x")
+
+    async def fake_run_verification(**kwargs):
+        from artisan_shared.models import VerificationVerdict
+
+        return VerificationVerdict(green=True)
+
+    monkeypatch.setattr(gate2, "run_routing", fake_run_routing)
+    monkeypatch.setattr(gate2, "run_domain_expert", fake_run_domain_expert)
+    monkeypatch.setattr(gate2, "run_planning", fake_run_planning)
+    monkeypatch.setattr(gate2.cloud_run_jobs, "trigger_execution", fake_trigger_execution)
+    monkeypatch.setattr(gate2, "run_verification", fake_run_verification)
+
+    await gate2.start_gate2(REPO, ISSUE_NUMBER, JIRA_KEY, issue_title="T", issue_body="B")
+
+    types = [e["type"] for e in sink.events]
+    assert types[0] == "gate_started"
+    assert "pr_opened" in types
+    assert "jira_synced" in types
+    assert types.index("pr_opened") < types.index("jira_synced")
+
+
+@pytest.mark.asyncio
+async def test_start_gate2_retry_generation_zero_keeps_original_branch_format(
+    fake_store, stub_jira_and_github, monkeypatch
+) -> None:
+    branches: list[str] = []
+
+    async def fake_run_routing(**kwargs):
+        return RoutingDecision(domains=["backend"], parallel=False)
+
+    async def fake_run_domain_expert(*, domain, issue_title, issue_body):
+        return _domain_output(domain)
+
+    async def fake_run_planning(**kwargs):
+        return _PLAN
+
+    async def fake_trigger_execution(**kwargs):
+        branches.append(kwargs["branch"])
+        return ExecutionResult(branch=kwargs["branch"], diff_summary="x", tests_passed=True, logs_uri="gs://x")
+
+    async def fake_run_verification(**kwargs):
+        from artisan_shared.models import VerificationVerdict
+
+        return VerificationVerdict(green=True)
+
+    monkeypatch.setattr(gate2, "run_routing", fake_run_routing)
+    monkeypatch.setattr(gate2, "run_domain_expert", fake_run_domain_expert)
+    monkeypatch.setattr(gate2, "run_planning", fake_run_planning)
+    monkeypatch.setattr(gate2.cloud_run_jobs, "trigger_execution", fake_trigger_execution)
+    monkeypatch.setattr(gate2, "run_verification", fake_run_verification)
+
+    await gate2.start_gate2(REPO, ISSUE_NUMBER, JIRA_KEY, issue_title="T", issue_body="B")
+    assert branches == [f"artisan/{JIRA_KEY}-attempt-1"]
+
+
+@pytest.mark.asyncio
+async def test_start_gate2_retry_generation_nonzero_avoids_branch_collision(
+    fake_store, stub_jira_and_github, monkeypatch
+) -> None:
+    branches: list[str] = []
+
+    async def fake_run_routing(**kwargs):
+        return RoutingDecision(domains=["backend"], parallel=False)
+
+    async def fake_run_domain_expert(*, domain, issue_title, issue_body):
+        return _domain_output(domain)
+
+    async def fake_run_planning(**kwargs):
+        return _PLAN
+
+    async def fake_trigger_execution(**kwargs):
+        branches.append(kwargs["branch"])
+        return ExecutionResult(branch=kwargs["branch"], diff_summary="x", tests_passed=True, logs_uri="gs://x")
+
+    async def fake_run_verification(**kwargs):
+        from artisan_shared.models import VerificationVerdict
+
+        return VerificationVerdict(green=True)
+
+    monkeypatch.setattr(gate2, "run_routing", fake_run_routing)
+    monkeypatch.setattr(gate2, "run_domain_expert", fake_run_domain_expert)
+    monkeypatch.setattr(gate2, "run_planning", fake_run_planning)
+    monkeypatch.setattr(gate2.cloud_run_jobs, "trigger_execution", fake_trigger_execution)
+    monkeypatch.setattr(gate2, "run_verification", fake_run_verification)
+
+    await gate2.start_gate2(
+        REPO, ISSUE_NUMBER, JIRA_KEY, issue_title="T", issue_body="B", retry_generation=1
+    )
+    assert branches == [f"artisan/{JIRA_KEY}-r1-attempt-1"]

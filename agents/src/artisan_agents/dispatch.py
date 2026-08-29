@@ -6,7 +6,7 @@ hand off into Gate 3 (gate3.handle_pull_request_event, Sprint 4)."""
 
 from githubkit.exception import RequestFailed
 
-from artisan_agents import gate2, gate3, tracing
+from artisan_agents import event_context, gate2, gate3, tracing
 from artisan_agents.agents.intake_agent import run_intake
 from artisan_agents.gcp import firestore_client
 from artisan_agents.gcp.firestore_client import ClarificationCapExceeded
@@ -41,7 +41,7 @@ async def _handle_issue_opened(envelope: GitHubWebhookEnvelope) -> None:
         )
         ticket = await firestore_client.create_ticket(envelope.repo, issue_number, jira_key)
     if ticket.status == "intake":
-        await _evaluate_intake(envelope.repo, issue_number, ticket.jira_key)
+        await evaluate_intake(envelope.repo, issue_number, ticket.jira_key)
 
 
 async def _handle_issue_comment(envelope: GitHubWebhookEnvelope) -> None:
@@ -54,11 +54,15 @@ async def _handle_issue_comment(envelope: GitHubWebhookEnvelope) -> None:
     issue_number = issue["number"]
     ticket = await firestore_client.get_ticket(envelope.repo, issue_number)
     if ticket is not None and ticket.status == "intake":
-        await _evaluate_intake(envelope.repo, issue_number, ticket.jira_key)
+        await evaluate_intake(envelope.repo, issue_number, ticket.jira_key)
 
 
-async def _evaluate_intake(repo: str, issue_number: int, jira_key: str) -> None:
+async def evaluate_intake(repo: str, issue_number: int, jira_key: str) -> None:
+    """Public (not `_`-prefixed) since a manual "retry Gate 1" action re-enters here directly,
+    same as a fresh webhook would — Sprint 6's manual_actions.py."""
     ticket_id = firestore_client.ticket_doc_id(repo, issue_number)
+    event_context.set_sink(firestore_client.new_event_sink(ticket_id, gate="1"))
+    await event_context.current_sink().emit(type="gate_started", summary="Gate 1: evaluating intake")
     try:
         title, body, thread = await github_client.get_issue_thread(repo, issue_number)
     except RequestFailed as exc:
@@ -80,6 +84,9 @@ async def _evaluate_intake(repo: str, issue_number: int, jira_key: str) -> None:
 
     await github_client.post_issue_comment(
         repo, issue_number, verdict.missing_context_question or ""
+    )
+    await event_context.current_sink().emit(
+        type="clarification_asked", summary=verdict.missing_context_question or ""
     )
     try:
         await firestore_client.increment_clarification_round(repo, issue_number)

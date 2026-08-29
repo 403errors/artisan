@@ -8,7 +8,8 @@ from functools import lru_cache
 
 from google.cloud import firestore
 
-from artisan_execution_sandbox.config import GCP_PROJECT_ID
+from artisan_execution_sandbox.config import EVENT_LOG_ENABLED, GCP_PROJECT_ID
+from artisan_shared.event_log import EventSink
 from artisan_shared.models import ConflictDetectionResult, ExecutionResult
 from artisan_shared.ticket_ids import ticket_doc_id
 
@@ -16,6 +17,18 @@ from artisan_shared.ticket_ids import ticket_doc_id
 @lru_cache(maxsize=1)
 def _client() -> firestore.AsyncClient:
     return firestore.AsyncClient(project=GCP_PROJECT_ID)
+
+
+def new_event_sink(
+    ticket_id: str, *, gate: str, actor: str = "coding_agent", redact_token: str | None = None
+) -> EventSink:
+    """Constructs an `EventSink` bound to this module's own Firestore client instance — the
+    execution-sandbox-side counterpart of `agents/gcp/firestore_client.py::new_event_sink`.
+    `redact_token` should be the live GitHub installation token minted for this run, so tool
+    output containing it (e.g. `cat .git/config`) gets redacted before it's ever written."""
+    return EventSink(
+        _client(), ticket_id, gate=gate, actor=actor, redact_token=redact_token, enabled=EVENT_LOG_ENABLED
+    )
 
 
 async def _update(repo: str, issue_number: int, field: str, payload) -> None:

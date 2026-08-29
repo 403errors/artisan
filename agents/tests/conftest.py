@@ -4,9 +4,33 @@ underlying model without ever calling live Gemini."""
 
 from collections.abc import AsyncGenerator
 
+import pytest
 from google.adk.models.base_llm import BaseLlm
 from google.adk.models.llm_response import LlmResponse
 from google.genai import types
+
+from artisan_agents import event_context
+from artisan_agents.gcp import firestore_client
+from artisan_shared.event_log import NoOpEventSink
+
+
+@pytest.fixture(autouse=True)
+def _no_real_event_sink(monkeypatch):
+    """dispatch.evaluate_intake/gate2.start_gate2/gate3.start_gate3 each construct a real
+    EventSink via firestore_client.new_event_sink, which would otherwise try to write to the real
+    artisan-multiagent-ai Firestore database on every test run (this environment has live ADC
+    credentials). Autouse so no test can forget this and accidentally perform a live write."""
+    monkeypatch.setattr(firestore_client, "new_event_sink", lambda *args, **kwargs: NoOpEventSink())
+
+
+@pytest.fixture(autouse=True)
+def _reset_ambient_event_sink():
+    """The event-sink ContextVar isn't reset between sync pytest test functions on its own — a
+    test that installs its own sink (e.g. to record emitted events) would otherwise leak it into
+    whichever test runs next. Reset to the safe default both before and after every test."""
+    event_context.set_sink(NoOpEventSink())
+    yield
+    event_context.set_sink(NoOpEventSink())
 
 
 class FakeLlm(BaseLlm):

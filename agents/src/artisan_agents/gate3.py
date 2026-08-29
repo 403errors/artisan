@@ -11,7 +11,7 @@ state it doesn't own (PRD.md §5)."""
 
 from datetime import datetime, timezone
 
-from artisan_agents import tracing
+from artisan_agents import event_context, tracing
 from artisan_agents.agents.conflict_agent import run_conflict_classification
 from artisan_agents.gcp import cloud_run_jobs, firestore_client
 from artisan_agents.gcp.cloud_run_jobs import ConflictDetectionCrashed
@@ -54,6 +54,10 @@ async def start_gate3(
     head_sha: str,
 ) -> None:
     ticket_id = firestore_client.ticket_doc_id(repo, issue_number)
+    event_context.set_sink(firestore_client.new_event_sink(ticket_id, gate="3"))
+    await event_context.current_sink().emit(
+        type="gate_started", summary="Gate 3: merge-conflict triage"
+    )
 
     await firestore_client.update_ticket(repo, issue_number, current_step="detecting_conflict")
     try:

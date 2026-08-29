@@ -5,6 +5,7 @@ from google.adk import Agent
 
 from artisan_agents.agents._run_agent import run_structured
 from artisan_agents.config import GEMINI_MODEL_ID
+from artisan_agents.event_context import current_sink
 from artisan_shared.models import ExecutionResult, Plan, VerificationVerdict
 
 APP_NAME = "artisan-verification"
@@ -40,10 +41,18 @@ async def run_verification(
         # A red test run can never be verified green regardless of what the model says — never
         # spend a Gemini call asking it to second-guess a fact already known from the test run
         # (MILESTONE.md Phase 3.5: "Not green, or green-but-tests-failed" are both failure paths).
-        return VerificationVerdict(
+        verdict = VerificationVerdict(
             green=False,
             feedback=f"The full test suite failed on this attempt. Logs: {execution_result.logs_uri}",
         )
+        # This path never calls run_structured, so it needs its own agent_completed emit — a
+        # skipped-but-recorded verification, not an invisible gap in the trail.
+        await current_sink().child(actor="verification_agent").emit(
+            type="agent_completed",
+            summary="verification_agent skipped — tests already failed",
+            detail=verdict.model_dump_json(),
+        )
+        return verdict
 
     return await run_structured(
         agent=verification_agent,
