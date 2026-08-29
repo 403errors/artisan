@@ -76,8 +76,9 @@ class _FakeTicketStore:
             update={"escalation_history": [*self.ticket.escalation_history, entry], "status": "escalated"}
         )
 
-    async def append_trace_id(self, ticket_id: str, trace_id: str) -> None:
-        self.ticket = self.ticket.model_copy(update={"trace_ids": [*self.ticket.trace_ids, trace_id]})
+    async def append_trace_id(self, ticket_id: str, trace_id: str, label: str) -> None:
+        entry = {"trace_id": trace_id, "label": label}
+        self.ticket = self.ticket.model_copy(update={"trace_ids": [*self.ticket.trace_ids, entry]})
 
 
 @pytest.fixture

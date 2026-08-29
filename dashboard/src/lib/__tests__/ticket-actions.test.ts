@@ -36,6 +36,18 @@ describe("availableActions", () => {
     expect(kinds("pr_open", RECENT)).toEqual(["escalate:enabled", "mark-done:enabled"]);
   });
 
+  it("uses pr_open-specific wording for escalate and mark-done, distinct from other statuses", () => {
+    const prOpenActions = availableActions({ status: "pr_open", updatedAt: RECENT }, NOW);
+    const escalate = prOpenActions.find((a) => a.kind === "escalate");
+    const markDone = prOpenActions.find((a) => a.kind === "mark-done");
+    expect(escalate?.label).toBe("Flag for manual review");
+    expect(escalate?.confirm?.title).toBe("Flag this PR for manual review?");
+    expect(markDone?.label).toBe("Close ticket");
+
+    const inProgressActions = availableActions({ status: "in_progress", updatedAt: RECENT }, NOW);
+    expect(inProgressActions.find((a) => a.kind === "escalate")?.label).toBeUndefined();
+  });
+
   it("offers retry and mark-done for escalated/manual_pickup, no escalate", () => {
     expect(kinds("escalated", RECENT)).toEqual(["mark-done:enabled", "retry:enabled"]);
     expect(kinds("manual_pickup", RECENT)).toEqual(["mark-done:enabled", "retry:enabled"]);

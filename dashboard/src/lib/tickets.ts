@@ -11,8 +11,13 @@ import type {
   TicketDoc,
   TicketSummary,
   TicketStatus,
+  TraceEntry,
 } from "@/types/ticket";
 import type { TicketEvent } from "@/types/ticket-event";
+
+// A trace_ids entry written before the {trace_id, label} schema landed — tolerated so old ticket
+// docs don't need a backfill migration.
+type RawTraceEntry = string | { trace_id: string; label: string };
 
 // Raw wire shape as Firestore actually stores it — Pydantic dumps field names verbatim, no
 // alias_generator configured anywhere in firestore_schema.py, so this is genuinely snake_case.
@@ -33,9 +38,13 @@ interface RawTicketDoc {
   last_conflict_detection: RawConflictDetectionResult | null;
   last_conflict_resolution: RawExecutionResult | null;
   escalation_history: EscalationEntry[];
-  trace_ids: string[];
+  trace_ids: RawTraceEntry[];
   created_at: string;
   updated_at: string;
+}
+
+function toTraceEntry(raw: RawTraceEntry): TraceEntry {
+  return typeof raw === "string" ? { traceId: raw, label: "Unlabeled" } : { traceId: raw.trace_id, label: raw.label };
 }
 
 interface RawPlan {
@@ -116,7 +125,7 @@ function toTicketDoc(id: string, raw: RawTicketDoc): TicketDoc {
     lastConflictDetection: toConflictDetectionResult(raw.last_conflict_detection),
     lastConflictResolution: toExecutionResult(raw.last_conflict_resolution),
     escalationHistory: raw.escalation_history ?? [],
-    traceIds: raw.trace_ids ?? [],
+    traceIds: (raw.trace_ids ?? []).map(toTraceEntry),
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
   };

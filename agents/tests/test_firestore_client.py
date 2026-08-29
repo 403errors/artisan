@@ -16,7 +16,7 @@ from artisan_agents.gcp.firestore_client import (
     RetryCapExceeded,
     TrivialConflictCapExceeded,
 )
-from artisan_shared.firestore_schema import EscalationEntry
+from artisan_shared.firestore_schema import EscalationEntry, TraceEntry
 
 REPO = "403errors/artisan-demo"
 
@@ -211,10 +211,10 @@ async def test_append_trace_id_is_atomic_and_does_not_flip_status(cleanup_ticket
     await firestore_client.create_ticket(REPO, issue_number, jira_key="ART-900013")
     doc_id = firestore_client.ticket_doc_id(REPO, issue_number)
 
-    await firestore_client.append_trace_id(doc_id, "a" * 32)
+    await firestore_client.append_trace_id(doc_id, "a" * 32, "Gate 1: intake sufficient")
 
     ticket = await firestore_client.get_ticket(REPO, issue_number)
-    assert ticket.trace_ids == ["a" * 32]
+    assert ticket.trace_ids == [TraceEntry(trace_id="a" * 32, label="Gate 1: intake sufficient")]
     assert ticket.status == "intake"  # unlike append_escalation, must NOT flip to escalated
 
 

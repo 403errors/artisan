@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ActivityIcon } from "lucide-react";
+import { ActivityIcon, WrenchIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +11,14 @@ import { GateBadge } from "@/components/gate-badge";
 import { LiveStepIndicator } from "@/components/live-step-indicator";
 import { useTicketEvents } from "@/hooks/use-ticket-events";
 import { formatDateTime, relativeTime } from "@/lib/format";
-import { groupByGate, presentationFor, type EventTone } from "@/lib/ticket-events";
+import {
+  groupByGate,
+  groupToolCalls,
+  isToolCallGroup,
+  presentationFor,
+  type EventTone,
+  type ToolCallGroup,
+} from "@/lib/ticket-events";
 import { cn } from "@/lib/utils";
 import type { TicketEvent } from "@/types/ticket-event";
 import type { TicketDoc } from "@/types/ticket";
@@ -80,6 +87,37 @@ function EventRow({ event }: { event: TicketEvent }) {
   );
 }
 
+function ToolCallGroupRow({ group }: { group: ToolCallGroup }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <li className="relative flex gap-3 pl-8">
+      <span
+        className={cn(
+          "absolute top-0 left-0 flex size-6 items-center justify-center rounded-full ring-1",
+          TONE_CLASS.default,
+        )}
+      >
+        <WrenchIcon aria-hidden="true" className="size-3.5" />
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <Collapsible open={open} onOpenChange={setOpen}>
+          <CollapsibleTrigger className="w-fit text-left text-sm text-muted-foreground hover:text-foreground">
+            {open ? "Hide tool calls" : `Show tool calls (${group.events.length})`}
+          </CollapsibleTrigger>
+          <CollapsibleContent className="overflow-hidden">
+            <ul className="relative flex flex-col gap-3 pt-2 before:absolute before:top-3 before:bottom-3 before:left-[11px] before:w-px before:bg-border">
+              {group.events.map((event) => (
+                <EventRow key={event.id} event={event} />
+              ))}
+            </ul>
+          </CollapsibleContent>
+        </Collapsible>
+      </div>
+    </li>
+  );
+}
+
 export function TicketActivityFeed({ ticket }: { ticket: TicketDoc }) {
   const { events, unavailable } = useTicketEvents(ticket.id);
   const groups = groupByGate(events);
@@ -105,9 +143,13 @@ export function TicketActivityFeed({ ticket }: { ticket: TicketDoc }) {
             <div key={i} className="flex flex-col gap-2">
               {group.gate ? <GateBadge gate={group.gate} showLabel /> : null}
               <ul className="relative flex flex-col gap-3 before:absolute before:top-3 before:bottom-3 before:left-[11px] before:w-px before:bg-border">
-                {group.events.map((event) => (
-                  <EventRow key={event.id} event={event} />
-                ))}
+                {groupToolCalls(group.events).map((item) =>
+                  isToolCallGroup(item) ? (
+                    <ToolCallGroupRow key={item.events[0].id} group={item} />
+                  ) : (
+                    <EventRow key={item.id} event={item} />
+                  ),
+                )}
               </ul>
             </div>
           ))

@@ -375,16 +375,16 @@ async def set_repo_context(repo: str, context: RepoContext) -> None:
     )
 
 
-async def append_trace_id(ticket_id: str, trace_id: str) -> None:
-    """Atomically appends one trace id to `trace_ids` via `firestore.ArrayUnion`, mirroring
-    append_escalation's shape. Called from tracing.gate_span on span exit, which already holds the
-    computed ticket doc id — takes it directly rather than (repo, issue_number) since every call
-    site already has it. Deliberately does NOT flip `status` — this is a pure observability
-    record, unlike append_escalation."""
+async def append_trace_id(ticket_id: str, trace_id: str, label: str) -> None:
+    """Atomically appends one `{trace_id, label}` entry to `trace_ids` via `firestore.ArrayUnion`,
+    mirroring append_escalation's shape. Called from tracing.gate_span on span exit, which already
+    holds the computed ticket doc id — takes it directly rather than (repo, issue_number) since
+    every call site already has it. Deliberately does NOT flip `status` — this is a pure
+    observability record, unlike append_escalation."""
     doc_ref = _client().collection("tickets").document(ticket_id)
     await doc_ref.update(
         {
-            "trace_ids": firestore.ArrayUnion([trace_id]),
+            "trace_ids": firestore.ArrayUnion([{"trace_id": trace_id, "label": label}]),
             "updated_at": _now().isoformat(),
         }
     )

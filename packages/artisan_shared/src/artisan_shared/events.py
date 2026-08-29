@@ -20,6 +20,7 @@ TicketEventType = Literal[
     "job_started",
     "job_completed",
     "clarification_asked",
+    "clarification_answered",
     "pr_opened",
     "jira_synced",
     "escalated",

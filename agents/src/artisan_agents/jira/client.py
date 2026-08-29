@@ -37,21 +37,35 @@ async def _request(method: str, path: str, **kwargs) -> dict:
     return response.json() if response.content else {}
 
 
-async def create_ticket(issue_title: str, issue_body: str, issue_url: str) -> str:
-    """Creates a Jira issue on the configured project; returns the new issue key (e.g. `ART-42`)."""
+async def create_ticket(issue_number: int, issue_title: str, issue_body: str, issue_url: str) -> str:
+    """Creates a Jira issue on the configured project; returns the new issue key (e.g. `ART-42`).
+    `issue_number` is prefixed onto the summary since Jira's own key (`ART-N`) is a separate
+    per-project auto-increment unrelated to the GitHub issue number — without this prefix there's
+    no way to tell which GitHub issue a Jira ticket came from without opening it."""
     data = await _request(
         "POST",
         "/rest/api/2/issue",
         json={
             "fields": {
                 "project": {"key": JIRA_PROJECT_KEY},
-                "summary": issue_title,
+                "summary": f"[GH#{issue_number}] {issue_title}",
                 "description": f"{issue_body}\n\nSource: {issue_url}",
                 "issuetype": {"name": "Task"},
             }
         },
     )
     return data["key"]
+
+
+async def update_description(jira_key: str, description: str) -> None:
+    """Overwrites the ticket's description field — used to fold the issuer's clarification replies
+    into Jira once intake resolves, since `description` is otherwise write-once at create_ticket
+    time and never reflects anything said after the initial (often vague) issue body."""
+    await _request(
+        "PUT",
+        f"/rest/api/2/issue/{jira_key}",
+        json={"fields": {"description": description}},
+    )
 
 
 async def transition_ticket(jira_key: str, status_name: str) -> None:

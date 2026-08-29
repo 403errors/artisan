@@ -103,7 +103,7 @@ def test_stage_all_and_diff_stat_then_commit(tmp_path) -> None:
     (workdir / "new_file.py").write_text("print('hi')\n")
 
     diff_summary = stage_all_and_diff_stat(str(workdir))
-    assert "new_file.py" in diff_summary
+    assert "new_file.py (new file) +1 -0" in diff_summary
     assert has_staged_changes(str(workdir)) is True
 
     commit_all(str(workdir), "Artisan: add new_file.py")
@@ -114,6 +114,23 @@ def test_stage_all_and_diff_stat_then_commit(tmp_path) -> None:
         capture_output=True, text=True, check=True,
     ).stdout.strip()
     assert log == "Artisan: add new_file.py"
+
+
+def test_stage_all_and_diff_stat_tags_modified_and_deleted_files(tmp_path) -> None:
+    origin = tmp_path / "origin"
+    workdir = tmp_path / "workdir"
+    _init_origin(origin)
+    (origin / "to_delete.py").write_text("print('bye')\n")
+    _commit(origin, "add to_delete.py")
+    clone(str(origin), str(workdir))
+
+    (workdir / "README.md").write_text("hello\nworld\n")
+    (workdir / "to_delete.py").unlink()
+
+    diff_summary = stage_all_and_diff_stat(str(workdir))
+    lines = diff_summary.splitlines()
+    assert "README.md (modified) +1 -0" in lines
+    assert "to_delete.py (deleted) +0 -1" in lines
 
 
 def test_run_redacts_sensitive_value_from_raised_error(tmp_path) -> None:

@@ -59,7 +59,7 @@ async def start_gate2(
         issue_title=issue_title, issue_body=issue_body, jira_key=jira_key, repo_context=repo_context
     )
     await firestore_client.update_ticket(repo, issue_number, domains=list(decision.domains))
-    async with tracing.gate_span(ticket_id, "2", "proceed"):
+    async with tracing.gate_span(ticket_id, "2", "proceed", label="Gate 2: routing decided"):
         pass
 
     await firestore_client.update_ticket(repo, issue_number, current_step="domain_expert")
@@ -107,20 +107,22 @@ async def start_gate2(
         )
 
         if verdict.green:
-            async with tracing.gate_span(ticket_id, "2", "proceed"):
+            async with tracing.gate_span(ticket_id, "2", "proceed", label="Gate 2: verification passed"):
                 pass
             await firestore_client.update_ticket(repo, issue_number, current_step="opening_pr")
             await _open_pr_and_sync(repo, issue_number, jira_key, issue_title, plan, execution_result)
             return
 
         feedback = verdict.feedback or "Verification failed with no specific feedback."
-        async with tracing.gate_span(ticket_id, "2", "retry"):
+        async with tracing.gate_span(ticket_id, "2", "retry", label="Gate 2: verification failed, retrying"):
             pass
         try:
             await firestore_client.increment_retry_round(repo, issue_number)
         except RetryCapExceeded:
             await _escalate(repo, issue_number, jira_key, reason=feedback)
-            async with tracing.gate_span(ticket_id, "2", "escalate"):
+            async with tracing.gate_span(
+                ticket_id, "2", "escalate", label="Gate 2: retry cap exceeded"
+            ):
                 pass
             return
 
@@ -200,7 +202,7 @@ async def _open_pr_and_sync(
         )
     await jira_client.add_comment(
         jira_key,
-        f"Artisan opened a PR: {pr_url}\n\n{execution_result.diff_summary}",
+        f"Artisan opened a PR: {pr_url}\n\n{{noformat}}\n{execution_result.diff_summary}\n{{noformat}}",
     )
     await event_context.current_sink().emit(
         type="jira_synced", summary=f"Commented PR link on {jira_key}"

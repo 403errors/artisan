@@ -79,13 +79,15 @@ async def start_gate3(
             head_branch=head_branch, head_sha=head_sha,
         )
     except ConflictDetectionCrashed as exc:
-        async with tracing.gate_span(ticket_id, "3", "escalate"):
+        async with tracing.gate_span(
+            ticket_id, "3", "escalate", label="Gate 3: conflict detection crashed"
+        ):
             pass
         await _escalate(repo, issue_number, jira_key, pr_number, reason=f"conflict check crashed: {exc}")
         return
 
     if not detection.has_conflict:
-        async with tracing.gate_span(ticket_id, "3", "proceed"):
+        async with tracing.gate_span(ticket_id, "3", "proceed", label="Gate 3: no conflict detected"):
             pass
         return
 
@@ -93,19 +95,23 @@ async def start_gate3(
     verdict = await run_conflict_classification(pr_title=pr_title, pr_body=pr_body, detection=detection)
 
     if verdict.classification == "semantic":
-        async with tracing.gate_span(ticket_id, "3", "escalate"):
+        async with tracing.gate_span(
+            ticket_id, "3", "escalate", label="Gate 3: semantic conflict escalated"
+        ):
             pass
         if await firestore_client.claim_semantic_conflict_escalation(repo, issue_number):
             await _escalate_semantic(repo, issue_number, jira_key, pr_number, verdict)
         return
 
     # trivial: span at classification time...
-    async with tracing.gate_span(ticket_id, "3", "proceed"):
+    async with tracing.gate_span(ticket_id, "3", "proceed", label="Gate 3: trivial conflict classified"):
         pass
     try:
         await firestore_client.increment_trivial_conflict_attempt(repo, issue_number)
     except TrivialConflictCapExceeded:
-        async with tracing.gate_span(ticket_id, "3", "escalate"):
+        async with tracing.gate_span(
+            ticket_id, "3", "escalate", label="Gate 3: trivial-conflict cap exceeded"
+        ):
             pass
         await _escalate(
             repo, issue_number, jira_key, pr_number,
@@ -123,7 +129,9 @@ async def start_gate3(
 
     # ...and a second span for the resolution outcome, per Phase 4.5.
     if resolution.tests_passed:
-        async with tracing.gate_span(ticket_id, "3", "proceed"):
+        async with tracing.gate_span(
+            ticket_id, "3", "proceed", label="Gate 3: conflict resolution passed"
+        ):
             pass
         await github_client.post_issue_comment(
             repo, pr_number,
@@ -135,7 +143,9 @@ async def start_gate3(
         )
         return
 
-    async with tracing.gate_span(ticket_id, "3", "escalate"):
+    async with tracing.gate_span(
+        ticket_id, "3", "escalate", label="Gate 3: conflict resolution failed"
+    ):
         pass
     await _escalate(
         repo, issue_number, jira_key, pr_number,

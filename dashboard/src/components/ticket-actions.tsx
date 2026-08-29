@@ -48,7 +48,10 @@ export function TicketActions({ ticket }: { ticket: TicketDoc }) {
     );
   }
 
+  const dialogAction = dialogKind ? actions.find((a) => a.kind === dialogKind) ?? null : null;
   const dialogMeta = dialogKind ? ACTION_META[dialogKind] : null;
+  const dialogLabel = dialogAction?.label ?? dialogMeta?.label;
+  const dialogConfirm = dialogAction?.confirm ?? dialogMeta?.confirm;
 
   async function confirmAction() {
     if (!dialogKind) return;
@@ -68,13 +71,13 @@ export function TicketActions({ ticket }: { ticket: TicketDoc }) {
     if (result.ok) {
       setQueued({ kind: dialogKind, since: sinceUpdatedAt });
       toast.add({
-        title: `${ACTION_META[dialogKind].label} queued`,
+        title: `${dialogLabel} queued`,
         description: "Artisan will pick this up shortly.",
         type: "success",
       });
     } else {
       toast.add({
-        title: `${ACTION_META[dialogKind].label} failed`,
+        title: `${dialogLabel} failed`,
         description: result.message,
         type: "error",
       });
@@ -83,20 +86,21 @@ export function TicketActions({ ticket }: { ticket: TicketDoc }) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {actions.map(({ kind, enabled, disabledReason }) => {
+      {actions.map(({ kind, enabled, disabledReason, label }) => {
         const meta = ACTION_META[kind];
         const Icon = meta.icon;
+        const displayLabel = label ?? meta.label;
         const button = (
           <Button
             key={kind}
             variant={meta.variant}
             size="sm"
             disabled={!enabled || pending !== null}
-            aria-label={`${meta.label} for ${ticket.jiraKey}`}
+            aria-label={`${displayLabel} for ${ticket.jiraKey}`}
             onClick={() => setDialogKind(kind)}
           >
             {pending === kind ? <Loader2Icon className="animate-spin" /> : <Icon />}
-            {meta.label}
+            {displayLabel}
           </Button>
         );
         if (!enabled && disabledReason) {
@@ -127,11 +131,11 @@ export function TicketActions({ ticket }: { ticket: TicketDoc }) {
         }}
       >
         <AlertDialogContent>
-          {dialogMeta ? (
+          {dialogMeta && dialogConfirm ? (
             <>
               <AlertDialogHeader>
-                <AlertDialogTitle>{dialogMeta.confirm.title}</AlertDialogTitle>
-                <AlertDialogDescription>{dialogMeta.confirm.body}</AlertDialogDescription>
+                <AlertDialogTitle>{dialogConfirm.title}</AlertDialogTitle>
+                <AlertDialogDescription>{dialogConfirm.body}</AlertDialogDescription>
               </AlertDialogHeader>
               {dialogMeta.needsReason ? (
                 <textarea
@@ -146,12 +150,12 @@ export function TicketActions({ ticket }: { ticket: TicketDoc }) {
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={pending !== null}>Cancel</AlertDialogCancel>
                 <AlertDialogAction
-                  variant={dialogMeta.confirm.destructive ? "destructive" : "default"}
+                  variant={dialogConfirm.destructive ? "destructive" : "default"}
                   disabled={pending !== null}
                   onClick={confirmAction}
                 >
                   {pending !== null ? <Loader2Icon className="animate-spin" /> : null}
-                  {dialogMeta.confirm.confirmLabel}
+                  {dialogConfirm.confirmLabel}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </>
