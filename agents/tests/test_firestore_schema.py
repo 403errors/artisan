@@ -46,7 +46,7 @@ def test_ticket_doc_roundtrips_through_real_firestore() -> None:
 
 def test_ticket_doc_roundtrips_last_execution_result() -> None:
     """Sprint 3 (Gate 2): the execution-sandbox job writes ExecutionResult onto this field, and
-    the orchestrator reads it back after the Cloud Run Job execution completes (SPRINT.md 3.4)."""
+    the orchestrator reads it back after the Cloud Run Job execution completes (MILESTONE.md 3.4)."""
     client = _client()
     now = datetime.now(UTC)
     doc = TicketDoc(
@@ -79,7 +79,7 @@ def test_ticket_doc_roundtrips_last_execution_result() -> None:
 
 def test_ticket_doc_roundtrips_pr_number_and_conflict_fields() -> None:
     """Sprint 4 (Gate 3): pr_number/trivial_conflict_attempts/last_conflict_detection/
-    last_conflict_resolution (SPRINT.md Phase 4.1-4.3)."""
+    last_conflict_resolution (MILESTONE.md Phase 4.1-4.3)."""
     client = _client()
     now = datetime.now(UTC)
     doc = TicketDoc(

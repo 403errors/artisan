@@ -70,7 +70,7 @@ def fetch(repo_dir: str, branch_name: str, *, redact: str | None = None) -> None
 
 def merge(repo_dir: str, branch_name: str) -> tuple[bool, str]:
     """Attempts `git merge --no-commit --no-ff origin/<branch_name>` into whatever's currently
-    checked out (Gate 3, SPRINT.md Phase 4.1/4.3). A real conflict is expected OUTPUT here, not a
+    checked out (Gate 3, MILESTONE.md Phase 4.1/4.3). A real conflict is expected OUTPUT here, not a
     subprocess failure — unlike every other wrapper in this module, a nonzero exit does not
     automatically raise. It's distinguished from a genuine git-level error (e.g. an unknown ref) by
     checking whether `list_conflicted_files` actually reports conflicted files; only a genuine
@@ -97,10 +97,6 @@ def merge(repo_dir: str, branch_name: str) -> tuple[bool, str]:
     if list_conflicted_files(repo_dir):
         return False, output
     raise GitCommandError(f"git merge origin/{branch_name} failed: {output}")
-
-
-def abort_merge(repo_dir: str) -> None:
-    _run(["merge", "--abort"], cwd=repo_dir)
 
 
 def list_conflicted_files(repo_dir: str) -> list[str]:

@@ -52,7 +52,7 @@ def test_execution_result_and_verification_verdict_roundtrip() -> None:
 
 
 def test_conflict_verdict_classification_literal() -> None:
-    verdict = ConflictVerdict(classification="trivial", resolution_branch="artisan/fix-1")
+    verdict = ConflictVerdict(classification="trivial")
     assert verdict.classification in ("trivial", "semantic")
 
 

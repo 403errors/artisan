@@ -3,7 +3,7 @@ resolution (4.3) or semantic escalation (4.4), tracing every decision (4.5). Mir
 style (module-level firestore_client/jira_client/github_client imports, monkeypatched directly in
 tests). Unlike Gate 2's bounded plan/execute/verify loop, Gate 3 makes exactly one classification
 decision and, on the trivial path, exactly one resolution attempt — no retry loop by design
-(SPRINT.md Phase 4.3: capped at exactly 1 attempt, failure escalates immediately).
+(MILESTONE.md Phase 4.3: capped at exactly 1 attempt, failure escalates immediately).
 
 Entered from dispatch.py's `pull_request` branch. A `pull_request` event with no matching
 `pr_index` pointer is simply not Artisan's concern and is a no-op — Gate 3 never operates on repo

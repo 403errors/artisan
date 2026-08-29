@@ -1,4 +1,4 @@
-"""Gate 3's conflict classification (SYSTEM_DESIGN.md §5 step 2, SPRINT.md Phase 4.2). Classifies
+"""Gate 3's conflict classification (SYSTEM_DESIGN.md §5 step 2, MILESTONE.md Phase 4.2). Classifies
 a real trial-merge conflict (from `cloud_run_jobs.trigger_conflict_detection`) as `trivial`
 (non-overlapping/mechanically reconcilable, safe to auto-resolve) or `semantic` (both sides changed
 the same logic differently — never guess, escalate with a structured comparison instead)."""
@@ -21,8 +21,7 @@ independent nearby changes that don't actually collide in intent. Both sides' ch
 call about which behavior is correct. Never guess.
 
 If "semantic", set `comparison` to a structured writeup with two clearly separated sections \
-("Side A intent: ..." and "Side B intent: ..."), never a raw diff dump. Never set \
-`resolution_branch` — the caller assigns that, not you."""
+("Side A intent: ..." and "Side B intent: ..."), never a raw diff dump."""
 
 conflict_agent = Agent(
     model=GEMINI_MODEL_ID,

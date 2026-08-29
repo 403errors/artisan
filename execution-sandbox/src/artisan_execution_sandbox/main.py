@@ -1,4 +1,4 @@
-"""Cloud Run Jobs entrypoint for execution-sandbox (SPRINT.md Phase 3.4 / Phase 4.1-4.3). `JOB_MODE`
+"""Cloud Run Jobs entrypoint for execution-sandbox (MILESTONE.md Phase 3.4 / Phase 4.1-4.3). `JOB_MODE`
 selects behavior, defaulting to `execute` (Gate 2 back-compat, no env-var change for existing
 callers):
 - `execute`: reads GITHUB_REPO/ISSUE_NUMBER/BRANCH_NAME/PLAN_JSON/PRIOR_FEEDBACK, clones the repo,
@@ -152,7 +152,7 @@ async def run_attempt(
 async def run_conflict_detection(
     *, repo: str, base_branch: str, head_branch: str, head_sha: str
 ) -> ConflictDetectionResult:
-    """One real trial merge (Gate 3, SPRINT.md Phase 4.1/4.2) — checks out the PR's HEAD branch
+    """One real trial merge (Gate 3, MILESTONE.md Phase 4.1/4.2) — checks out the PR's HEAD branch
     and merges BASE into it (never the reverse: merging head into a base checkout would produce a
     commit that isn't a fast-forward of head, forcing a force-push on resolution — PRD.md §5
     forbids force-pushing). Always returns data, never raises. `has_conflict=True` is the fail-safe
@@ -197,7 +197,7 @@ async def run_conflict_detection(
 async def run_conflict_resolution(
     *, repo: str, base_branch: str, head_branch: str
 ) -> ExecutionResult:
-    """Gate 3's one capped resolution attempt (SPRINT.md Phase 4.3 — no internal retry, mirrors
+    """Gate 3's one capped resolution attempt (MILESTONE.md Phase 4.3 — no internal retry, mirrors
     `run_attempt`'s always-return-data shape). Re-does its own fresh clone+merge rather than
     trusting an earlier detection job's result — if the conflict has since cleared (e.g. a human
     already fixed it), this just reports a clean, no-op-ish success rather than blindly trusting a

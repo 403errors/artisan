@@ -2,7 +2,7 @@
 skip-if-no-ADC convention as test_firestore_schema.py. Exercises ticket bootstrap (Phase 2.2), the
 idempotency guard (Phase 2.1), the transactional clarification-round cap (Phase 2.4), Gate 2's
 transactional retry cap + escalation-history append (Phase 3.5), and Gate 3's transactional
-trivial-conflict cap + PR-index pointer (Phase 4.1/4.3, SPRINT.md)."""
+trivial-conflict cap + PR-index pointer (Phase 4.1/4.3, MILESTONE.md)."""
 
 from datetime import UTC, datetime
 

@@ -28,7 +28,7 @@ async def get_issue_thread(repo: str, issue_number: int) -> tuple[str, str, list
 async def open_pull_request(
     repo: str, *, head: str, base: str, title: str, body: str
 ) -> tuple[int, str]:
-    """Opens a PR via the App's installation token (Gate 2, SPRINT.md Phase 3.6). Returns
+    """Opens a PR via the App's installation token (Gate 2, MILESTONE.md Phase 3.6). Returns
     (pr_number, pr_html_url)."""
     owner, name = _split_repo(repo)
     gh = get_installation_client()

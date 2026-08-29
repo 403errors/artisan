@@ -53,7 +53,6 @@ async def test_non_overlapping_region_conflict_classifies_trivial(stub_model) ->
     )
 
     assert verdict.classification == "trivial"
-    assert verdict.resolution_branch is None
 
 
 @pytest.mark.asyncio

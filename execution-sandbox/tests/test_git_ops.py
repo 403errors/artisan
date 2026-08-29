@@ -10,7 +10,6 @@ import pytest
 from artisan_execution_sandbox.git_ops import (
     GitCommandError,
     _run,
-    abort_merge,
     checkout,
     clone,
     commit_all,
@@ -216,23 +215,6 @@ def test_merge_passes_bot_identity_to_the_subprocess(monkeypatch, tmp_path) -> N
     assert "-c" in captured_args
     assert "user.email=artisan-bot@users.noreply.github.com" in captured_args
     assert "user.name=artisan-bot" in captured_args
-
-
-def test_abort_merge_restores_clean_state(tmp_path) -> None:
-    origin = tmp_path / "origin"
-    workdir = tmp_path / "workdir"
-    _init_origin_with_conflicting_branches(origin)
-
-    clone(str(origin), str(workdir))
-    fetch(str(workdir), "feature")
-    checkout(str(workdir), "feature")
-    fetch(str(workdir), "main")
-    merge(str(workdir), "main")
-
-    abort_merge(str(workdir))
-
-    assert list_conflicted_files(str(workdir)) == []
-    assert has_staged_changes(str(workdir)) is False
 
 
 def test_log_for_paths_scopes_to_given_files(tmp_path) -> None:

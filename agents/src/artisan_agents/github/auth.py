@@ -9,7 +9,11 @@ from functools import lru_cache
 
 from githubkit import GitHub
 
-from artisan_agents.config import GITHUB_APP_ID, GITHUB_INSTALLATION_ID
+from artisan_agents.config import (
+    GITHUB_APP_ID,
+    GITHUB_INSTALLATION_ID,
+    SECRET_GITHUB_APP_PRIVATE_KEY,
+)
 from artisan_agents.gcp.secrets import get_secret
 from artisan_shared.github_auth import build_installation_client
 
@@ -18,7 +22,7 @@ from artisan_shared.github_auth import build_installation_client
 def get_installation_client() -> GitHub:
     """A GitHub client authenticated as the App's installation on the target repo. Safe to reuse
     across requests — token refresh is handled internally by githubkit."""
-    private_key = get_secret("github-app-private-key")
+    private_key = get_secret(SECRET_GITHUB_APP_PRIVATE_KEY)
     return build_installation_client(
         app_id=GITHUB_APP_ID, installation_id=GITHUB_INSTALLATION_ID, private_key=private_key
     )

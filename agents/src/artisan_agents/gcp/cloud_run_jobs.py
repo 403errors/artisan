@@ -1,5 +1,5 @@
 """Triggers one attempt of the `execution-sandbox` Cloud Run Job and waits for it to complete
-(SYSTEM_DESIGN.md §4 step 3, SPRINT.md Phase 3.4).
+(SYSTEM_DESIGN.md §4 step 3, MILESTONE.md Phase 3.4).
 
 Decision (Sprint 3, confirmed with the user — see docs/CONTEXT.md): trigger-and-await
 synchronously inside the same `/pubsub/push` request, rather than building a separate async
@@ -123,7 +123,7 @@ def _build_conflict_request(
 async def trigger_conflict_detection(
     *, repo: str, issue_number: int, base_branch: str, head_branch: str, head_sha: str,
 ) -> ConflictDetectionResult:
-    """Runs execution-sandbox in `detect_conflict` mode (Gate 3, SPRINT.md Phase 4.1), blocking
+    """Runs execution-sandbox in `detect_conflict` mode (Gate 3, MILESTONE.md Phase 4.1), blocking
     until it completes, then reads the `ConflictDetectionResult` back from Firestore."""
     request = _build_conflict_request(
         job_mode="detect_conflict", repo=repo, issue_number=issue_number, base_branch=base_branch,
@@ -151,7 +151,7 @@ async def trigger_conflict_detection(
 async def trigger_conflict_resolution(
     *, repo: str, issue_number: int, base_branch: str, head_branch: str
 ) -> ExecutionResult:
-    """Runs execution-sandbox in `resolve_conflict` mode (Gate 3, SPRINT.md Phase 4.3), blocking
+    """Runs execution-sandbox in `resolve_conflict` mode (Gate 3, MILESTONE.md Phase 4.3), blocking
     until it completes, then reads the `ExecutionResult` back from Firestore, matched on `branch`
     exactly like `trigger_execution`. Mirrors `trigger_execution`'s crash fallback (synthesizes a
     failed result) rather than raising — a crashed resolution and a real red test run are treated

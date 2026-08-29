@@ -1,4 +1,4 @@
-"""Orchestrator Cloud Run service. Two routes (SPRINT.md Phase 2.1):
+"""Orchestrator Cloud Run service. Two routes (MILESTONE.md Phase 2.1):
 
 - POST /webhooks/github: GitHub's registered webhook URL. Verifies the HMAC signature while the
   raw body is still available, then publishes to Pub/Sub and returns fast. No side effects beyond

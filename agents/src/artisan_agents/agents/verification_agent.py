@@ -1,4 +1,4 @@
-"""Gate 2's Verification Agent (SYSTEM_DESIGN.md §4 step 4, SPRINT.md Phase 3.5). Compares an
+"""Gate 2's Verification Agent (SYSTEM_DESIGN.md §4 step 4, MILESTONE.md Phase 3.5). Compares an
 `ExecutionResult` against the `Plan` and original issue, and emits a `VerificationVerdict`."""
 
 from google.adk import Agent
@@ -39,7 +39,7 @@ async def run_verification(
     if not execution_result.tests_passed:
         # A red test run can never be verified green regardless of what the model says — never
         # spend a Gemini call asking it to second-guess a fact already known from the test run
-        # (SPRINT.md Phase 3.5: "Not green, or green-but-tests-failed" are both failure paths).
+        # (MILESTONE.md Phase 3.5: "Not green, or green-but-tests-failed" are both failure paths).
         return VerificationVerdict(
             green=False,
             feedback=f"The full test suite failed on this attempt. Logs: {execution_result.logs_uri}",

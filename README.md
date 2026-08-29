@@ -2,7 +2,7 @@
 
 An expert co-developer that closes the loop between your coding-agent fleet and Jira.
 
-Full product context lives in [`docs/`](./docs): [PRD.md](./docs/PRD.md) (what/why), [SYSTEM_DESIGN.md](./docs/SYSTEM_DESIGN.md) (how), [TECH_STACK.md](./docs/TECH_STACK.md) (exact versions), [SPRINT.md](./docs/SPRINT.md) (sprint plan), [CONTEXT.md](./docs/CONTEXT.md) (current state — read this first).
+Full product context lives in [`docs/`](./docs): [PRD.md](./docs/PRD.md) (what/why), [SYSTEM_DESIGN.md](./docs/SYSTEM_DESIGN.md) (how), [TECH_STACK.md](./docs/TECH_STACK.md) (exact versions), [SPRINT.md](./docs/SPRINT.md) (sprint plan), [MILESTONE.md](./docs/MILESTONE.md) (closed-sprint DoD archive), [CONTEXT.md](./docs/CONTEXT.md) (current state — read this first).
 
 ## Repo layout
 

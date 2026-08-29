@@ -1,4 +1,4 @@
-"""Gate 2's Planning Agent (SYSTEM_DESIGN.md §4 step 2, SPRINT.md Phase 3.3). Consumes one or more
+"""Gate 2's Planning Agent (SYSTEM_DESIGN.md §4 step 2, MILESTONE.md Phase 3.3). Consumes one or more
 `DomainExpertOutput`s (plus, on a retry, the prior attempt's verification feedback) and emits a
 `Plan`."""
 

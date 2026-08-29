@@ -1,4 +1,4 @@
-# execution-sandbox Cloud Run Job image (SPRINT.md Phase 3.4). Multi-stage, uv-based build,
+# execution-sandbox Cloud Run Job image (MILESTONE.md Phase 3.4). Multi-stage, uv-based build,
 # mirroring agents/Dockerfile's shape (see that file's comments for why the build context must be
 # the repo root, not execution-sandbox/, given the uv workspace path dependency on
 # packages/artisan_shared):

@@ -12,7 +12,12 @@ credentials work reliably, so that's what this module does instead."""
 
 import httpx
 
-from artisan_agents.config import JIRA_PROJECT_KEY, JIRA_URL, JIRA_USERNAME
+from artisan_agents.config import (
+    JIRA_PROJECT_KEY,
+    JIRA_URL,
+    JIRA_USERNAME,
+    SECRET_JIRA_API_TOKEN,
+)
 from artisan_agents.gcp.secrets import get_secret
 
 
@@ -21,7 +26,7 @@ class JiraClientError(Exception):
 
 
 def _auth() -> tuple[str, str]:
-    return (JIRA_USERNAME, get_secret("jira-api-token"))
+    return (JIRA_USERNAME, get_secret(SECRET_JIRA_API_TOKEN))
 
 
 async def _request(method: str, path: str, **kwargs) -> dict:

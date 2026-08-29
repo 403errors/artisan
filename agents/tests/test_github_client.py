@@ -1,4 +1,4 @@
-"""Unit test for github/client.py's `open_pull_request` (Gate 2, SPRINT.md Phase 3.6). Fakes the
+"""Unit test for github/client.py's `open_pull_request` (Gate 2, MILESTONE.md Phase 3.6). Fakes the
 installation client so no real GitHub call is made."""
 
 import pytest

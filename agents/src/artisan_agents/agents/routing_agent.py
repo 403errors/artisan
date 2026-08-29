@@ -1,4 +1,4 @@
-"""Gate 2's orchestrator-routing decision (SYSTEM_DESIGN.md §4 step 1, SPRINT.md Phase 3.1).
+"""Gate 2's orchestrator-routing decision (SYSTEM_DESIGN.md §4 step 1, MILESTONE.md Phase 3.1).
 Decides which domain-expert persona(s) apply to a sufficiently-specified ticket, and whether they
 should be dispatched in parallel or sequentially."""
 

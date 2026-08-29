@@ -13,7 +13,7 @@ GITHUB_INSTALLATION_ID = os.environ.get("ARTISAN_GITHUB_INSTALLATION_ID", "15712
 SECRET_GITHUB_APP_PRIVATE_KEY = "github-app-private-key"
 
 # Bounds the coding agent's tool-call loop so a stuck model can't run past the job's own Cloud Run
-# Jobs execution timeout (SPRINT.md Phase 3.4).
+# Jobs execution timeout (MILESTONE.md Phase 3.4).
 MAX_CODING_AGENT_TOOL_CALLS = 40
 
 # v1 is scoped to exactly one fixed demo repo (docs/PRD.md §5), so a single configured test

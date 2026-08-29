@@ -1,4 +1,4 @@
-"""Gate 2's coding step (SPRINT.md Phase 3.4): a bounded ADK agent with file/shell tools that
+"""Gate 2's coding step (MILESTONE.md Phase 3.4): a bounded ADK agent with file/shell tools that
 carries out a Plan's steps against a cloned repo checkout. Per docs/PRD.md §5's non-goal, this is
 Artisan's own Gemini/ADK-driven coding capability — never a shelled-out external coding CLI.
 
@@ -165,7 +165,7 @@ async def run_coding_agent(
 
 
 CONFLICT_RESOLUTION_INSTRUCTION = """You are Artisan's coding agent, resolving a real git merge \
-conflict inside a cloned checkout (Gate 3, SPRINT.md Phase 4.3 — this attempt was already \
+conflict inside a cloned checkout (Gate 3, MILESTONE.md Phase 4.3 — this attempt was already \
 classified "trivial" by the Conflict Agent, so a sensible reconciliation is expected to exist). \
 You will be given the conflicted file paths and their literal contents, including the \
 <<<<<<</=======/>>>>>>> conflict markers. Use `read_file`, `write_file`, `list_directory`, and \
@@ -190,7 +190,7 @@ async def run_conflict_resolution_agent(
     conflict_markers: str,
     model: str | object = GEMINI_MODEL_ID,
 ) -> str:
-    """Gate 3's conflict-resolution coding step (SPRINT.md Phase 4.3) — reuses the exact same
+    """Gate 3's conflict-resolution coding step (MILESTONE.md Phase 4.3) — reuses the exact same
     bounded tool set/cap as `run_coding_agent`, with a conflict-specific instruction/prompt instead
     of a `Plan`'s steps."""
     return await _run_bounded_agent(

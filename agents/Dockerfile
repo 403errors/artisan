@@ -1,4 +1,4 @@
-# Orchestrator Cloud Run service (SPRINT.md Phase 2.1). Multi-stage, uv-based build.
+# Orchestrator Cloud Run service (MILESTONE.md Phase 2.1). Multi-stage, uv-based build.
 #
 # Sprint 3: agents/pyproject.toml has a `uv` workspace path dependency on
 # packages/artisan_shared, so the build context must be the REPO ROOT, not agents/ — e.g.:

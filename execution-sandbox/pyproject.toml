@@ -1,7 +1,7 @@
 [project]
 name = "artisan-execution-sandbox"
 version = "0.1.0"
-description = "Gate 2's execution job (SPRINT.md Phase 3.4): clones the repo, runs a bounded ADK coding agent against the Plan, runs the test suite, pushes a branch, and writes the ExecutionResult back to Firestore. Triggered per-attempt as a Cloud Run Job by agents/gcp/cloud_run_jobs.py."
+description = "Gate 2's execution job (MILESTONE.md Phase 3.4): clones the repo, runs a bounded ADK coding agent against the Plan, runs the test suite, pushes a branch, and writes the ExecutionResult back to Firestore. Triggered per-attempt as a Cloud Run Job by agents/gcp/cloud_run_jobs.py."
 authors = [
     { name = "Sameer Verma", email = "na21b061@smail.iitm.ac.in" }
 ]

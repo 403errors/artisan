@@ -1,4 +1,4 @@
-"""Gate 2's Domain-Expert Agent (SYSTEM_DESIGN.md §4 step 1-2, SPRINT.md Phase 3.2). A single
+"""Gate 2's Domain-Expert Agent (SYSTEM_DESIGN.md §4 step 1-2, MILESTONE.md Phase 3.2). A single
 parameterized `Agent` instance shared across all three personas — the persona is injected into the
 prompt, not the schema/instruction, since all three personas share identical output shape and
 reasoning task (summarize + list relevant files through one lens). This keeps `backend`/
