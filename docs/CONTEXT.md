@@ -332,6 +332,13 @@ Closed all phases of Sprint 7:
 4. **CI/CD Automation (Phase 7.3):** `.github/workflows/ci.yml` (lint + 316 Python workspace tests + 110 Vitest tests + Next.js build) and `.github/workflows/deploy.yml` (automated build, push, and Cloud Run deploy of `orchestrator`, `execution-sandbox`, and `dashboard` via Workload Identity Federation on push to `main`).
 5. **Deployment Runbook (Phase 7.4):** `docs/DEPLOYMENT.md`, `infra/README.md`, and root `README.md` updated with reproducible setup instructions.
 
+### Milestone 14 — Hackathon Evaluator Access & Demo Onboarding (2026-09-01)
+
+Configured seamless end-to-end evaluation access across all three platforms for official hackathon judging accounts (`testing@devpost.com`, `cloudhackathons@google.com`):
+1. **Dashboard GitHub OAuth:** `hasRepoAccess` in `dashboard/src/lib/github-auth.ts` inspects both public profile and verified emails API (`/user/emails`), granting instant access to designated evaluator accounts without requiring repository collaborator invites.
+2. **Google Cloud Trace IAM:** Granted `roles/cloudtrace.user` on project `artisan-multiagent-ai` to `group:testing@devpost.com` (`group:testing@challengepost.com`) and `group:cloudhackathons@google.com`.
+3. **Sign-In Onboarding Guide:** `dashboard/src/app/signin/page.tsx` updated with clear evaluator instructions, direct link to the public demo repository (`403errors/artisan-demo`), and a note to accept the Jira invitation to view real-time Kanban board transitions.
+
 ## Next Milestone Target
 
 **Sprint 7 is closed.** Next: **Sprint 8 (Post-Sprint Activity) — Demo, Docs & Submission** (architecture diagram submission asset, demo recording following the 6-step script, rubric self-check, written summary, Devpost submission).

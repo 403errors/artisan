@@ -132,7 +132,25 @@ flowchart TD
 
 *Left: the dashboard at a glance. Right: drill into any ticket to see every gate decision.*
 
-## Quick start
+## Live Demo & Hackathon Evaluation
+
+Artisan is fully deployed and operational in Google Cloud (`us-central1`). Hackathon judges and developers can evaluate the autonomous multi-agent pipeline live:
+
+- **Target Demo Repository (Public):** [https://github.com/403errors/artisan-demo](https://github.com/403errors/artisan-demo)
+- **Live Monitoring Dashboard:** [https://dashboard-344139602765.us-central1.run.app](https://dashboard-344139602765.us-central1.run.app)
+- **Live Jira Board:** [https://pieisnot22by7.atlassian.net/jira/software/projects/ART/boards/](https://pieisnot22by7.atlassian.net/jira/software/projects/ART/boards/)
+
+### Evaluator Access & Permissions:
+- **Dashboard Sign-In:** Authenticate with GitHub using an authorized evaluator email (`testing@devpost.com`, `cloudhackathons@google.com`) or any collaborator account on `403errors/artisan-demo`.
+- **Google Cloud Trace:** Granted `roles/cloudtrace.user` on project `artisan-multiagent-ai` for `group:testing@devpost.com` (`group:testing@challengepost.com`) and `group:cloudhackathons@google.com` to inspect distributed telemetry.
+- **Jira Board Access:** Accept the Atlassian invitation sent to `testing@devpost.com` / `cloudhackathons@google.com` to watch tickets transition across columns (*In Progress* → *Done*) in real time.
+
+### How to test live:
+1. Open a new issue on [403errors/artisan-demo](https://github.com/403errors/artisan-demo) (e.g. *"Add a contact us page"* or *"Fix footer padding"*).
+2. Artisan's webhook triggers the autonomous orchestrator: Intake Agent triages the issue, Planning & Execution agents write and test code in ephemeral Cloud Run Job sandboxes, and a verified Pull Request is opened automatically.
+3. Sign into the [Live Dashboard](https://dashboard-344139602765.us-central1.run.app) to watch the live Activity Feed, tool execution logs, synchronized Jira tickets (`ART-*`), PR links, and Cloud Traces.
+
+## Quick start (Local Development)
 
 ```bash
 # 1. Sync the whole uv workspace (agents + execution-sandbox + artisan_shared)

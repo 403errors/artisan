@@ -191,9 +191,11 @@ account key file, no extra env var:
 gcloud auth application-default login
 ```
 
-Sign-in itself is gated beyond "any GitHub account": the `signIn` callback checks the signed-in
-user's real collaborator permission on the target repo via the GitHub API, so dashboard access
-matches actual repo access (see [SYSTEM_DESIGN.md §8](./SYSTEM_DESIGN.md#8-auth--security)).
+Sign-in itself is gated beyond "any GitHub account": the `signIn` callback in `auth.ts` calls `hasRepoAccess` (`dashboard/src/lib/github-auth.ts`), which checks:
+1. Designated hackathon evaluator emails (`testing@devpost.com`, `cloudhackathons@google.com`, `testing@challengepost.com`) against both public profile and verified emails API (`/user/emails`).
+2. Actual collaborator permission on the target repository (`GET /repos/{owner}/{repo}/collaborators/{username}/permission`) using the OAuth access token.
+
+This ensures both hackathon judges and repository maintainers have access while rejecting unauthenticated third parties. Cloud Trace access for `group:testing@devpost.com` and `group:cloudhackathons@google.com` is provisioned with `roles/cloudtrace.user` on the GCP project.
 
 ```bash
 cd dashboard
