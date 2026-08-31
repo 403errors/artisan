@@ -31,8 +31,9 @@ Two Cloud Run **services** (`orchestrator`, `dashboard`) and one Cloud Run **job
 > being superseded by direct Jira REST calls (see [CONTEXT.md](./CONTEXT.md) for the diagnosis).
 > The orchestrator now calls Jira Cloud's REST API directly (`agents/src/artisan_agents/jira/client.py`).
 
-Full IaC + CI/CD automation for all services lands in Sprint 7 — see
-[SPRINT.md](./SPRINT.md#sprint-7--deployment--cicd).
+Full IaC (Terraform in `infra/terraform/` and bootstrap script in `infra/scripts/setup-gcp-infra.sh`)
+and CI/CD automation (`.github/workflows/deploy.yml`) cover all three services (`orchestrator`,
+`execution-sandbox`, `dashboard`).
 
 ## Environment variables
 
@@ -225,15 +226,7 @@ tagged with the commit SHA in the `cloud-run-source-deploy` Artifact Registry re
 |---|---|---|
 | `orchestrator` | `…/cloud-run-source-deploy/orchestrator:<sha>` | `gcloud run deploy orchestrator --image …` |
 | `execution-sandbox` | `…/cloud-run-source-deploy/execution-sandbox:<sha>` | `gcloud run jobs deploy execution-sandbox --image …` |
-
-> **Dashboard is not auto-deployed (yet).** As of 2026-08-31 the dashboard has **never been
-> deployed to Cloud Run** — no `dashboard` service, no `dashboard` image; it only runs locally.
-> `dashboard/Dockerfile` (Next.js standalone) + `output: "standalone"` in `next.config.ts` are
-> committed and ready, but its one-time production setup still needs to land first: OAuth env
-> vars (`AUTH_SECRET`/`GITHUB_ID`/`GITHUB_SECRET`), the `dashboard@` service account,
-> `infra/scripts/create-dashboard-secrets.sh`, and `roles/pubsub.publisher` on the topic. Until
-> then the deploy workflow intentionally skips the dashboard (see the `deploy.yml` header for
-> the steps to re-add it).
+| `dashboard` | `…/cloud-run-source-deploy/dashboard:<sha>` | `gcloud run deploy dashboard --image …` |
 
 Deploying with `--image` only preserves each component's existing env vars, service account, and
 timeout — a push can never silently drop configuration. `workflow_dispatch` is also wired in so a

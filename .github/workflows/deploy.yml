@@ -1,29 +1,21 @@
-# Build the orchestrator + execution-sandbox images and redeploy them to Cloud Run when a push to
-# main touches anything that can affect the images (agents/execution-sandbox/shared source,
-# workspace manifests, .dockerignore). Uses Workload Identity Federation — no long-lived keys.
+# Build and redeploy all three container images (orchestrator, execution-sandbox, dashboard)
+# to Cloud Run when a push to main touches anything affecting the images.
+# Uses Workload Identity Federation — no long-lived keys.
 # One-time GCP setup + GitHub secrets: see docs/DEPLOYMENT.md -> "Automated deploys".
 #
-# The dashboard is intentionally NOT deployed yet: it has never been on Cloud Run (local-only
-# today) and has no production config (OAuth env vars, dashboard@ SA, Secret Manager secrets).
-# dashboard/Dockerfile + next.config.ts standalone are committed and ready; once its one-time
-# Cloud Run setup lands (docs/DEPLOYMENT.md -> "Dashboard"), re-add the dashboard build/deploy
-# steps.
-#
 # `gcloud run deploy` / `gcloud run jobs deploy` with `--image` only updates the image; each
-# component's existing env vars, service account, and timeout are preserved by Cloud Run.
+# component's existing env vars, secrets, service account, and timeout are preserved by Cloud Run.
 
 name: Deploy to GCP
 
 on:
   push:
     branches: [main]
-    # Docs-only / dashboard-only pushes skip deploys entirely (workflow_dispatch forces one).
-    # Both images share packages/artisan_shared + the root uv workspace, so a change there
-    # rebuilds both.
     paths:
       - "agents/**"
       - "execution-sandbox/**"
       - "packages/artisan_shared/**"
+      - "dashboard/**"
       - "pyproject.toml"
       - "uv.lock"
       - ".dockerignore"
@@ -88,4 +80,16 @@ jobs:
         run: |
           gcloud run jobs deploy execution-sandbox \
             --image "${{ env.REGISTRY }}/execution-sandbox:${{ github.sha }}" \
+            --region "${{ env.REGION }}" --quiet
+
+      - name: Build & push dashboard
+        run: |
+          IMAGE="${{ env.REGISTRY }}/dashboard:${{ github.sha }}"
+          docker build -f dashboard/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      - name: Deploy dashboard
+        run: |
+          gcloud run deploy dashboard \
+            --image "${{ env.REGISTRY }}/dashboard:${{ github.sha }}" \
             --region "${{ env.REGION }}" --quiet

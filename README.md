@@ -200,10 +200,12 @@ pnpm build
 pnpm dev          # http://localhost:3000
 ```
 
-### Secrets & deployment
+### Infrastructure as Code & Deployment
+
+Infrastructure is fully codified in `infra/terraform/` (Terraform) and `infra/scripts/setup-gcp-infra.sh` (one-command `gcloud` setup). CI/CD is automated via `.github/workflows/deploy.yml` on push to `main` using Workload Identity Federation.
 
 All secrets live in Google Secret Manager, scoped per-secret to the service account that needs it
-— never as literals in code. Build and deploy commands for Cloud Run are in
+— never as literals in code. Complete build, IaC, and Cloud deploy instructions live in
 [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md).
 
 ## Docs
