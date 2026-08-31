@@ -6,6 +6,11 @@ import pytest
 from artisan_agents import event_context, tracing
 from artisan_shared.event_log import NoOpEventSink
 
+# The conftest autouse fixture `_no_cloud_trace` replaces `tracing.setup_tracing` with a no-op at
+# fixture setup (after module import) — capture the real function here so the credential-
+# degradation test below can exercise it directly.
+_real_setup_tracing = tracing.setup_tracing
+
 
 class _RecordingSink(NoOpEventSink):
     def __init__(self) -> None:
@@ -74,3 +79,18 @@ async def test_gate_span_still_emits_for_every_decision_kind(recording_sink) -> 
         "Gate 1: retry",
         "Gate 1: escalate",
     ]
+
+
+def test_setup_tracing_skips_gracefully_without_credentials(monkeypatch) -> None:
+    from google.auth.exceptions import DefaultCredentialsError
+
+    def _no_credentials(*args, **kwargs):
+        raise DefaultCredentialsError("Could not automatically determine credentials")
+
+    monkeypatch.setattr(tracing, "_configured", False)
+    monkeypatch.setattr(tracing, "CloudTraceSpanExporter", _no_credentials)
+
+    # Must not raise — the app should boot untraced rather than crash on missing ADC.
+    _real_setup_tracing()
+
+    assert tracing._configured is True

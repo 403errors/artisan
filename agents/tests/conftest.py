@@ -5,7 +5,7 @@ underlying model without ever calling live Gemini."""
 from collections.abc import AsyncGenerator
 
 import pytest
-from artisan_agents import event_context
+from artisan_agents import event_context, tracing
 from artisan_agents.gcp import firestore_client
 from artisan_shared.event_log import NoOpEventSink
 from google.adk.models.base_llm import BaseLlm
@@ -20,6 +20,15 @@ def _no_real_event_sink(monkeypatch):
     artisan-multiagent-ai Firestore database on every test run (this environment has live ADC
     credentials). Autouse so no test can forget this and accidentally perform a live write."""
     monkeypatch.setattr(firestore_client, "new_event_sink", lambda *args, **kwargs: NoOpEventSink())
+
+
+@pytest.fixture(autouse=True)
+def _no_cloud_trace(monkeypatch):
+    """test_app.py's TestClient fixture triggers the app lifespan, which calls
+    tracing.setup_tracing() -> CloudTraceSpanExporter() -> ADC lookup -> DefaultCredentialsError in
+    CI (no local credentials file, no GCP metadata server on the runner). Autouse so no test can
+    forget this and accidentally construct a real Cloud Trace exporter."""
+    monkeypatch.setattr(tracing, "setup_tracing", lambda: None)
 
 
 @pytest.fixture(autouse=True)

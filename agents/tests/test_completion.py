@@ -139,8 +139,12 @@ async def test_issue_deleted_without_pr_skips_the_pr_close(fake_store, monkeypat
     async def fake_transition(jira_key, status_name):
         pass
 
+    async def fake_add_comment(jira_key, body):
+        pass
+
     monkeypatch.setattr(completion.github_client, "close_pull_request", fake_close_pr)
     monkeypatch.setattr(completion.jira_client, "transition_ticket", fake_transition)
+    monkeypatch.setattr(completion.jira_client, "add_comment", fake_add_comment)
 
     await completion.handle_issue_deleted(REPO, ISSUE_NUMBER, JIRA_KEY)
 
@@ -172,9 +176,13 @@ async def test_issue_deleted_noop_when_already_done(fake_store, monkeypatch) -> 
 async def test_issue_deleted_jira_failure_does_not_roll_back_firestore(
     fake_store, monkeypatch
 ) -> None:
+    async def fake_add_comment(jira_key, body):
+        pass
+
     async def fake_transition(jira_key, status_name):
         raise JiraClientError("jira is down")
 
+    monkeypatch.setattr(completion.jira_client, "add_comment", fake_add_comment)
     monkeypatch.setattr(completion.jira_client, "transition_ticket", fake_transition)
 
     await completion.handle_issue_deleted(REPO, ISSUE_NUMBER, JIRA_KEY)
@@ -194,8 +202,12 @@ async def test_issue_deleted_pr_close_failure_is_best_effort(fake_store, monkeyp
     async def fake_transition(jira_key, status_name):
         jira_calls.append(status_name)
 
+    async def fake_add_comment(jira_key, body):
+        pass
+
     monkeypatch.setattr(completion.github_client, "close_pull_request", fake_close_pr)
     monkeypatch.setattr(completion.jira_client, "transition_ticket", fake_transition)
+    monkeypatch.setattr(completion.jira_client, "add_comment", fake_add_comment)
 
     await completion.handle_issue_deleted(REPO, ISSUE_NUMBER, JIRA_KEY, pr_number=42)
 
@@ -272,8 +284,12 @@ async def test_mark_ticket_duplicate_firestore_first_when_github_fails(
     async def fake_transition(jira_key, status_name):
         pass
 
+    async def fake_add_comment(jira_key, body):
+        pass
+
     monkeypatch.setattr(completion.github_client, "close_issue_as_duplicate", fake_close_dup)
     monkeypatch.setattr(completion.jira_client, "transition_ticket", fake_transition)
+    monkeypatch.setattr(completion.jira_client, "add_comment", fake_add_comment)
 
     await completion.mark_ticket_duplicate(REPO, ISSUE_NUMBER, JIRA_KEY, duplicate_of=12)
 

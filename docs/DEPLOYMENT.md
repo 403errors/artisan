@@ -193,3 +193,25 @@ pnpm exec playwright install   # first run only
 pnpm build
 pnpm test:e2e
 ```
+
+## CI / testing without GCP credentials
+
+GitHub Actions (`.github/workflows/ci.yml`) runs the whole suite on runners with **no Application
+Default Credentials** and no GCP metadata server, so anything that would construct a real Google
+Cloud client must not crash the tests:
+
+- `tracing.setup_tracing()` degrades gracefully: if ADC is unavailable it logs a warning and skips
+  Cloud Trace registration instead of raising `DefaultCredentialsError` (`gate_span` then runs on
+  OpenTelemetry's no-op tracer). The app also boots this way in any non-GCP environment.
+- The real-Firestore integration tests (`agents/tests/test_firestore_client.py`,
+  `test_firestore_schema.py`) self-skip via `_require_credentials()` when no credentials exist;
+  every other GCP touchpoint in the unit tests is stubbed/faked (autouse conftest fixtures stub the
+  Firestore event sink and `tracing.setup_tracing`; Pub/Sub, Secret Manager, and Cloud Run Jobs
+  clients are only ever faked).
+- The dashboard job's `pnpm/action-setup@v4` step points `package_json_file` at
+  `dashboard/package.json` (the repo root is a Python/uv workspace with no `package.json`), so the
+  action reads the pinned `packageManager: pnpm@10.28.2` instead of failing with
+  "No pnpm version is specified".
+
+If real-Firestore coverage is ever needed in CI, add a dedicated job that runs the Firestore
+emulator and exports `FIRESTORE_EMULATOR_HOST` — not required today.

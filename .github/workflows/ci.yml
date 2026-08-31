@@ -43,6 +43,10 @@ jobs:
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
+        with:
+          # The repo root is a Python/uv workspace (no package.json there) — point the action
+          # at the dashboard's package.json so it reads the pinned `packageManager` field.
+          package_json_file: dashboard/package.json
 
       - name: Set up Node 22
         uses: actions/setup-node@v4

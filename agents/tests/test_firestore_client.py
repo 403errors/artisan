@@ -41,6 +41,8 @@ def _require_credentials() -> None:
 async def cleanup_ticket():
     issue_numbers: list[int] = []
     yield issue_numbers
+    if not issue_numbers:
+        return  # test was skipped (no credentials) or never wrote — nothing to clean
     client = firestore_client._client()
     for issue_number in issue_numbers:
         doc_ref = client.collection("tickets").document(firestore_client.ticket_doc_id(REPO, issue_number))
@@ -55,6 +57,8 @@ async def cleanup_ticket():
 async def cleanup_delivery():
     delivery_ids: list[str] = []
     yield delivery_ids
+    if not delivery_ids:
+        return  # test was skipped (no credentials) or never wrote — nothing to clean
     client = firestore_client._client()
     for delivery_id in delivery_ids:
         await client.collection("processed_deliveries").document(delivery_id).delete()
@@ -64,6 +68,8 @@ async def cleanup_delivery():
 async def cleanup_pr_pointer():
     pr_numbers: list[int] = []
     yield pr_numbers
+    if not pr_numbers:
+        return  # test was skipped (no credentials) or never wrote — nothing to clean
     client = firestore_client._client()
     for pr_number in pr_numbers:
         await client.collection("pr_index").document(
@@ -283,6 +289,8 @@ async def test_get_ticket_by_pr_returns_none_for_untracked_pr() -> None:
 async def cleanup_repo_context():
     repos: list[str] = []
     yield repos
+    if not repos:
+        return  # test was skipped (no credentials) or never wrote — nothing to clean
     client = firestore_client._client()
     for repo in repos:
         await client.collection("repo_context").document(

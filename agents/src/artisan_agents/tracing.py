@@ -2,9 +2,11 @@
 carries `ticket_id`, `gate`, and `decision` so a ticket's full history is reconstructable from
 Cloud Trace alone."""
 
+import logging
 from contextlib import asynccontextmanager
 from typing import Literal
 
+from google.auth.exceptions import DefaultCredentialsError
 from opentelemetry import trace
 from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
 from opentelemetry.sdk.trace import TracerProvider
@@ -14,15 +16,27 @@ from artisan_agents.event_context import current_sink
 from artisan_agents.gcp import firestore_client
 
 _configured = False
+logger = logging.getLogger(__name__)
 
 
 def setup_tracing() -> None:
-    """Idempotent: safe to call at every app startup without double-registering the exporter."""
+    """Idempotent: safe to call at every app startup without double-registering the exporter.
+    Degrades gracefully when Application Default Credentials are unavailable (local dev / CI
+    outside GCP): the Cloud Trace exporter can't be constructed, so tracing is skipped and
+    `gate_span` falls back to OpenTelemetry's no-op tracer — decisions still work, just untraced."""
     global _configured
     if _configured:
         return
-    provider = TracerProvider()
-    provider.add_span_processor(BatchSpanProcessor(CloudTraceSpanExporter()))
+    try:
+        provider = TracerProvider()
+        provider.add_span_processor(BatchSpanProcessor(CloudTraceSpanExporter()))
+    except DefaultCredentialsError:
+        logger.warning(
+            "Cloud Trace disabled: no Application Default Credentials available "
+            "(run inside GCP/Cloud Run to enable tracing)"
+        )
+        _configured = True
+        return
     trace.set_tracer_provider(provider)
     _configured = True
 
