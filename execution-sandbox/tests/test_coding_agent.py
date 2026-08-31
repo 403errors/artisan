@@ -154,7 +154,7 @@ async def test_allowed_command_succeeds_without_a_shell(tmp_path, monkeypatch) -
         stdout = "ok\n"
         stderr = ""
 
-    def fake_run(argv, shell, cwd, capture_output, text, timeout):
+    def fake_run(argv, shell, cwd, capture_output, text, timeout, check):
         captured["argv"] = argv
         captured["shell"] = shell
         return _FakeCompleted()
@@ -181,7 +181,7 @@ async def test_git_status_is_allowed(tmp_path, monkeypatch) -> None:
         stdout = "clean\n"
         stderr = ""
 
-    def fake_run(argv, shell, cwd, capture_output, text, timeout):
+    def fake_run(argv, shell, cwd, capture_output, text, timeout, check):
         assert argv == ["git", "status"]
         assert shell is False
         return _FakeCompleted()
