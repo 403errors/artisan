@@ -272,6 +272,10 @@ deploy can be re-run from the Actions tab.
 
 ### Notes
 
+- **Path-filtered**: `deploy.yml` only runs when a push touches deploy-relevant paths
+  (`agents/`, `execution-sandbox/`, `packages/artisan_shared/`, `pyproject.toml`, `uv.lock`,
+  `.dockerignore`, or the workflow file itself). Docs-only or dashboard-only pushes skip deploys
+  entirely; `workflow_dispatch` forces one regardless.
 - The deploy workflow runs in **parallel** with the CI workflow on the same push. To gate deploys
   on CI passing first, switch `deploy.yml`'s trigger to a `workflow_run` of `ci.yml`.
 - Deploying with `--image` only preserves each component's existing env vars, service account,

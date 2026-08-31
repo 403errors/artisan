@@ -1,5 +1,6 @@
-# Build the orchestrator + execution-sandbox images and redeploy them to Cloud Run on every push
-# to main. Uses Workload Identity Federation — no long-lived keys.
+# Build the orchestrator + execution-sandbox images and redeploy them to Cloud Run when a push to
+# main touches anything that can affect the images (agents/execution-sandbox/shared source,
+# workspace manifests, .dockerignore). Uses Workload Identity Federation — no long-lived keys.
 # One-time GCP setup + GitHub secrets: see docs/DEPLOYMENT.md -> "Automated deploys".
 #
 # The dashboard is intentionally NOT deployed yet: it has never been on Cloud Run (local-only
@@ -16,6 +17,17 @@ name: Deploy to GCP
 on:
   push:
     branches: [main]
+    # Docs-only / dashboard-only pushes skip deploys entirely (workflow_dispatch forces one).
+    # Both images share packages/artisan_shared + the root uv workspace, so a change there
+    # rebuilds both.
+    paths:
+      - "agents/**"
+      - "execution-sandbox/**"
+      - "packages/artisan_shared/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".dockerignore"
+      - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
 permissions:
