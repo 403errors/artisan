@@ -102,7 +102,10 @@ class _FakeSearch:
         self._results: list[_FakeSearchItem] = []
         self._error: RequestFailed | None = None
 
-    async def async_search_issues(self, *, q, per_page, sort, order):
+    # Must match the REAL githubkit 0.16.1 method name (`async_issues_and_pull_requests`) — a
+    # made-up name here silently mirrors a made-up name in client.py and hides the AttributeError
+    # that crashed Gate 1 in production (see test_search_similar_issues_uses_a_real_githubkit_method).
+    async def async_issues_and_pull_requests(self, *, q, per_page, sort, order):
         self.calls.append((q, per_page, sort, order))
         if self._error is not None:
             raise self._error
@@ -212,6 +215,32 @@ async def test_search_similar_issues_treats_422_and_403_as_no_candidates(monkeyp
         fake_gh.rest.search._error = RequestFailed(_FakeGithubkitResponse(status))
         hits = await search_similar_issues("acme/demo", "Password reset", "body", exclude_number=1)
         assert hits == []
+
+
+def test_search_similar_issues_uses_a_real_githubkit_method() -> None:
+    """Regression guard (2026-09-01): Gate 1 crashed in production with `AttributeError:
+    'SearchClient' object has no attribute 'async_search_issues'` because search_similar_issues
+    called a method that doesn't exist on githubkit 0.16.1's SearchClient — and the fake above
+    mirrored the made-up name, so the unit tests passed while every new issue got stuck in
+    `intake`. Assert that whatever async search method this function calls actually exists on
+    the real installed client (pure introspection, no network)."""
+    import inspect
+    import re
+
+    from githubkit import GitHub
+
+    src = inspect.getsource(search_similar_issues)
+    calls = re.findall(r"\.async_(\w+)\(", src)
+    assert calls, "search_similar_issues should call an async githubkit search method"
+    gh = GitHub()
+    search_client = gh.rest.search
+    for name in calls:
+        assert hasattr(search_client, f"async_{name}"), (
+            f"search_similar_issues calls githubkit method 'async_{name}', which does not exist "
+            "on the installed SearchClient (real methods: async_code / async_commits / "
+            "async_issues_and_pull_requests / async_labels / async_repos / async_topics / "
+            "async_users)"
+        )
 
 
 @pytest.mark.asyncio

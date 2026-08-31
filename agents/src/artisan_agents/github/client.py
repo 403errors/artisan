@@ -97,7 +97,10 @@ async def search_similar_issues(
     if not query:
         return []
     try:
-        resp = await gh.rest.search.async_search_issues(
+        # githubkit 0.16.1 names this method `async_issues_and_pull_requests` (the GitHub
+        # `/search/issues` endpoint covers both) — NOT `async_search_issues`, which doesn't exist
+        # on the SearchClient and crashed Gate 1 in production (2026-09-01).
+        resp = await gh.rest.search.async_issues_and_pull_requests(
             q=query, per_page=limit, sort="best_match", order="desc"
         )
     except RequestFailed as exc:
