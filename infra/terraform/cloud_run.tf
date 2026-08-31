@@ -190,6 +190,10 @@ resource "google_cloud_run_v2_service" "dashboard" {
         name  = "AUTH_TRUST_HOST"
         value = "true"
       }
+      env {
+        name  = "AUTH_URL"
+        value = var.dashboard_auth_url != "" ? var.dashboard_auth_url : "https://dashboard-${var.project_id}.${var.region}.run.app"
+      }
 
       env {
         name = "GITHUB_ID"

@@ -69,3 +69,9 @@ variable "dashboard_image" {
   type        = string
   default     = "us-central1-docker.pkg.dev/artisan-multiagent-ai/cloud-run-source-deploy/dashboard:latest"
 }
+
+variable "dashboard_auth_url" {
+  description = "Canonical public URL for the dashboard service (used for Auth.js OAuth redirects). If unset, defaults to the project's default Cloud Run hostname."
+  type        = string
+  default     = ""
+}
