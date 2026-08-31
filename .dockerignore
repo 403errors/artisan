@@ -6,3 +6,7 @@
 .git/
 dashboard/node_modules/
 dashboard/.next/
+**/.env*
+**/test-results/
+**/playwright-report/
+**/*.tsbuildinfo

@@ -194,6 +194,82 @@ pnpm build
 pnpm test:e2e
 ```
 
+## Automated deploys (GitHub Actions → GCP)
+
+A `push` to `main` now rebuilds all three images and redeploys Cloud Run via
+`.github/workflows/deploy.yml` (Workload Identity Federation — no long-lived keys). Images are
+tagged with the commit SHA in the `cloud-run-source-deploy` Artifact Registry repo (`us-central1`):
+
+| Component | Image | Deploy |
+|---|---|---|
+| `orchestrator` | `…/cloud-run-source-deploy/orchestrator:<sha>` | `gcloud run deploy orchestrator --image …` |
+| `execution-sandbox` | `…/cloud-run-source-deploy/execution-sandbox:<sha>` | `gcloud run jobs deploy execution-sandbox --image …` |
+| `dashboard` | `…/cloud-run-source-deploy/dashboard:<sha>` | `gcloud run deploy dashboard --image …` |
+
+Deploying with `--image` only preserves each component's existing env vars, service account, and
+timeout — a push can never silently drop configuration. `workflow_dispatch` is also wired in so a
+deploy can be re-run from the Actions tab.
+
+### One-time setup (run once per GCP project)
+
+1. **Deployer service account + roles:**
+
+   ```bash
+   export PROJECT_ID=artisan-multiagent-ai
+   gcloud config set project $PROJECT_ID
+
+   gcloud iam service-accounts create github-actions-deployer \
+     --display-name="GitHub Actions deployer"
+   export DEPLOYER_SA="github-actions-deployer@$PROJECT_ID.iam.gserviceaccount.com"
+
+   gcloud projects add-iam-policy-binding $PROJECT_ID \
+     --member="serviceAccount:$DEPLOYER_SA" --role="roles/artifactregistry.writer"
+   gcloud projects add-iam-policy-binding $PROJECT_ID \
+     --member="serviceAccount:$DEPLOYER_SA" --role="roles/run.admin"
+   gcloud projects add-iam-policy-binding $PROJECT_ID \
+     --member="serviceAccount:$DEPLOYER_SA" --role="roles/iam.serviceAccountUser"
+   ```
+
+2. **Workload Identity pool + GitHub OIDC provider:**
+
+   ```bash
+   gcloud iam workload-identity-pools create github-actions \
+     --location=global --display-name="GitHub Actions"
+   export WIP_ID="$(gcloud iam workload-identity-pools describe github-actions \
+     --location=global --format='value(name)')"
+
+   gcloud iam workload-identity-pools providers create-oidc github \
+     --location=global --workload-identity-pool=github-actions \
+     --display-name="GitHub" \
+     --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository" \
+     --attribute-condition="assertion.repository_owner == '403errors'" \
+     --issuer-uri="https://token.actions.githubusercontent.com"
+
+   gcloud iam service-accounts add-iam-policy-binding $DEPLOYER_SA \
+     --role="roles/iam.workloadIdentityUser" \
+     --member="principalSet://iam.googleapis.com/$WIP_ID/attribute.repository/403errors/artisan"
+   ```
+
+3. **GitHub repository secrets** (Settings → Secrets and variables → Actions):
+
+   | Secret | Value |
+   |---|---|
+   | `GCP_SERVICE_ACCOUNT` | `github-actions-deployer@artisan-multiagent-ai.iam.gserviceaccount.com` |
+   | `GCP_WORKLOAD_IDENTITY_PROVIDER` | `projects/<NUMBER>/locations/global/workloadIdentityPools/github-actions/providers/github` |
+
+   Get `<NUMBER>` with `gcloud projects describe $PROJECT_ID --format='value(projectNumber)'`.
+
+   The GCP project id (`artisan-multiagent-ai`) is hardcoded in the workflow — it's the same
+   constant used throughout the repo, so it needs no secret of its own.
+
+### Notes
+
+- The deploy workflow runs in **parallel** with the CI workflow on the same push. To gate deploys
+  on CI passing first, switch `deploy.yml`'s trigger to a `workflow_run` of `ci.yml`.
+- The dashboard image is a Next.js standalone build (`dashboard/Dockerfile`, `output:
+  "standalone"` in `dashboard/next.config.ts`); runtime env (`AUTH_SECRET`, `GITHUB_ID`,
+  `GITHUB_SECRET`, `AUTH_TRUST_HOST`, `GOOGLE_CLOUD_PROJECT`) comes from Cloud Run, never the image.
+
 ## CI / testing without GCP credentials
 
 GitHub Actions (`.github/workflows/ci.yml`) runs the whole suite on runners with **no Application

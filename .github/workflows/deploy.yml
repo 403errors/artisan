@@ -1,0 +1,85 @@
+# Build all three images (orchestrator, execution-sandbox, dashboard) and redeploy them to
+# Cloud Run on every push to main. Uses Workload Identity Federation — no long-lived keys.
+# One-time GCP setup + GitHub secrets: see docs/DEPLOYMENT.md -> "Automated deploys".
+#
+# `gcloud run deploy` / `gcloud run jobs deploy` with `--image` only updates the image; each
+# component's existing env vars, service account, and timeout are preserved by Cloud Run.
+
+name: Deploy to GCP
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: gcp-deploy
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: artisan-multiagent-ai
+  REGION: us-central1
+  REGISTRY: us-central1-docker.pkg.dev/artisan-multiagent-ai/cloud-run-source-deploy
+
+jobs:
+  deploy:
+    name: Build & deploy images to Cloud Run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build & push orchestrator
+        run: |
+          IMAGE="${{ env.REGISTRY }}/orchestrator:${{ github.sha }}"
+          docker build -f agents/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      - name: Deploy orchestrator
+        run: |
+          gcloud run deploy orchestrator \
+            --image "${{ env.REGISTRY }}/orchestrator:${{ github.sha }}" \
+            --region "${{ env.REGION }}" --quiet
+
+      - name: Build & push execution-sandbox
+        run: |
+          IMAGE="${{ env.REGISTRY }}/execution-sandbox:${{ github.sha }}"
+          docker build -f execution-sandbox/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      - name: Deploy execution-sandbox (Cloud Run job)
+        run: |
+          gcloud run jobs deploy execution-sandbox \
+            --image "${{ env.REGISTRY }}/execution-sandbox:${{ github.sha }}" \
+            --region "${{ env.REGION }}" --quiet
+
+      - name: Build & push dashboard
+        run: |
+          IMAGE="${{ env.REGISTRY }}/dashboard:${{ github.sha }}"
+          docker build -f dashboard/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      - name: Deploy dashboard
+        run: |
+          gcloud run deploy dashboard \
+            --image "${{ env.REGISTRY }}/dashboard:${{ github.sha }}" \
+            --region "${{ env.REGION }}" --quiet
