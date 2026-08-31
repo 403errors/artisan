@@ -196,7 +196,7 @@ pnpm test:e2e
 
 ## Automated deploys (GitHub Actions → GCP)
 
-A `push` to `main` now rebuilds all three images and redeploys Cloud Run via
+A `push` to `main` now rebuilds the deployed images and redeploys Cloud Run via
 `.github/workflows/deploy.yml` (Workload Identity Federation — no long-lived keys). Images are
 tagged with the commit SHA in the `cloud-run-source-deploy` Artifact Registry repo (`us-central1`):
 
@@ -204,7 +204,15 @@ tagged with the commit SHA in the `cloud-run-source-deploy` Artifact Registry re
 |---|---|---|
 | `orchestrator` | `…/cloud-run-source-deploy/orchestrator:<sha>` | `gcloud run deploy orchestrator --image …` |
 | `execution-sandbox` | `…/cloud-run-source-deploy/execution-sandbox:<sha>` | `gcloud run jobs deploy execution-sandbox --image …` |
-| `dashboard` | `…/cloud-run-source-deploy/dashboard:<sha>` | `gcloud run deploy dashboard --image …` |
+
+> **Dashboard is not auto-deployed (yet).** As of 2026-08-31 the dashboard has **never been
+> deployed to Cloud Run** — no `dashboard` service, no `dashboard` image; it only runs locally.
+> `dashboard/Dockerfile` (Next.js standalone) + `output: "standalone"` in `next.config.ts` are
+> committed and ready, but its one-time production setup still needs to land first: OAuth env
+> vars (`AUTH_SECRET`/`GITHUB_ID`/`GITHUB_SECRET`), the `dashboard@` service account,
+> `infra/scripts/create-dashboard-secrets.sh`, and `roles/pubsub.publisher` on the topic. Until
+> then the deploy workflow intentionally skips the dashboard (see the `deploy.yml` header for
+> the steps to re-add it).
 
 Deploying with `--image` only preserves each component's existing env vars, service account, and
 timeout — a push can never silently drop configuration. `workflow_dispatch` is also wired in so a
@@ -266,9 +274,11 @@ deploy can be re-run from the Actions tab.
 
 - The deploy workflow runs in **parallel** with the CI workflow on the same push. To gate deploys
   on CI passing first, switch `deploy.yml`'s trigger to a `workflow_run` of `ci.yml`.
-- The dashboard image is a Next.js standalone build (`dashboard/Dockerfile`, `output:
-  "standalone"` in `dashboard/next.config.ts`); runtime env (`AUTH_SECRET`, `GITHUB_ID`,
-  `GITHUB_SECRET`, `AUTH_TRUST_HOST`, `GOOGLE_CLOUD_PROJECT`) comes from Cloud Run, never the image.
+- Deploying with `--image` only preserves each component's existing env vars, service account,
+  and timeout — a push can never silently drop configuration.
+- `workflow_dispatch` is wired in, so a deploy can be re-run from the Actions tab.
+- The dashboard image (when it's enabled) is a Next.js standalone build; runtime env comes from
+  Cloud Run, never the image.
 
 ## CI / testing without GCP credentials
 
