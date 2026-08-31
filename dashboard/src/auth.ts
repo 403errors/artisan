@@ -42,12 +42,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (!account?.access_token) return false;
       return hasRepoAccess(account.access_token, TARGET_REPO);
     },
-    async jwt({ token, account, profile }) {
+    async jwt({ token, account, user, profile }) {
       if (account?.access_token) token.accessToken = account.access_token;
       // GitHub's profile carries the real username as `login` — needed as the `actor` on manual
       // dashboard actions (retry/escalate/mark-done) so the audit trail records who did what,
       // not just a display name.
       if (typeof profile?.login === "string") token.login = profile.login;
+      if (user && "login" in user && typeof user.login === "string") token.login = user.login;
       return token;
     },
     async session({ session, token }) {
