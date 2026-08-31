@@ -154,13 +154,34 @@ dashboard). Create it at GitHub → Settings → Developer settings → OAuth Ap
 - Homepage URL: `http://localhost:3000`
 - Authorization callback URL: `http://localhost:3000/api/auth/callback/github`
 
-Then create `dashboard/.env.local` (gitignored):
+Then copy `dashboard/.env.example` to `dashboard/.env.local` (gitignored) and fill in the values:
 
 ```
 GITHUB_ID=<OAuth App client id>
 GITHUB_SECRET=<OAuth App client secret>
 AUTH_SECRET=<run: npx auth secret>
+
+# Server-runtime config (optional — defaults match the v1 deployment)
+ARTISAN_TARGET_REPO=403errors/artisan-demo
+ARTISAN_PUBSUB_TOPIC=artisan-github-events
+GCP_PROJECT_ID=artisan-multiagent-ai
+
+# Client-visible config — baked into the browser bundle at `pnpm build` time
+NEXT_PUBLIC_JIRA_SITE=pieisnot22by7.atlassian.net
+NEXT_PUBLIC_GCP_PROJECT_ID=artisan-multiagent-ai
 ```
+
+### Config: runtime vs build-time
+
+The dashboard reads its repo/board/project configuration from env vars (see `dashboard/.env.example`),
+split across Next.js's two mechanisms:
+
+- **Server-runtime** (`ARTISAN_TARGET_REPO`, `ARTISAN_PUBSUB_TOPIC`, `GCP_PROJECT_ID`): read at
+  request/deploy time. On Cloud Run set these with `--set-env-vars`; locally from `.env.local`.
+- **Client-visible** (`NEXT_PUBLIC_JIRA_SITE`, `NEXT_PUBLIC_GCP_PROJECT_ID`): inlined into the
+  browser bundle at `pnpm build` — set before building (`--build-arg` in `dashboard/Dockerfile`, or
+  `.env.local` before a local build). A prebuilt image cannot be re-pointed at a different Jira
+  site / Cloud Trace project without a rebuild.
 
 Firestore access uses plain Application Default Credentials, exactly like `agents/` — no service
 account key file, no extra env var:

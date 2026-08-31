@@ -4,8 +4,10 @@
 #   gcloud run deploy dashboard --image <pushed-image-tag> --region us-central1
 #
 # Next.js standalone output (next.config.ts -> output: "standalone") keeps the runtime stage to a
-# self-contained server + static assets. Runtime config (AUTH_SECRET, GITHUB_ID, GITHUB_SECRET,
-# AUTH_TRUST_HOST, GOOGLE_CLOUD_PROJECT, ...) is supplied by Cloud Run at runtime — never baked in.
+# self-contained server + static assets. Server-runtime config (AUTH_SECRET, GITHUB_ID,
+# GITHUB_SECRET, AUTH_TRUST_HOST, GOOGLE_CLOUD_PROJECT, ARTISAN_TARGET_REPO, ...) is supplied by
+# Cloud Run at runtime — never baked in. Client-visible config (NEXT_PUBLIC_JIRA_SITE,
+# NEXT_PUBLIC_GCP_PROJECT_ID) IS baked at `next build` time via the build args in the builder stage.
 
 FROM node:22-alpine AS base
 RUN corepack enable
@@ -22,6 +24,13 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY dashboard/ ./
 ENV NEXT_TELEMETRY_DISABLED=1
+# Client-visible config is inlined into the browser bundle at `next build` — set these at build
+# time with --build-arg (defaults match the v1 deployment). Server-runtime values are NOT set
+# here; they come from Cloud Run at deploy time.
+ARG NEXT_PUBLIC_JIRA_SITE=pieisnot22by7.atlassian.net
+ARG NEXT_PUBLIC_GCP_PROJECT_ID=artisan-multiagent-ai
+ENV NEXT_PUBLIC_JIRA_SITE=$NEXT_PUBLIC_JIRA_SITE \
+    NEXT_PUBLIC_GCP_PROJECT_ID=$NEXT_PUBLIC_GCP_PROJECT_ID
 RUN pnpm exec next build
 
 # --- Runtime ---
