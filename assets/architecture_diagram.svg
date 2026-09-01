@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1780" height="800" viewBox="0 0 1780 800" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94A3B8"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#93C5FD"/>
+    </marker>
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="112%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0F172A" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <!-- Page background -->
+  <rect x="0" y="0" width="1780" height="800" fill="#F8FAFC"/>
+
+  <!-- Title -->
+  <text x="40" y="30" font-size="25" font-weight="700" fill="#0F172A">Artisan — System Architecture</text>
+  <text x="40" y="52" font-size="13" fill="#64748B">GitHub issue in · reviewed PR out · Jira kept in sync — an autonomous multi-agent pipeline running entirely on Google Cloud</text>
+
+  <!-- ===================== TOP FEEDBACK LANES ===================== -->
+  <!-- Lane 1: Orchestrator -> GitHub (comments / PRs / duplicate flags) -->
+  <path d="M 1000 70 V 58 H 150 V 90" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="560" y="64" font-size="10.5" fill="#64748B" text-anchor="middle" style="paint-order:stroke" stroke="#F8FAFC" stroke-width="4">comments · PRs · duplicate flags</text>
+  <!-- Lane 2: execution-sandbox -> GitHub (push branch) -->
+  <path d="M 1510 90 V 74 H 280 V 90" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="880" y="80" font-size="10.5" fill="#64748B" text-anchor="middle" style="paint-order:stroke" stroke="#F8FAFC" stroke-width="4">push branch (fast-forward only)</text>
+
+  <!-- ===================== MAIN PIPELINE (top row) ===================== -->
+  <!-- GitHub -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="90" width="330" height="150" rx="12" fill="#F6F8FA" stroke="#24292F" stroke-width="2"/>
+  </g>
+  <circle cx="62" cy="122" r="5" fill="#24292F"/>
+  <text x="76" y="127" font-size="15" font-weight="700" fill="#1F2937">GitHub</text>
+  <text x="62" y="152" font-size="12" fill="#334155">403errors/artisan-demo</text>
+  <text x="62" y="172" font-size="11.5" fill="#475569">events: issues · issue_comment ·</text>
+  <text x="62" y="188" font-size="11.5" fill="#475569">pull_request (opened / synchronize / closed)</text>
+  <text x="62" y="212" font-size="11.5" fill="#475569">GitHub App · HMAC-signed webhook</text>
+  <text x="62" y="230" font-size="11" fill="#64748B">receives comments · duplicate flags · PRs</text>
+
+  <!-- Pub/Sub -->
+  <g filter="url(#shadow)">
+    <rect x="420" y="90" width="300" height="150" rx="12" fill="#FFF8EB" stroke="#EA8600" stroke-width="2"/>
+  </g>
+  <circle cx="442" cy="122" r="5" fill="#EA8600"/>
+  <text x="456" y="127" font-size="15" font-weight="700" fill="#9A6B00">Pub/Sub</text>
+  <text x="442" y="154" font-size="12" fill="#334155">artisan-github-events</text>
+  <text x="442" y="176" font-size="11.5" fill="#475569">topic + push subscription</text>
+  <text x="442" y="196" font-size="11.5" fill="#475569">at-least-once delivery</text>
+  <text x="442" y="216" font-size="11.5" fill="#475569">dead-letter topic · OIDC push auth</text>
+  <text x="442" y="232" font-size="11" fill="#64748B">decouples webhook receipt from processing</text>
+
+  <!-- Orchestrator (big box, hub) -->
+  <g filter="url(#shadow)">
+    <rect x="770" y="70" width="520" height="520" rx="14" fill="#F0F7FF" stroke="#2563EB" stroke-width="2.5"/>
+  </g>
+  <text x="798" y="101" font-size="17" font-weight="700" fill="#1D4ED8">Orchestrator — Cloud Run service</text>
+  <text x="798" y="122" font-size="12" fill="#475569">FastAPI · Pub/Sub push handler · claim-based idempotency</text>
+
+  <!-- Gate 1 -->
+  <rect x="800" y="150" width="460" height="110" rx="10" fill="#FFFFFF" stroke="#BFDBFE" stroke-width="1.5"/>
+  <text x="818" y="176" font-size="14" font-weight="700" fill="#1E40AF">Gate 1 · Intake — duplicate-aware</text>
+  <text x="818" y="198" font-size="11.5" fill="#334155">Search-API pre-filter + agent → flag candidates, ask reporter to confirm</text>
+  <text x="818" y="216" font-size="11.5" fill="#334155">sufficient → proceed · insufficient → one specific question (≤ 3 rounds)</text>
+  <text x="818" y="234" font-size="11.5" fill="#334155">duplicate confirmed → close as dup · ticket done (never on its own initiative)</text>
+  <text x="818" y="252" font-size="11" fill="#64748B">decision: proceed / ask / escalate — decide with confidence, or ask</text>
+
+  <!-- Gate 2 -->
+  <rect x="800" y="280" width="460" height="140" rx="10" fill="#FFFFFF" stroke="#BFDBFE" stroke-width="1.5"/>
+  <text x="818" y="306" font-size="14" font-weight="700" fill="#1E40AF">Gate 2 · Plan → Execute → Verify → PR</text>
+  <text x="818" y="328" font-size="11.5" fill="#334155">Routing → Domain-Expert → Planning Agent (steps · files · tests · docs)</text>
+  <text x="818" y="346" font-size="11.5" fill="#334155">Execution: ephemeral sandbox job — clone · branch · write · run full suite</text>
+  <text x="818" y="364" font-size="11.5" fill="#334155">Verification vs plan &amp; issue — retry with feedback (≤ 3), else escalate</text>
+  <text x="818" y="382" font-size="11.5" fill="#334155">green + tests pass → open PR with summary · Jira comment</text>
+  <text x="818" y="400" font-size="11" fill="#64748B">failure past cap → escalate to maintainer with failure detail attached</text>
+
+  <!-- Gate 3 -->
+  <rect x="800" y="440" width="460" height="100" rx="10" fill="#FFFFFF" stroke="#BFDBFE" stroke-width="1.5"/>
+  <text x="818" y="466" font-size="14" font-weight="700" fill="#1E40AF">Gate 3 · Merge-conflict triage</text>
+  <text x="818" y="488" font-size="11.5" fill="#334155">authoritative trial merge (not GitHub's stale mergeable_state)</text>
+  <text x="818" y="506" font-size="11.5" fill="#334155">trivial → auto-resolve in scratch worktree, push only if full suite passes (1 attempt)</text>
+  <text x="818" y="524" font-size="11.5" fill="#334155">semantic → side-by-side comparison → escalate (never guess on intent)</text>
+
+  <!-- Orchestrator footer -->
+  <text x="798" y="570" font-size="12" font-weight="600" fill="#1D4ED8">All agents: Google ADK + Gemini 3.7 Flash · Vertex AI (global)</text>
+
+  <!-- internal gate arrows -->
+  <path d="M 1030 260 V 280" fill="none" stroke="#93C5FD" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <path d="M 1030 420 V 440" fill="none" stroke="#93C5FD" stroke-width="2" marker-end="url(#arrowBlue)"/>
+
+  <!-- execution-sandbox -->
+  <g filter="url(#shadow)">
+    <rect x="1340" y="90" width="340" height="150" rx="12" fill="#ECFDF5" stroke="#059669" stroke-width="2"/>
+  </g>
+  <circle cx="1362" cy="122" r="5" fill="#059669"/>
+  <text x="1376" y="127" font-size="15" font-weight="700" fill="#065F46">Cloud Run Jobs — execution-sandbox</text>
+  <text x="1362" y="154" font-size="12" fill="#334155">one ephemeral job per attempt</text>
+  <text x="1362" y="176" font-size="11.5" fill="#475569">bounded ADK coding agent (own read/write/</text>
+  <text x="1362" y="192" font-size="11.5" fill="#475569">list/shell tools + finish — no shelled-out CLI)</text>
+  <text x="1362" y="212" font-size="11.5" fill="#475569">clone → branch → write code → run full suite</text>
+  <text x="1362" y="230" font-size="11" fill="#64748B">isolated compute · never shares a machine</text>
+
+  <!-- ===================== PIPELINE ARROWS ===================== -->
+  <path d="M 370 165 H 420" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="395" y="156" font-size="10.5" fill="#64748B" text-anchor="middle" style="paint-order:stroke" stroke="#F8FAFC" stroke-width="4">webhook</text>
+  <path d="M 720 165 H 770" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="745" y="156" font-size="10.5" fill="#64748B" text-anchor="middle" style="paint-order:stroke" stroke="#F8FAFC" stroke-width="4">push</text>
+  <path d="M 1290 165 H 1340" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1315" y="156" font-size="10.5" fill="#64748B" text-anchor="middle" style="paint-order:stroke" stroke="#F8FAFC" stroke-width="4">trigger job</text>
+
+  <!-- ===================== SIDECARS (bottom band) ===================== -->
+  <!-- Secret Manager -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="610" width="300" height="150" rx="12" fill="#FEFCE8" stroke="#CA8A04" stroke-width="2"/>
+  </g>
+  <circle cx="62" cy="642" r="5" fill="#CA8A04"/>
+  <text x="76" y="647" font-size="15" font-weight="700" fill="#854D0E">Secret Manager</text>
+  <text x="62" y="674" font-size="11.5" fill="#475569">GitHub App private key</text>
+  <text x="62" y="692" font-size="11.5" fill="#475569">GitHub webhook secret</text>
+  <text x="62" y="710" font-size="11.5" fill="#475569">Jira API token</text>
+  <text x="62" y="734" font-size="11" fill="#64748B">per-secret scoped IAM · never in code</text>
+
+  <!-- Firestore -->
+  <g filter="url(#shadow)">
+    <rect x="380" y="610" width="300" height="150" rx="12" fill="#F0FDF4" stroke="#16A34A" stroke-width="2"/>
+  </g>
+  <circle cx="402" cy="642" r="5" fill="#16A34A"/>
+  <text x="416" y="647" font-size="15" font-weight="700" fill="#166534">Firestore — source of truth</text>
+  <text x="402" y="674" font-size="11.5" fill="#475569">tickets/{id} · processed_deliveries</text>
+  <text x="402" y="692" font-size="11.5" fill="#475569">pr_index (PR → ticket pointer)</text>
+  <text x="402" y="710" font-size="11.5" fill="#475569">transactional caps: clarify ≤ 3 · retry ≤ 3</text>
+  <text x="402" y="734" font-size="11" fill="#64748B">single source of truth for per-ticket state</text>
+
+  <!-- Jira -->
+  <g filter="url(#shadow)">
+    <rect x="720" y="610" width="300" height="150" rx="12" fill="#EBF3FF" stroke="#0052CC" stroke-width="2"/>
+  </g>
+  <circle cx="742" cy="642" r="5" fill="#0052CC"/>
+  <text x="756" y="647" font-size="15" font-weight="700" fill="#0747A6">Jira Cloud — ART board</text>
+  <text x="742" y="674" font-size="11.5" fill="#475569">create ticket · transition status</text>
+  <text x="742" y="692" font-size="11.5" fill="#475569">comment with PR link + summary</text>
+  <text x="742" y="710" font-size="11.5" fill="#475569">direct REST · API-token Basic Auth</text>
+  <text x="742" y="734" font-size="11" fill="#64748B">kept in sync throughout — never hand-shuttled</text>
+
+  <!-- Cloud Trace / Logging -->
+  <g filter="url(#shadow)">
+    <rect x="1060" y="610" width="320" height="150" rx="12" fill="#F5F3FF" stroke="#7C3AED" stroke-width="2"/>
+  </g>
+  <circle cx="1082" cy="642" r="5" fill="#7C3AED"/>
+  <text x="1096" y="647" font-size="15" font-weight="700" fill="#5B21B6">OpenTelemetry → Cloud Trace</text>
+  <text x="1082" y="674" font-size="11.5" fill="#475569">one span per gate decision (gate.1 / 2 / 3)</text>
+  <text x="1082" y="692" font-size="11.5" fill="#475569">force-flushed · also sent to Cloud Logging</text>
+  <text x="1082" y="710" font-size="11.5" fill="#475569">trace_ids surfaced on dashboard drill-in</text>
+  <text x="1082" y="734" font-size="11" fill="#64748B">+ Vertex AI gen-AI request logs → BigQuery</text>
+
+  <!-- Dashboard -->
+  <g filter="url(#shadow)">
+    <rect x="1420" y="610" width="320" height="150" rx="12" fill="#EEF2FF" stroke="#4F46E5" stroke-width="2"/>
+  </g>
+  <circle cx="1442" cy="642" r="5" fill="#4F46E5"/>
+  <text x="1456" y="647" font-size="15" font-weight="700" fill="#3730A3">Dashboard — Next.js on Cloud Run</text>
+  <text x="1442" y="674" font-size="11.5" fill="#475569">GitHub OAuth login (repo-permission checked)</text>
+  <text x="1442" y="692" font-size="11.5" fill="#475569">server-side Firestore reads · SSE live updates</text>
+  <text x="1442" y="710" font-size="11.5" fill="#475569">per-ticket decision trail + awaiting-you view</text>
+  <text x="1442" y="734" font-size="11" fill="#64748B">answers "why did Artisan do that?"</text>
+
+  <!-- ===================== HUB ARROWS (orchestrator -> sidecars) ===================== -->
+  <path d="M 800 590 L 190 610" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="495" y="600" font-size="10.5" fill="#64748B" text-anchor="middle" style="paint-order:stroke" stroke="#F8FAFC" stroke-width="4">creds</text>
+  <path d="M 830 590 L 530 610" fill="none" stroke="#94A3B8" stroke-width="2" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="680" y="600" font-size="10.5" fill="#64748B" text-anchor="middle" style="paint-order:stroke" stroke="#F8FAFC" stroke-width="4">state</text>
+  <path d="M 870 590 L 870 610" fill="none" stroke="#94A3B8" stroke-width="2" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="900" y="600" font-size="10.5" fill="#64748B" text-anchor="start" style="paint-order:stroke" stroke="#F8FAFC" stroke-width="4">sync</text>
+  <path d="M 1000 590 L 1220 610" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1110" y="600" font-size="10.5" fill="#64748B" text-anchor="middle" style="paint-order:stroke" stroke="#F8FAFC" stroke-width="4">spans</text>
+  <path d="M 1250 590 L 1580 610" fill="none" stroke="#94A3B8" stroke-width="2" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="1415" y="600" font-size="10.5" fill="#64748B" text-anchor="middle" style="paint-order:stroke" stroke="#F8FAFC" stroke-width="4">reads</text>
+
+  <!-- Legend -->
+  <text x="40" y="786" font-size="11" fill="#64748B">— event / control flow&#160;&#160;&#160;⟷ state / credential sync&#160;&#160;&#160;All reasoning: Gemini 3.7 Flash via Vertex AI (Google ADK)&#160;&#160;·&#160;&#160;Infra: Cloud Run · Firestore · Pub/Sub · Secret Manager</text>
+</svg>

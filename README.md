@@ -36,6 +36,15 @@ shuttle context between a coding agent and a ticket tracker.
 
 ## How it works
 
+<p align="center">
+  <img src="assets/architecture_diagram.png" alt="Artisan system architecture on Google Cloud" width="100%" />
+</p>
+
+The full component map — GitHub events in, Pub/Sub decoupling, the orchestrator's three gates on
+Cloud Run, ephemeral sandbox execution, and every sidecar (Firestore, Secret Manager, Jira, Cloud
+Trace, dashboard) — is also available as an editable
+[`assets/architecture_diagram.svg`](./assets/architecture_diagram.svg).
+
 ```mermaid
 flowchart LR
     subgraph GHA["GitHub"]
@@ -137,7 +146,7 @@ flowchart TD
 Artisan is fully deployed and operational in Google Cloud (`us-central1`). Hackathon judges and developers can evaluate the autonomous multi-agent pipeline live:
 
 - **Target Demo Repository (Public):** [https://github.com/403errors/artisan-demo](https://github.com/403errors/artisan-demo)
-- **Live Monitoring Dashboard:** [https://dashboard-344139602765.us-central1.run.app](https://dashboard-344139602765.us-central1.run.app)
+- **Live Monitoring Dashboard:** [https://dashboard-x5vyqts7wa-uc.a.run.app](https://dashboard-x5vyqts7wa-uc.a.run.app)
 - **Live Jira Board:** [https://pieisnot22by7.atlassian.net/jira/software/projects/ART/boards/](https://pieisnot22by7.atlassian.net/jira/software/projects/ART/boards/)
 
 ### Evaluator Access & Permissions:
@@ -148,7 +157,7 @@ Artisan is fully deployed and operational in Google Cloud (`us-central1`). Hacka
 ### How to test live:
 1. Open a new issue on [403errors/artisan-demo](https://github.com/403errors/artisan-demo) (e.g. *"Add a contact us page"* or *"Fix footer padding"*).
 2. Artisan's webhook triggers the autonomous orchestrator: Intake Agent triages the issue, Planning & Execution agents write and test code in ephemeral Cloud Run Job sandboxes, and a verified Pull Request is opened automatically.
-3. Sign into the [Live Dashboard](https://dashboard-344139602765.us-central1.run.app) to watch the live Activity Feed, tool execution logs, synchronized Jira tickets (`ART-*`), PR links, and Cloud Traces.
+3. Sign into the [Live Dashboard](https://dashboard-x5vyqts7wa-uc.a.run.app) to watch the live Activity Feed, tool execution logs, synchronized Jira tickets (`ART-*`), PR links, and Cloud Traces.
 
 ## Quick start (Local Development)
 
@@ -157,7 +166,7 @@ Artisan is fully deployed and operational in Google Cloud (`us-central1`). Hacka
 uv sync
 
 # 2. Run the orchestrator's test suite
-uv run --package artisan-agents pytest
+uv run --package artisan-agents pytest agents/tests
 
 # 3. Run the dashboard
 cd dashboard && pnpm install && pnpm dev   # http://localhost:3000
@@ -190,7 +199,7 @@ once.
 ```bash
 uv sync                              # from the repo root — syncs the whole workspace
 uv run ruff check agents execution-sandbox packages   # ruff lint across the workspace
-uv run --package artisan-agents pytest
+uv run --package artisan-agents pytest agents/tests
 cd agents && uv run artisan-agents   # serves on :8080 (or $PORT)
 ```
 
@@ -235,6 +244,9 @@ All secrets live in Google Secret Manager, scoped per-secret to the service acco
 - [MILESTONE.md](./docs/MILESTONE.md) — closed-sprint DoD archive
 - [CONTEXT.md](./docs/CONTEXT.md) — current state (read this first)
 - [DEPLOYMENT.md](./docs/DEPLOYMENT.md) — deployment & operations
+- [DEMO_SCRIPT.md](./docs/DEMO_SCRIPT.md) — demo recording runbook + pre-flight checklist
+- [JUDGING_SELF_CHECK.md](./docs/JUDGING_SELF_CHECK.md) — rubric self-check (submission evidence)
+- [SUBMISSION_SUMMARY.md](./docs/SUBMISSION_SUMMARY.md) — written project summary
 
 ## License
 
