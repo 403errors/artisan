@@ -14,6 +14,8 @@ capped by lines and chars. Manifest content is repo-sourced (not issue-reporter-
 excerpts are still wrapped as untrusted — a merged malicious manifest is injection surface too.
 """
 
+import re
+
 from artisan_shared.models import RepoContext
 from artisan_shared.prompt_safety import wrap_untrusted
 
@@ -22,6 +24,45 @@ _MAX_MANIFESTS = 4
 _MAX_MANIFEST_LINES = 40
 _MAX_MANIFEST_CHARS = 2000
 _MAX_FILE_TREE_SAMPLE = 200  # same budget planning_agent uses for grounding touched_files
+_MAX_SKELETON_ENTRIES = 30
+
+# Cheap lexical relevance: enough to surface "files whose path mentions what the issue talks
+# about" without embeddings. Stopwords keep generic English from matching path segments.
+_STOPWORDS = {
+    "the", "and", "for", "with", "this", "that", "when", "from", "into", "are", "not",
+    "should", "must", "have", "has", "been", "will", "would", "could", "all", "any", "our",
+    "your", "their", "its", "use", "using", "used", "via", "per", "each", "every",
+}
+
+
+def _tokens(text: str) -> set[str]:
+    return {
+        t for t in re.split(r"[^a-z0-9]+", text.lower()) if len(t) > 2 and t not in _STOPWORDS
+    }
+
+
+def ranked_file_sample(
+    paths: list[str], query: str, budget: int = _MAX_FILE_TREE_SAMPLE
+) -> list[str]:
+    """Relevance-ranked file-tree sample (v2 wave 1.6): an alphabetical first-N of a 10k-file
+    repo covers ~2% of it — useless grounding on SWE-bench-scale repos. Rank paths by token
+    overlap between the issue text and path segments; ties keep the tree's original (sorted)
+    order so output stays deterministic. With an empty query, degenerates to the first-N cut."""
+    if not query.strip():
+        return paths[:budget]
+    query_tokens = _tokens(query)
+
+    def score(path: str) -> int:
+        return len(query_tokens & _tokens(path))
+
+    return sorted(paths, key=lambda p: -score(p))[:budget]
+
+
+def _top_level_skeleton(paths: list[str]) -> str:
+    entries = sorted({p.split("/", 1)[0] + ("/" if "/" in p else "") for p in paths})
+    shown = entries[:_MAX_SKELETON_ENTRIES]
+    suffix = f", ... ({len(entries) - len(shown)} more)" if len(entries) > len(shown) else ""
+    return ", ".join(shown) + suffix or "(empty tree)"
 
 
 def _manifest_excerpt(content: str) -> str:
@@ -29,7 +70,9 @@ def _manifest_excerpt(content: str) -> str:
     return excerpt[:_MAX_MANIFEST_CHARS]
 
 
-def repo_context_summary(repo_context: RepoContext, *, include_file_tree: bool = False) -> str:
+def repo_context_summary(
+    repo_context: RepoContext, *, include_file_tree: bool = False, query: str = ""
+) -> str:
     top_languages = sorted(repo_context.languages.items(), key=lambda kv: kv[1], reverse=True)[
         :_MAX_LANGUAGES
     ]
@@ -51,14 +94,21 @@ def repo_context_summary(repo_context: RepoContext, *, include_file_tree: bool =
 
     # Opt-in: the domain expert names concrete relevant_files — without the tree it invents
     # plausible paths (measured 71.6% hallucinated in the wave-1.6 expert eval). Routing keeps
-    # the cheaper prompt: it classifies domains, it doesn't name files.
+    # the cheaper prompt: it classifies domains, it doesn't name files. The sample is
+    # relevance-ranked against the issue when a query is given, with a top-level skeleton so
+    # global structure survives even when the ranked sample is narrow.
     if include_file_tree:
-        sample = repo_context.file_tree[:_MAX_FILE_TREE_SAMPLE]
+        tree = repo_context.file_tree
+        sample = ranked_file_sample(tree, query)
         listing = "\n".join(f"- {p}" for p in sample) or "(empty tree)"
         truncated = (
-            f"\n... ({len(repo_context.file_tree) - len(sample)} more files not shown)"
-            if len(repo_context.file_tree) > len(sample)
+            f"\n... ({len(tree) - len(sample)} more files not shown)"
+            if len(tree) > len(sample)
             else ""
         )
-        summary += f"\n\nRepo file tree (sample):\n{listing}{truncated}"
+        summary += (
+            f"\n\nRepo layout: {_top_level_skeleton(tree)}"
+            f"\n\nRepo file tree (sample{', ranked by relevance to the issue' if query.strip() else ''}):"
+            f"\n{listing}{truncated}"
+        )
     return summary

@@ -197,6 +197,8 @@ async def run_attempt(
             diff_summary=f"{summary}\n\n{diff_summary}",
             tests_passed=tests_passed,
             logs_uri=_logs_uri(),
+            diff_patch=git_ops.staged_diff(str(workdir)),
+            changed_file_contents=git_ops.staged_file_contents(str(workdir)),
         )
 
 
@@ -345,4 +347,6 @@ async def run_conflict_resolution(
             diff_summary=f"{summary}\n\n{diff_summary}",
             tests_passed=True,
             logs_uri=_logs_uri(),
+            diff_patch=git_ops.staged_diff(str(workdir)),
+            changed_file_contents=git_ops.staged_file_contents(str(workdir)),
         )

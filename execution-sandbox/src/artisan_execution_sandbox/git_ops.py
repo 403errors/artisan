@@ -80,6 +80,40 @@ def stage_all_and_diff_stat(repo_dir: str) -> str:
     return "\n".join(lines)
 
 
+def staged_diff(repo_dir: str, *, max_chars: int = 12_000) -> str:
+    """Bounded full text of the staged diff (v2 wave 1.6 #12) — the evidence verification
+    reasons over. Call AFTER stage_all_and_diff_stat (which does the `add -A`). Truncation keeps
+    the verification prompt bounded on large changes; the note makes a truncated diff visible as
+    such rather than looking complete."""
+    patch = _run(["diff", "--cached"], cwd=repo_dir)
+    if len(patch) <= max_chars:
+        return patch
+    return patch[:max_chars] + f"\n\n... (diff truncated at {max_chars} chars)"
+
+
+def staged_file_contents(
+    repo_dir: str, *, max_files: int = 10, max_chars_per_file: int = 8_000
+) -> dict[str, str]:
+    """Bounded full contents of every staged-and-changed file (#12 follow-up): verification must
+    see what the change DIDN'T touch — an unchanged sibling function with the same bug class is
+    invisible in a diff. Reads the working-tree version (== staged content post `add -A`).
+    Deleted files are skipped; oversized files are truncated with a visible note."""
+    from pathlib import Path
+
+    names = _run(["diff", "--cached", "--name-only", "--diff-filter=ACMR"], cwd=repo_dir)
+    contents: dict[str, str] = {}
+    for path in names.splitlines()[:max_files]:
+        file_path = Path(repo_dir) / path
+        try:
+            text = file_path.read_text(errors="replace")
+        except OSError:
+            continue
+        if len(text) > max_chars_per_file:
+            text = text[:max_chars_per_file] + f"\n... (file truncated at {max_chars_per_file} chars)"
+        contents[path] = text
+    return contents
+
+
 def has_staged_changes(repo_dir: str) -> bool:
     return bool(_run(["status", "--porcelain"], cwd=repo_dir).strip())
 

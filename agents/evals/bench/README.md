@@ -77,8 +77,33 @@ python -m swebench.harness.run_evaluation \
 The harness-reported **resolved rate** is the headline external number. Combine with
 `run_log.json` for Artisan-internal funnel metrics (routing accuracy, attempts, escalation).
 
+## Reporting
+
+```bash
+# import the official harness's verdicts, then render BENCH_REPORT.md:
+python agents/evals/bench/bench_report.py --import-harness swebench-verified logs/run_evaluation/artisan-v2
+python agents/evals/bench/bench_report.py   # render (safe to re-run anytime)
+```
+
+`--import-harness` accepts a SWE-bench-style log tree (per-instance `report.json`) or a flat
+`{"instance_id": bool}` JSON from the other harnesses. Ungraded benchmarks render as
+"awaiting official harness" — Artisan never grades itself.
+
 ## Status / follow-ups
 
-- `multi-swe-bench`, `swe-polybench`: no prebuilt per-instance images — their harnesses build
-  environments from per-instance Dockerfiles. `runner.py` raises with guidance for these;
-  support is a follow-up (build images via their repos, then the same runner flow applies).
+- All six benchmarks resolve prebuilt per-instance images (verified against the registries
+  2026-09): SWE-bench family from Docker Hub (`swebench/` resp. `starryzhang/` for Live), Pro
+  from `jefzda/sweap-images:<dockerhub_tag>`, PolyBench from GHCR
+  (`timesler/swe-polybench.eval.x86_64.<id>:v1.1`, `:latest` fallback), Multi-SWE-bench from
+  `mswebench/<org>_m_<repo>:pr-<n>` (container workdir `/home/<repo>`, not `/testbed`).
+- First real runs should smoke with `--limit 1` per benchmark — image sizes are 1–5 GB each and
+  amd64-under-Rosetta test runs are slow.
+- The runner sets `ARTISAN_MAX_CODING_AGENT_TOOL_CALLS=80` (production default 40): real-scale
+  repos need more exploration than the demo repos the default was tuned on — the first smoke run
+  had an instance escalate at the cap. Recorded per-run; if 80 materially outperforms 40 that's
+  evidence for raising the production default.
+- Tests run by applying the agent's patch INSIDE the container over the image's own checkout
+  (official-harness flow) — never bind-mounting the host checkout, which would hide in-image
+  build artifacts (compiled extensions, e.g. astropy, fail to import under a bind mount).
+- Coding-agent tool exceptions (e.g. a model-chosen pathological shell command) degrade to a
+  failed attempt → retry/escalate, never a crashed instance.

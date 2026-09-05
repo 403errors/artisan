@@ -10,7 +10,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "evals" / "bench
 
 from registry import BENCHMARKS
 from runner import (
+    container_workdir,
     image_for,
+    infer_test_command,
     internal_test_command,
     load_done,
     patch_test_files,
@@ -59,11 +61,6 @@ def test_patch_test_files_keeps_only_test_sources():
     assert patch_test_files(TEST_PATCH) == ["tests/queries/test_qs.py"]
 
 
-def test_internal_test_command_scopes_to_touched_test_files():
-    cmd = internal_test_command(BENCHMARKS["swebench-verified"], _instance())
-    assert cmd == "python -m pytest -x -q tests/queries/test_qs.py"
-
-
 def test_internal_test_command_prefers_shipped_commands():
     live = _instance(extra={"test_cmds": ["pytest tests/test_a.py", "pytest tests/test_b.py"]})
     assert internal_test_command(BENCHMARKS["swebench-live"], live) == (
@@ -73,9 +70,45 @@ def test_internal_test_command_prefers_shipped_commands():
     assert internal_test_command(BENCHMARKS["swe-polybench"], poly) == "mvn test -pl module"
 
 
-def test_internal_test_command_falls_back_when_patch_has_no_test_files():
-    inst = _instance(test_patch=TEST_PATCH.split("diff --git")[1])  # source file only
-    assert internal_test_command(BENCHMARKS["swebench-verified"], inst) == "python -m pytest -x -q"
+def test_internal_test_command_defers_to_inference_when_nothing_shipped():
+    assert internal_test_command(BENCHMARKS["swebench-verified"], _instance()) is None
+
+
+# --- infer_test_command (language-aware fallback, runs against the checkout) ---
+
+
+def test_infer_python_scopes_to_touched_test_files(tmp_path):
+    cmd = infer_test_command(tmp_path, ["tests/queries/test_qs.py"])
+    assert cmd == "python -m pytest -x -q tests/queries/test_qs.py"
+
+
+def test_infer_go_scopes_to_packages_of_test_files(tmp_path):
+    (tmp_path / "go.mod").write_text("module example.com/x\n")
+    cmd = infer_test_command(tmp_path, ["pkg/a/a_test.go", "pkg/b/b_test.go", "README.md"])
+    assert cmd == "go test ./pkg/a/... ./pkg/b/..."
+
+
+def test_infer_rust_and_java(tmp_path):
+    (tmp_path / "Cargo.toml").write_text("[package]\nname='x'\n")
+    assert infer_test_command(tmp_path, ["tests/t.rs"]) == "cargo test"
+
+    (tmp_path / "Cargo.toml").unlink()
+    (tmp_path / "pom.xml").write_text("<project/>")
+    cmd = infer_test_command(tmp_path, ["src/test/java/com/foo/BarTest.java"])
+    assert cmd == "mvn test -q -Dtest=BarTest"
+
+
+def test_infer_js_reads_the_test_script_runner(tmp_path):
+    (tmp_path / "package.json").write_text(
+        json.dumps({"scripts": {"test": "vitest run"}})
+    )
+    assert infer_test_command(tmp_path, ["test/t.test.js"]) == "npx vitest run test/t.test.js"
+
+    (tmp_path / "package.json").write_text(json.dumps({"scripts": {"test": "mocha"}}))
+    assert infer_test_command(tmp_path, ["test/t.js"]) == "npx mocha test/t.js"
+
+    (tmp_path / "package.json").write_text(json.dumps({"scripts": {"test": "node --test"}}))
+    assert infer_test_command(tmp_path, ["test/t.js"]) == "npm test"
 
 
 def test_image_for_swebench_family_uses_official_naming():
@@ -99,9 +132,32 @@ def test_image_for_live_uses_starryzhang_org():
     )
 
 
-def test_image_for_unsupported_benchmarks_raise_with_guidance():
-    with pytest.raises(NotImplementedError, match="official harness"):
-        image_for(BENCHMARKS["multi-swe-bench"], _instance())
+def test_image_for_polybench_uses_ghcr_prebuilt():
+    inst = _instance(instance_id="google__gson-2337")
+    assert image_for(BENCHMARKS["swe-polybench"], inst) == (
+        "ghcr.io/timesler/swe-polybench.eval.x86_64.google__gson-2337:v1.1"
+    )
+
+
+def test_image_for_multi_swe_uses_mswebench_pr_naming():
+    inst = _instance(instance_id="alibaba__fastjson2-1245", repo="alibaba/fastjson2")
+    assert image_for(BENCHMARKS["multi-swe-bench"], inst) == (
+        "mswebench/alibaba_m_fastjson2:pr-1245"
+    )
+    # repo names with dashes: split the PR number at the LAST dash
+    dashed = _instance(
+        instance_id="aws-cloudformation__cfn-lint-3498", repo="aws-cloudformation/cfn-lint"
+    )
+    assert image_for(BENCHMARKS["multi-swe-bench"], dashed) == (
+        "mswebench/aws-cloudformation_m_cfn-lint:pr-3498"
+    )
+
+
+def test_container_workdir_per_benchmark():
+    assert container_workdir(BENCHMARKS["swebench-verified"], _instance()) == "/testbed"
+    assert container_workdir(BENCHMARKS["swe-polybench"], _instance()) == "/testbed"
+    mswe = _instance(instance_id="alibaba__fastjson2-1245", repo="alibaba/fastjson2")
+    assert container_workdir(BENCHMARKS["multi-swe-bench"], mswe) == "/home/fastjson2"
 
 
 def test_load_done_reads_existing_predictions(tmp_path):

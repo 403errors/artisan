@@ -428,45 +428,51 @@ validation (`docs/miscellaneous/V2_SCOPE.md` #20/#21). All harnesses are manual-
 (`-m eval`, live Gemini, never CI) and write JSON sidecars that `pipeline_report.py` aggregates
 into one funnel (`agents/evals/PIPELINE_REPORT.md`).
 
-**First full-funnel numbers (live Gemini, 2026-09-05):**
+**Final funnel numbers (live Gemini, 2026-09-05, after the score-push phases below):**
 
 | Stage | Metric | Value |
 |---|---|---|
-| Routing | exact-set match (25 goldens x 3 reps) | 92.0% (stability 96.0%) |
-| Domain expert | relevant-files recall (20 goldens x 2 reps) | 100.0% after file-tree fix (was 50.0% / 71.6% hallucinated) |
-| Verification | verdict agreement with oracle (16 scenarios x 2 reps) | 100% (criteria agreement 88.9%) |
-| **End-to-end** | **verified-correct rate (8 seeded-bug fixtures)** | **87.5%** — false-green 12.5%, escalations 0% |
+| Routing | exact-set match (25 goldens x 3 reps) | **100.0%** (stability 96.0%) |
+| Domain expert | relevant-files recall (20 goldens x 2 reps) | **100.0%**, hallucination 0.0%, precision 40.2% |
+| Verification | verdict agreement with oracle (16 scenarios x 2 reps) | **100%** (criteria agreement 88.9%) |
+| **End-to-end** | **verified-correct rate (8 seeded-bug fixtures)** | **100.0%** — false-green 0.0%, escalations 0% |
 
-The harnesses earned their keep immediately, twice over:
+**Score-push phases (same day, each gated on the funnel):**
 
-- **Expert hallucination finding — FIXED same-day:** the domain expert's 71.6% hallucinated-path
-  rate traced to `repo_context_summary.py` never giving the expert the repo file tree — it saw
-  languages + manifest excerpts only, so it invented plausible paths. Fix: opt-in bounded
-  file-tree sample (200 paths, planning_agent's existing budget) via
-  `repo_context_summary(..., include_file_tree=True)` — the expert opts in (it names concrete
-  `relevant_files`); routing keeps the cheaper prompt (it only classifies). Re-measured live:
-  **recall 50.0% → 100.0%, hallucination 71.6% → 0.0%**, precision 18.3% → 38.6% (over-listing
-  remains, but every named path is real). Before-snapshot kept at
-  `agents/evals/EXPERT_REPORT.before-filetree.md`.
-- **E2E false green — diagnosed, fix queued:** `security-path-traversal` opened a PR the held-out
-  oracle rejects (agent fixed the `read_user_file` traversal the issue named; the oracle also
-  requires the sibling `write_user_file` — same vulnerability class). Two-layer cause: (1) routing
-  sent it to `backend`, so the security lens criteria never entered the verification prompt;
-  (2) structural — verification judges from the coding agent's self-summary + `git diff --stat`
-  and never sees the actual diff, so "all input validated at the trust boundary" is unverifiable.
-  Queued fix: verification receives the bounded real diff.
+- **Phase 1 — diff-grounded verification (#12 follow-up, the false-green fix).** First attempt
+  (bounded `diff_patch` on `ExecutionResult`) did NOT flip the security fixture: a diff shows
+  only changed hunks, so the unfixed sibling (`write_user_file`) stayed invisible. Real fix:
+  `changed_file_contents` — bounded full content of every changed file, so the verifier sees
+  what the change DIDN'T touch. E2E: false-green 12.5% → **0.0%**, verified-correct 87.5% →
+  **100%** (security fixture went red on attempt 1, retry fixed both paths, oracle passed).
+- **Phase 2 — relevance-ranked tree sample.** Alphabetical first-200 covers ~2% of a
+  SWE-bench-scale repo; `ranked_file_sample` scores paths by token overlap with the issue
+  (expert + planning both use it) plus a top-level layout skeleton. Expert recall held 100%,
+  hallucination held 0%; precision 38.6% → 40.2% (below the 60% stretch target — over-listing
+  real files is low-harm; accepted, documented).
+- **Phase 3 — routing multi-label completeness.** First instruction ("name EVERY domain")
+  overshot: 92% → 81.3% via systematic over-labeling (rate-limit → backend+security). Revised
+  to "label by the nature of the FIX, not the location of the symptom" with both failure
+  directions spelled out: **100.0% exact-set** (both documented boundary cases pass: SSRF →
+  security-only, slow-orders → backend+database), stability 96%.
+- **Phase 6 — #17 criteria hard-gating decision: KEEP REPORT-FIRST.** Verification criteria
+  agreement is 88.9%, below the 95% threshold the plan set for flipping `not_met` to
+  verdict-forcing. Report-first stays; the gap is concentrated in borderline "met" vs
+  "not_applicable" judgments, not missed real defects (verdict agreement is 100%).
 
 **Bench adapter (`agents/evals/bench/`):** manual runner for six independent benchmarks —
 SWE-bench Verified / Multilingual / Pro / Live, Multi-SWE-bench, SWE-PolyBench — 50 frozen
 instances each (pinned seed, checked into `selected/`; Live is a dated snapshot by design).
 Pure-stdlib HF client (rows API + JSONL-tree fallback, retries); runner reuses the E2E
 mini-bench's fake-externals pattern, executes tests in the benchmarks' official Docker images
-(colima + Rosetta on Apple Silicon; image naming verified against Docker Hub per family), emits
-standard `predictions.jsonl` for the OFFICIAL harnesses to grade — Artisan never grades itself.
-Resumable, cost-capped (`--limit`, `--max-attempts`). All six selections frozen (Multilingual
-moved to the ungated `SWE-bench/` org — no token needed); Multi-SWE-bench/PolyBench runner
-support is a follow-up (no prebuilt images — their harnesses build from Dockerfiles). No external
-numbers yet — first bench run is a manual, cost-bearing decision.
+(colima + Rosetta on Apple Silicon), emits standard `predictions.jsonl` for the OFFICIAL
+harnesses to grade — Artisan never grades itself. Resumable, cost-capped (`--limit`,
+`--max-attempts`). All six selections frozen (Multilingual moved to the ungated `SWE-bench/`
+org — no token needed). Phase 4 added language-aware internal test commands (go/cargo/maven/
+npm-script-aware inference from the checkout, scoped to oracle-touched files). Phase 5 found
+prebuilt images for ALL SIX benchmarks (PolyBench on GHCR `:v1.1`, Multi-SWE-bench as
+`mswebench/<org>_m_<repo>:pr-<n>` with `/home/<repo>` workdir) — no Dockerfile building needed.
+`bench_report.py` imports official-harness verdicts into `BENCH_REPORT.md`.
 
 ## Next Milestone Target
 

@@ -1,6 +1,6 @@
 # Verification eval report
 
-Generated: 2026-09-05T15:47:13.968990+00:00 — 14 model-judged scenarios + 2 deterministic short-circuit scenarios x 2 reps, live Gemini.
+Generated: 2026-09-05T17:36:20.447532+00:00 — 14 model-judged scenarios + 2 deterministic short-circuit scenarios x 2 reps, live Gemini.
 
 ## Headline metrics
 

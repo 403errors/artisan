@@ -131,6 +131,55 @@ def test_prompt_wraps_issue_fields_as_untrusted() -> None:
     assert UNTRUSTED_CONTENT_NOTICE in verification_agent_module.VERIFICATION_INSTRUCTION
 
 
+# --- v2 wave 1.6 (#12): diff-grounded verification ---
+
+
+def test_prompt_includes_wrapped_actual_diff_when_present() -> None:
+    from artisan_agents.agents.verification_agent import _build_prompt
+
+    result = ExecutionResult(
+        branch="b", diff_summary="d", tests_passed=True, logs_uri="gs://x",
+        diff_patch="diff --git a/f.py b/f.py\n+unsafe",
+    )
+    prompt = _build_prompt(_PLAN, result, "T", "B")
+    assert "Actual diff (bounded):" in prompt
+    assert "<untrusted_content>\ndiff --git a/f.py b/f.py\n+unsafe\n</untrusted_content>" in prompt
+
+
+def test_prompt_omits_actual_diff_section_when_empty() -> None:
+    from artisan_agents.agents.verification_agent import _build_prompt
+
+    result = ExecutionResult(branch="b", diff_summary="d", tests_passed=True, logs_uri="gs://x")
+    assert result.diff_patch == ""  # schema default — older producers stay valid
+    assert "Actual diff" not in _build_prompt(_PLAN, result, "T", "B")
+
+
+def test_instruction_requires_judging_sibling_paths_for_same_bug_class() -> None:
+    # The false green that motivated #12: a fix covering only the issue's named instance.
+    assert "sibling code paths" in verification_agent_module.VERIFICATION_INSTRUCTION
+
+
+def test_prompt_includes_changed_file_contents_when_present() -> None:
+    from artisan_agents.agents.verification_agent import _build_prompt
+
+    result = ExecutionResult(
+        branch="b", diff_summary="d", tests_passed=True, logs_uri="gs://x",
+        changed_file_contents={"filesrv/storage.py": "def read_user_file(name): ..."},
+    )
+    prompt = _build_prompt(_PLAN, result, "T", "B")
+    assert "Changed files, full content (bounded)" in prompt
+    assert "--- filesrv/storage.py ---" in prompt
+    assert "<untrusted_content>\ndef read_user_file(name): ...\n</untrusted_content>" in prompt
+
+
+def test_prompt_omits_changed_files_section_when_empty() -> None:
+    from artisan_agents.agents.verification_agent import _build_prompt
+
+    result = ExecutionResult(branch="b", diff_summary="d", tests_passed=True, logs_uri="gs://x")
+    assert result.changed_file_contents == {}  # schema default
+    assert "Changed files" not in _build_prompt(_PLAN, result, "T", "B")
+
+
 def test_instruction_requires_one_criterion_result_per_criterion() -> None:
     instruction = verification_agent_module.VERIFICATION_INSTRUCTION
     assert "criteria_results" in instruction

@@ -132,6 +132,42 @@ def test_stage_all_and_diff_stat_tags_modified_and_deleted_files(tmp_path) -> No
     assert "to_delete.py (deleted) +0 -1" in lines
 
 
+def test_staged_diff_returns_full_patch_and_truncates_with_note(tmp_path) -> None:
+    from artisan_execution_sandbox.git_ops import staged_diff
+
+    origin = tmp_path / "origin"
+    workdir = tmp_path / "workdir"
+    _init_origin(origin)
+    clone(str(origin), str(workdir))
+    (workdir / "new_file.py").write_text("print('hi')\n")
+    stage_all_and_diff_stat(str(workdir))  # does the add -A
+
+    patch = staged_diff(str(workdir))
+    assert "diff --git" in patch and "+print('hi')" in patch
+    assert "truncated" not in patch
+
+    tiny = staged_diff(str(workdir), max_chars=20)
+    assert len(tiny) > 20  # the note itself adds length
+    assert tiny.endswith("(diff truncated at 20 chars)")
+
+
+def test_staged_file_contents_reads_changed_files_bounded(tmp_path) -> None:
+    from artisan_execution_sandbox.git_ops import staged_file_contents
+
+    origin = tmp_path / "origin"
+    workdir = tmp_path / "workdir"
+    _init_origin(origin)
+    clone(str(origin), str(workdir))
+    (workdir / "new_file.py").write_text("print('hi')\n")
+    (workdir / "big.py").write_text("x" * 9000 + "\n")
+    stage_all_and_diff_stat(str(workdir))
+
+    contents = staged_file_contents(str(workdir))
+    assert contents["new_file.py"] == "print('hi')\n"
+    assert contents["big.py"].endswith("(file truncated at 8000 chars)")
+    assert "README.md" not in contents  # unchanged files are not included
+
+
 def test_run_redacts_sensitive_value_from_raised_error(tmp_path) -> None:
     with pytest.raises(GitCommandError) as exc_info:
         _run(["not-a-real-git-command", "sekret-value"], cwd=str(tmp_path), redact="sekret-value")

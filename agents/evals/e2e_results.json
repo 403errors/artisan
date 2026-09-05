@@ -1,13 +1,13 @@
 {
-  "generated": "2026-09-05T16:24:06.442878+00:00",
+  "generated": "2026-09-05T18:21:34.875564+00:00",
   "n_runs": 8,
   "n_reps": 1,
-  "verified_correct_rate": 0.875,
-  "false_green_rate": 0.125,
+  "verified_correct_rate": 1.0,
+  "false_green_rate": 0.0,
   "escalation_rate": 0.0,
   "routing_exact_match": 0.625,
-  "verification_agreement": 0.875,
-  "mean_attempts": 1.0,
+  "verification_agreement": 1.0,
+  "mean_attempts": 1.125,
   "per_scenario": [
     {
       "id": "backend-invoice-discount",
@@ -21,9 +21,9 @@
           "changes": true,
           "visible_passed": true,
           "heldout_passed": true,
-          "diff_stat": "shop/__pycache__/invoice.cpython-313.pyc           | Bin 908 -> 1412 bytes\n shop/__pycache__/pricing.cpython-313.pyc           | Bin 1047 -> 1609 bytes\n shop/invoice.py                                    |  16 +++++++-\n shop/pricing.py                                    |  24 +++++++++---\n .../test_invoice.cpython-313-pytest-9.1.1.pyc      | Bin 1603 -> 6723 bytes\n .../test_pricing.cpython-313-pytest-9.1.1.pyc      | Bin 3635 -> 7918 bytes\n tests/test_invoice.py                              |  41 +++++++++++++++++++++\n tests/test_pricing.py                              |  24 ++++++++++++\n 8 files changed, 98 insertions(+), 7 deletions(-)",
-          "summary": "Fixed duplicate member discount calculation in shop/pricing.py so the 10% discount is applied exactly once. Verified non-member pricing remains untouched. Updated docstrings in shop/pricing.py and shop/invoice.py detailing discount lifecycle rules, and added comprehensive regression test cases in tests/test_pricing.py and tests/test_invoice.py ensuring $10.00 member purchases resolve to $9.00.",
-          "visible_output_tail": "..........                                                               [100%]\n10 passed in 0.00s\n",
+          "diff_stat": "shop/__pycache__/invoice.cpython-313.pyc           | Bin 908 -> 1787 bytes\n shop/__pycache__/pricing.cpython-313.pyc           | Bin 1047 -> 1781 bytes\n shop/invoice.py                                    |  28 +++++++++++-\n shop/pricing.py                                    |  34 ++++++++++++---\n .../test_invoice.cpython-313-pytest-9.1.1.pyc      | Bin 1603 -> 9601 bytes\n .../test_pricing.cpython-313-pytest-9.1.1.pyc      | Bin 3635 -> 8565 bytes\n tests/test_invoice.py                              |  48 +++++++++++++++++++++\n tests/test_pricing.py                              |  15 ++++++-\n 8 files changed, 116 insertions(+), 9 deletions(-)",
+          "summary": "Fixed redundant 10% member discount application in shop/pricing.py, documented single-discount application semantics across shop/pricing.py and shop/invoice.py, and expanded unit tests in tests/test_pricing.py and tests/test_invoice.py to cover single and multiple item checkouts for members and non-members.",
+          "visible_output_tail": ".........                                                                [100%]\n9 passed in 0.00s\n",
           "heldout_output_tail": "....                                                                     [100%]\n4 passed in 0.00s\n"
         }
       ],
@@ -49,9 +49,9 @@
           "changes": true,
           "visible_passed": true,
           "heldout_passed": true,
-          "diff_stat": "cfgtool/__pycache__/main.cpython-313.pyc           | Bin 2827 -> 3230 bytes\n cfgtool/main.py                                    |  20 +++++++--\n .../test_cli.cpython-313-pytest-9.1.1.pyc          | Bin 4100 -> 11685 bytes\n tests/test_cli.py                                  |  49 ++++++++++++++++++---\n 4 files changed, 59 insertions(+), 10 deletions(-)",
-          "summary": "Updated `cfgtool/main.py` so that `cmd_check` returns exit code 2 on configuration validation failures and `main` propagates the command return code, while continuing to return exit code 0 for valid configurations. Updated CLI help descriptions and function docstrings in `cfgtool/main.py` to document the exit code contract. Updated and added test cases in `tests/test_cli.py` to assert exit code 0 on valid configs and exit code 2 on invalid, unparseable, non-existent, and unreadable config files.",
-          "visible_output_tail": ".....                                                                    [100%]\n5 passed in 0.01s\n",
+          "diff_stat": "cfgtool/main.py   | 12 ++++++++----\n tests/test_cli.py | 17 ++++++++++++-----\n 2 files changed, 20 insertions(+), 9 deletions(-)",
+          "summary": "Updated cfgtool check subcommand to return status code 2 on configuration validation failures and 0 on success, propagated the return code in main(), updated the check command docstring and CLI help messages to document the exit code contract, and updated tests in tests/test_cli.py to assert exit codes and stderr diagnostics.",
+          "visible_output_tail": "...                                                                      [100%]\n3 passed in 0.01s\n",
           "heldout_output_tail": "...                                                                      [100%]\n3 passed in 0.01s\n"
         }
       ],
@@ -77,9 +77,9 @@
           "changes": true,
           "visible_passed": true,
           "heldout_passed": true,
-          "diff_stat": "featurepipe/features.py | 10 ++++++++--\n tests/test_features.py  | 32 ++++++++++++++++++++++++++++++++\n 2 files changed, 40 insertions(+), 2 deletions(-)",
-          "summary": "Updated write_features to open target files in overwrite mode ('w') instead of append mode ('a') to ensure idempotent exports without duplicated headers or rows. Updated write_features docstrings to document the overwrite and idempotency behavior. Added unit tests test_write_features_idempotency and test_write_features_overwrites_existing_file in tests/test_features.py and verified all tests pass.",
-          "visible_output_tail": "....                                                                     [100%]\n4 passed in 0.01s\n",
+          "diff_stat": "featurepipe/__pycache__/features.cpython-313.pyc   | Bin 1434 -> 1545 bytes\n featurepipe/features.py                            |   8 +++-\n .../test_features.cpython-313-pytest-9.1.1.pyc     | Bin 4991 -> 16002 bytes\n tests/test_features.py                             |  51 +++++++++++++++++++++\n 4 files changed, 57 insertions(+), 2 deletions(-)",
+          "summary": "Updated `write_features` in `featurepipe/features.py` to open output files in write mode (`'w'`) instead of append mode (`'a'`), ensuring idempotent exports that overwrite existing files without duplicating headers or rows. Updated the docstring to document the idempotent overwrite behavior. Added test cases in `tests/test_features.py` (`test_write_features_new_file`, `test_write_features_overwrites_existing_file`, and `test_write_features_idempotency`) and confirmed all pytest test cases pass.",
+          "visible_output_tail": ".....                                                                    [100%]\n5 passed in 0.01s\n",
           "heldout_output_tail": "...                                                                      [100%]\n3 passed in 0.01s\n"
         }
       ],
@@ -105,9 +105,9 @@
           "changes": true,
           "visible_passed": true,
           "heldout_passed": true,
-          "diff_stat": "orderdb/__pycache__/orders.cpython-313.pyc         | Bin 1035 -> 1674 bytes\n orderdb/orders.py                                  |  24 ++++++++++++--\n .../test_orders.cpython-313-pytest-9.1.1.pyc       | Bin 6326 -> 11664 bytes\n tests/test_orders.py                               |  36 +++++++++++++++++++++\n 4 files changed, 58 insertions(+), 2 deletions(-)",
-          "summary": "Updated list_orders offset calculation to (page - 1) * per_page to support 1-indexed pagination, added input validation enforcing page >= 1 and per_page >= 1, updated docstring with pagination semantics and offset formula, and added regression test cases in test_orders.py.",
-          "visible_output_tail": ".......                                                                  [100%]\n7 passed in 0.01s\n",
+          "diff_stat": "orderdb/__pycache__/orders.cpython-313.pyc         | Bin 1035 -> 1635 bytes\n orderdb/orders.py                                  |  24 +++++++-\n .../test_orders.cpython-313-pytest-9.1.1.pyc       | Bin 6326 -> 17893 bytes\n tests/test_orders.py                               |  67 ++++++++++++++++++++-\n 4 files changed, 87 insertions(+), 4 deletions(-)",
+          "summary": "Updated pagination offset in list_orders to `(page - 1) * per_page` with validation for `page >= 1` and `per_page >= 1`, updated docstrings with formula and parameter constraints, and expanded unit tests covering first page retrieval without skipping, sequential pagination, fewer items than per_page, and invalid input validation.",
+          "visible_output_tail": "........                                                                 [100%]\n8 passed in 0.01s\n",
           "heldout_output_tail": "...                                                                      [100%]\n3 passed in 0.00s\n"
         }
       ],
@@ -133,10 +133,10 @@
           "changes": true,
           "visible_passed": true,
           "heldout_passed": true,
-          "diff_stat": "cart.js             | 23 +++++++++++++++++++----\n tests/cart.test.mjs | 44 +++++++++++++++++++++++++++++++++++++++++++-\n 2 files changed, 62 insertions(+), 5 deletions(-)",
-          "summary": "Refactored cartTotal in cart.js to perform calculations using integer cents with Math.round(price * 100) and return the total as a dollar amount divided by 100 rounded to 2 decimal places. Updated JSDoc and inline comments in cart.js, and added unit tests in tests/cart.test.mjs to verify accurate handling of floating-point prices and empty carts.",
-          "visible_output_tail": "\u2714 integer prices sum exactly (0.283042ms)\n\u2714 calculate total for an empty cart returns 0 (0.039417ms)\n\u2714 calculate total with three 0.10 items returns 0.3 as a number instead of 0.30000000000000004 (0.054208ms)\n\u2714 calculate total with mixed floating-point cent values (e.g., 0.01, 0.02, 19.99) returns accurate two-decimal numeric dollars (0.074ms)\n\u2714 formatTotal renders two decimals (0.047625ms)\n\u2139 tests 5\n\u2139 suites 0\n\u2139 pass 5\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 32.7535\n",
-          "heldout_output_tail": "\u2714 three 10-cent items total exactly 0.3 (0.276167ms)\n\u2714 mixed cents total is exact (0.041875ms)\n\u2714 formatTotal never shows float artifacts (0.044333ms)\n\u2139 tests 3\n\u2139 suites 0\n\u2139 pass 3\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 31.688583\n"
+          "diff_stat": "cart.js             | 21 +++++++++++++++----\n tests/cart.test.mjs | 60 +++++++++++++++++++++++++++++++++++++++++++++++++++--\n 2 files changed, 75 insertions(+), 6 deletions(-)",
+          "summary": "Refactored cartTotal in cart.js to accumulate item prices in integer cents and return the dollar amount rounded to two decimals as a number, updated JSDoc comments to document precision handling and return type, and added unit tests in tests/cart.test.mjs covering floating-point edge cases, type checks, and empty carts.",
+          "visible_output_tail": "nteger prices sum exactly (0.336583ms)\n\u2714 empty cart returns a total of 0 (0.043416ms)\n\u2714 adding three 0.10 items computes a total of exactly 0.3 as a number (0.046208ms)\n\u2714 combinations of decimal prices with known floating-point rounding issues compute correct exact totals (0.0455ms)\n\u2714 cart total returns a numeric type rather than a string (0.292458ms)\n\u2714 formatTotal renders two decimals (0.038416ms)\n\u2139 tests 6\n\u2139 suites 0\n\u2139 pass 6\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 30.988959\n",
+          "heldout_output_tail": "\u2714 three 10-cent items total exactly 0.3 (0.257917ms)\n\u2714 mixed cents total is exact (0.041542ms)\n\u2714 formatTotal never shows float artifacts (0.040208ms)\n\u2139 tests 3\n\u2139 suites 0\n\u2139 pass 3\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 30.746875\n"
         }
       ],
       "n_attempts": 1,
@@ -161,8 +161,8 @@
           "changes": true,
           "visible_passed": true,
           "heldout_passed": true,
-          "diff_stat": "gamecore/__pycache__/world.cpython-313.pyc         | Bin 1474 -> 1613 bytes\n gamecore/world.py                                  |   8 ++++--\n .../test_world.cpython-313-pytest-9.1.1.pyc        | Bin 4768 -> 10105 bytes\n tests/test_world.py                                |  31 +++++++++++++++++++++\n 4 files changed, 37 insertions(+), 2 deletions(-)",
-          "summary": "Updated World.step(dt) in gamecore/world.py to scale physics integration using the dynamic dt parameter instead of a hardcoded 1/60 timestep, updated its docstring, and added test cases in tests/test_world.py covering arbitrary dt, zero dt, and variable frame-rate equivalence.",
+          "diff_stat": "gamecore/__pycache__/world.cpython-313.pyc         | Bin 1474 -> 1691 bytes\n gamecore/world.py                                  |  12 ++++++++--\n .../test_world.cpython-313-pytest-9.1.1.pyc        | Bin 4768 -> 9214 bytes\n tests/test_world.py                                |  25 +++++++++++++++++++++\n 4 files changed, 35 insertions(+), 2 deletions(-)",
+          "summary": "Updated `World.step` in `gamecore/world.py` to scale position updates by the passed `dt` parameter instead of hardcoding `1/60`, updated the method docstring to document frame-rate-independent physics integration, and added unit/regression tests in `tests/test_world.py` (`test_world_step_uses_passed_dt`, `test_world_step_framerate_independence`, `test_world_step_zero_dt`).",
           "visible_output_tail": "......                                                                   [100%]\n6 passed in 0.00s\n",
           "heldout_output_tail": "...                                                                      [100%]\n3 passed in 0.00s\n"
         }
@@ -189,10 +189,10 @@
           "changes": true,
           "visible_passed": true,
           "heldout_passed": true,
-          "diff_stat": "reporting/__pycache__/report.cpython-313.pyc       | Bin 1483 -> 1788 bytes\n reporting/report.py                                |  25 ++++++---\n .../test_report.cpython-313-pytest-9.1.1.pyc       | Bin 3671 -> 11616 bytes\n tests/test_report.py                               |  56 +++++++++++++++++++++\n 4 files changed, 74 insertions(+), 7 deletions(-)",
-          "summary": "Updated reporting/report.py to aggregate customer orders by customer ID (preserving customer ID and name in the output) and converted amounts from cents to formatted dollars by dividing by 100 in render_report. Updated docstrings in reporting/report.py accordingly, and added test cases in tests/test_report.py to verify customers sharing identical names remain separate, cent amounts convert correctly to dollar strings, and multiple transactions aggregate and format properly.",
-          "visible_output_tail": ".....                                                                    [100%]\n5 passed in 0.01s\n",
-          "heldout_output_tail": "...                                                                      [100%]\n3 passed in 0.00s\n"
+          "diff_stat": "reporting/__pycache__/db.cpython-313.pyc           | Bin 1561 -> 1645 bytes\n reporting/__pycache__/report.cpython-313.pyc       | Bin 1483 -> 1636 bytes\n reporting/db.py                                    |   5 ++-\n reporting/report.py                                |  11 +++---\n .../test_report.cpython-313-pytest-9.1.1.pyc       | Bin 3671 -> 9992 bytes\n tests/test_report.py                               |  43 ++++++++++++++++++++-\n 6 files changed, 51 insertions(+), 8 deletions(-)",
+          "summary": "Updated customer aggregation in reporting/report.py to group by customer ID (c.id) rather than customer name, converted total_cents to dollars formatted to two decimal places in render_report, updated docstrings in reporting/report.py and reporting/db.py, and added comprehensive tests in tests/test_report.py covering distinct customers with identical names, cents-to-dollars formatting, and edge-case amounts.",
+          "visible_output_tail": ".....                                                                    [100%]\n5 passed in 0.00s\n",
+          "heldout_output_tail": "...                                                                      [100%]\n3 passed in 0.01s\n"
         }
       ],
       "n_attempts": 1,
@@ -208,7 +208,8 @@
     {
       "id": "security-path-traversal",
       "predicted_domains": [
-        "backend"
+        "backend",
+        "security"
       ],
       "routing_correct": false,
       "attempts": [
@@ -217,21 +218,32 @@
           "changes": true,
           "visible_passed": true,
           "heldout_passed": false,
-          "diff_stat": "filesrv/storage.py    | 45 ++++++++++++++++++++++++++++++++++---\n tests/test_storage.py | 62 +++++++++++++++++++++++++++++++++++++++++++++++++++\n 2 files changed, 104 insertions(+), 3 deletions(-)",
-          "summary": "Implemented path confinement validation in `read_user_file` within `filesrv/storage.py` to reject absolute paths, traversal segments ('..'), and resolved paths escaping the upload directory by raising ValueError. Updated docstring to document confinement rules and error behavior. Added unit tests in `tests/test_storage.py` for relative path traversal, absolute paths, and legitimate file access inside the upload directory.",
-          "visible_output_tail": ".................                                                        [100%]\n17 passed in 0.02s\n",
+          "diff_stat": "filesrv/__pycache__/storage.cpython-313.pyc        | Bin 1161 -> 2152 bytes\n filesrv/storage.py                                 |  29 +++++++++++++++++++--\n .../test_storage.cpython-313-pytest-9.1.1.pyc      | Bin 3011 -> 5383 bytes\n tests/test_storage.py                              |  26 ++++++++++++++++++\n 4 files changed, 53 insertions(+), 2 deletions(-)",
+          "summary": "Added path validation to read_user_file in filesrv/storage.py to disallow absolute paths and traversal sequences resolving outside the upload directory by raising ValueError. Updated the function docstring with boundary constraints and exceptions. Added test cases in tests/test_storage.py for relative traversals, absolute paths, embedded traversal components, and reading valid files directly in the upload directory. Verified all tests pass.",
+          "visible_output_tail": ".......                                                                  [100%]\n7 passed in 0.01s\n",
           "heldout_output_tail": "/uploads')\n\n    def test_write_also_rejects_traversal(upload_dir):\n>       with pytest.raises(ValueError):\n             ^^^^^^^^^^^^^^^^^^^^^^^^^\nE       Failed: DID NOT RAISE ValueError\n\n/Users/gojo/Documents/GitHub/artisan/agents/evals/e2e_fixtures/security-path-traversal/heldout/test_heldout.py:32: Failed\n=========================== short test summary info ============================\nFAILED .heldout_tests/test_heldout.py::test_write_also_rejects_traversal - Fa...\n1 failed, 5 passed in 0.02s\n"
+        },
+        {
+          "attempt": 2,
+          "changes": true,
+          "visible_passed": true,
+          "heldout_passed": true,
+          "diff_stat": "filesrv/__pycache__/storage.cpython-313.pyc        | Bin 1161 -> 4312 bytes\n filesrv/storage.py                                 | 103 ++++++++++++++++++++-\n .../test_storage.cpython-313-pytest-9.1.1.pyc      | Bin 3011 -> 8904 bytes\n tests/test_storage.py                              |  42 +++++++++\n 4 files changed, 140 insertions(+), 5 deletions(-)",
+          "summary": "Implemented safe path resolution in filesrv/storage.py to validate that paths are not absolute, do not contain parent traversal ('..'), and resolve within UPLOAD_DIR (raising ValueError otherwise). Updated read_user_file and write_user_file to use this helper and updated their docstrings to specify boundary constraints and exceptions. Added comprehensive test cases in tests/test_storage.py verifying valid reads/writes and ValueError on absolute paths and path traversal attempts.",
+          "visible_output_tail": ".........                                                                [100%]\n9 passed in 0.01s\n",
+          "heldout_output_tail": "......                                                                   [100%]\n6 passed in 0.01s\n"
         }
       ],
-      "n_attempts": 1,
+      "n_attempts": 2,
       "verdicts": [
+        false,
         true
       ],
       "terminal": "pr_open",
       "pr_opened": true,
-      "fix_correct": false,
-      "pipeline_success": false,
-      "false_green": true
+      "fix_correct": true,
+      "pipeline_success": true,
+      "false_green": false
     }
   ]
 }

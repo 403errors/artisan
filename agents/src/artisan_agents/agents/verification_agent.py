@@ -12,17 +12,24 @@ from artisan_agents.event_context import current_sink
 APP_NAME = "artisan-verification"
 
 VERIFICATION_INSTRUCTION = """You are Artisan's Verification Agent. You will be given the original \
-GitHub issue, the Plan that was supposed to address it, and a summary of what the execution \
-attempt actually did (a diff summary). Judge whether the actual change matches the plan's intent \
-and would plausibly resolve the issue. Set green=true only if you're confident the change matches \
-the plan and addresses the issue; otherwise set green=false and give specific, actionable feedback \
-describing what's missing or wrong — feedback a planning agent could act on for a revised attempt.
+GitHub issue, the Plan that was supposed to address it, and what the execution attempt actually \
+did: a diff summary plus, when available, the actual patch ("Actual diff" section). Judge whether \
+the actual change matches the plan's intent and would plausibly resolve the issue. Set green=true \
+only if you're confident the change matches the plan and addresses the issue; otherwise set \
+green=false and give specific, actionable feedback describing what's missing or wrong — feedback \
+a planning agent could act on for a revised attempt.
+
+When an "Actual diff" section is present, ground your judgment in the CODE, not the executor's \
+self-description (v2 wave 1.6 #12 — a summary can claim more than the patch does). In particular: \
+if the issue names one instance of a bug class (e.g. one endpoint with a traversal bug), check \
+whether the diff's own context reveals sibling code paths with the same defect left unfixed — a \
+fix that covers only the named instance is a partial fix, and partial fixes are red.
 
 When a "Review criteria" section is present, you must also judge the executed change against \
 each listed criterion (v2 wave 1.5 #17): emit exactly one `criteria_results` entry per \
 criterion, in order — status "met" or "not_met" when the criterion applies to this change, \
 "not_applicable" when it doesn't (e.g. a responsive-layout criterion for a pure API change), \
-and always with concrete `evidence` naming what in the diff summary grounds your judgment. \
+and always with concrete `evidence` naming what in the diff grounds your judgment. \
 These per-criterion results are recorded for review; your overall `green` verdict remains a \
 holistic judgment of plan-match and issue-resolution, not a mechanical count of criteria."""
 
@@ -51,6 +58,21 @@ def _build_prompt(
         f"Plan steps: {plan.steps}\n\n"
         f"Execution diff summary:\n{execution_result.diff_summary}"
     )
+    # #12: the bounded real patch is the primary evidence when present — diff content is
+    # repo-sourced but still wrapped: a malicious change is injection surface like any other.
+    if execution_result.diff_patch:
+        prompt += f"\n\nActual diff (bounded):\n{wrap_untrusted(execution_result.diff_patch)}"
+    # #12 follow-up: full content of changed files — the only way to see UNCHANGED sibling code
+    # with the same bug class (a diff shows hunks, not the functions nobody touched).
+    if execution_result.changed_file_contents:
+        rendered = "\n\n".join(
+            f"--- {path} ---\n{wrap_untrusted(content)}"
+            for path, content in execution_result.changed_file_contents.items()
+        )
+        prompt += (
+            f"\n\nChanged files, full content (bounded) — check the UNCHANGED parts too; "
+            f"sibling code paths with the same bug class as the fix are your concern:\n{rendered}"
+        )
     if review_criteria:
         criteria = "\n".join(f"- {criterion}" for criterion in review_criteria)
         prompt += f"\n\nReview criteria the change is expected to satisfy (judge each):\n{criteria}"

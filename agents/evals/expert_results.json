@@ -1,9 +1,9 @@
 {
-  "generated": "2026-09-05T17:15:36.572779+00:00",
+  "generated": "2026-09-05T18:00:29.824175+00:00",
   "n_cases": 20,
   "n_reps": 2,
   "mean_recall": 1.0,
-  "mean_precision": 0.38583333333333336,
+  "mean_precision": 0.4020833333333333,
   "hallucination_rate": 0.0,
   "judge_means": {
     "root_cause_identified": 1.0,
@@ -16,35 +16,17 @@
       "domain": "frontend",
       "reps": [
         {
-          "precision": 0.5,
+          "precision": 0.4,
           "recall": 1.0,
           "hallucinated": [],
-          "n_files": 4,
+          "n_files": 5,
           "judge": {
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert accurately identifies that the save button's onClick or form onSubmit handler is likely missing or disconnected from the save mutation logic, correctly targets the settings form components, and gives concrete, actionable checks for fixing the issue."
+            "rationale": "The expert summary correctly identifies that the save button's click or form submit handler is disconnected/broken or failing to trigger the save action, directly aligning with the reference root cause. It focuses on the settings form area and provides actionable investigation steps and test suggestions."
           }
         },
-        {
-          "precision": 0.5,
-          "recall": 1.0,
-          "hallucinated": [],
-          "n_files": 4,
-          "judge": {
-            "root_cause_identified": true,
-            "correct_area": true,
-            "actionable": true,
-            "rationale": "The expert summary correctly identifies that the save button or form submit handler is not properly wired up on the settings page, accurately focuses on the settings form submission logic, and provides actionable steps for resolution."
-          }
-        }
-      ]
-    },
-    {
-      "id": "frontend-form-validation",
-      "domain": "frontend",
-      "reps": [
         {
           "precision": 0.4,
           "recall": 1.0,
@@ -54,7 +36,25 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert's summary accurately identifies the root cause (insufficient or missing email format validation on the signup form), focuses on the correct area (signup form validation and error handling), and provides clear, actionable steps for implementation."
+            "rationale": "The summary correctly identifies that the event handler (onClick/onSubmit) or button configuration on the settings form is likely missing or broken, matching the reference ground truth root cause. It targets the correct components and gives concrete, actionable steps for investigation."
+          }
+        }
+      ]
+    },
+    {
+      "id": "frontend-form-validation",
+      "domain": "frontend",
+      "reps": [
+        {
+          "precision": 0.5,
+          "recall": 1.0,
+          "hallucinated": [],
+          "n_files": 4,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary correctly identifies the root cause (insufficient/missing email format validation rules in the signup form), points to the right area of the codebase, and provides specific, actionable implementation and testing steps."
           }
         },
         {
@@ -66,7 +66,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert's summary correctly identifies that client-side email format validation is missing/weak, targets the proper form validation components, and provides clear, actionable implementation steps."
+            "rationale": "The expert's summary accurately captures the root cause (missing/weak client-side email format validation prior to submit), focuses on the correct area (signup form client-side validation logic), and gives specific, actionable instructions for implementation."
           }
         }
       ]
@@ -84,19 +84,19 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert's summary accurately captures the need to implement the new streaming CSV export endpoint in the transactions router with the existing auth dependency, identifying the correct area and providing detailed, actionable implementation guidance."
+            "rationale": "The expert summary accurately identifies the feature requirement matching the reference root cause, specifies the exact codebase area and router, and provides actionable implementation details including streaming and authentication handling."
           }
         },
         {
-          "precision": 0.2,
+          "precision": 0.25,
           "recall": 1.0,
           "hallucinated": [],
-          "n_files": 5,
+          "n_files": 4,
           "judge": {
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert's summary precisely identifies the required implementation: adding a streamed CSV export endpoint to the transactions router reusing existing auth dependencies, and provides actionable technical details on how to stream the response and test it."
+            "rationale": "The expert's summary accurately captures the need to implement an authenticated streaming CSV export endpoint in the transactions router using existing auth dependencies, and provides clear, actionable technical details on how to stream the response."
           }
         }
       ]
@@ -106,27 +106,27 @@
       "domain": "backend",
       "reps": [
         {
-          "precision": 0.25,
+          "precision": 0.2,
           "recall": 1.0,
           "hallucinated": [],
-          "n_files": 4,
+          "n_files": 5,
           "judge": {
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert summary correctly identifies the root cause (absence of rate-limiting middleware on POST /auth/login), focuses precisely on the authentication routing area, and provides clear, actionable instructions including threshold details, HTTP status code, headers, and target files."
+            "rationale": "The expert summary correctly identifies the missing rate limiting middleware on the POST /auth/login route as the root cause, targets the appropriate area of the codebase, and provides clear, actionable implementation instructions including response codes, headers, and edge cases like proxy trust."
           }
         },
         {
-          "precision": 0.25,
+          "precision": 0.3333333333333333,
           "recall": 1.0,
           "hallucinated": [],
-          "n_files": 4,
+          "n_files": 3,
           "judge": {
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert's summary accurately identifies the missing rate limiting middleware on POST /auth/login as the root cause, focuses on the correct route and middleware architecture, and provides clear, actionable instructions including headers, status codes, and test coverage."
+            "rationale": "The expert summary accurately identifies the lack of rate-limiting middleware on the /auth/login endpoint, specifies the appropriate mechanism (middleware with a 5 req/min window per IP), and outlines actionable steps including the 429 status code, Retry-After header, and testing."
           }
         }
       ]
@@ -136,18 +136,6 @@
       "domain": "infra-devops",
       "reps": [
         {
-          "precision": 0.3333333333333333,
-          "recall": 1.0,
-          "hallucinated": [],
-          "n_files": 3,
-          "judge": {
-            "root_cause_identified": true,
-            "correct_area": true,
-            "actionable": true,
-            "rationale": "The expert's summary accurately captures the root cause (insufficient memory requests/limits causing OOMKilled during rollout and lack of probes wedging deployments), correctly targets the worker deployment manifests/configuration, and provides actionable guidance on updating the limits and configuring probes."
-          }
-        },
-        {
           "precision": 0.25,
           "recall": 1.0,
           "hallucinated": [],
@@ -156,7 +144,19 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert summary accurately identifies the root cause (insufficient memory requests/limits and missing/misconfigured probes on the worker deployment) matching the reference root cause. It pinpoints the correct deployment configuration files and provides specific, actionable steps."
+            "rationale": "The expert's summary accurately captures the root cause (insufficient memory requests/limits leading to OOMKilled during rollout and missing health probes causing deployment stalls) and identifies the correct deployment manifest configuration area with actionable next steps."
+          }
+        },
+        {
+          "precision": 0.3333333333333333,
+          "recall": 1.0,
+          "hallucinated": [],
+          "n_files": 3,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert accurately identified the root cause matching the reference (insufficient memory requests/limits in the deployment manifest causing OOMKilled events alongside missing probe configurations). The correct component (worker deployment manifest) was identified, and the technical summary gives actionable instructions for resolving the issue."
           }
         }
       ]
@@ -166,15 +166,15 @@
       "domain": "infra-devops",
       "reps": [
         {
-          "precision": 0.5,
+          "precision": 0.3333333333333333,
           "recall": 1.0,
           "hallucinated": [],
-          "n_files": 2,
+          "n_files": 3,
           "judge": {
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert's summary accurately identifies the root cause (unpinned cache key without fallback restore-keys causing cache corruption in CI), targets the correct workflow configuration area, and provides specific, actionable implementation details."
+            "rationale": "The expert's summary accurately captures the root cause (unpinned cache key and lack of restore-keys fallback), targets the correct workflow configuration files, and provides concrete, actionable steps to resolve the issue."
           }
         },
         {
@@ -186,7 +186,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert accurately identifies the unstable/non-deterministic cache key and missing fallback restore-keys as the root cause, focuses on CI workflow cache settings, and provides specific, actionable cache key and restore-key patterns."
+            "rationale": "The expert summary correctly identifies the root cause regarding unstable cache keys without lockfile hashing and missing fallback restore keys, targets the correct CI workflow configuration area, and provides concrete, actionable details for implementation."
           }
         }
       ]
@@ -204,7 +204,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert summary accurately identifies the root cause (failure to retain form state across configuration changes/rebuilds leading to a null dereference), focuses on the correct area (profile screen form state lifecycle), and provides clear, actionable steps for resolving the issue."
+            "rationale": "The summary correctly identifies the root cause (failure to retain form state across configuration changes/rebuilds leading to null dereferencing) and points to the appropriate component and actionable fixes."
           }
         },
         {
@@ -216,7 +216,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert's summary accurately captures the root cause (configuration change/rebuild causing state loss and a null pointer exception), targets the correct component (the profile screen state/lifecycle handling), and provides actionable technical guidance on how to fix both the state preservation and null dereference issues."
+            "rationale": "The expert accurately identifies that configuration changes during rotation trigger rebuilds without state preservation, causing null dereferences/crashes in the profile screen. The area is correctly focused on the profile screen's lifecycle and form state retention, and the summary provides concrete, actionable remediation steps."
           }
         }
       ]
@@ -234,7 +234,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert's summary accurately captures the ground truth root cause: messages sent offline are dropped instead of persisted into a local queue/outbox for later synchronization. It targets the proper components (local persistence and connectivity-driven sync mechanism) and provides actionable guidance for implementation."
+            "rationale": "The expert's summary accurately captures the ground truth root cause: messages composed offline are dropped rather than persisted to an outbox queue that drains on connectivity restoration. It identifies the correct functional areas (local persistence, repository sync, and connectivity detection) and provides actionable architectural guidance."
           }
         },
         {
@@ -246,7 +246,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert accurately identifies that offline messages are not persisted locally to an outbox queue and are instead dropped or kept ephemerally. The summary clearly targets the persistence and sync layers (MessageDao, MessageRepository, ConnectivityMonitor) and provides actionable implementation steps."
+            "rationale": "The expert's summary accurately captures the root cause (messages are dropped/discarded rather than persisted to a local queue to be drained upon reconnection), targets the correct architectural components (MessageDao, MessageRepository, ConnectivityMonitor), and provides clear, actionable steps for implementation."
           }
         }
       ]
@@ -256,15 +256,15 @@
       "domain": "data-ml",
       "reps": [
         {
-          "precision": 0.3333333333333333,
+          "precision": 0.4,
           "recall": 1.0,
           "hallucinated": [],
-          "n_files": 6,
+          "n_files": 5,
           "judge": {
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert summary accurately identifies train/serve skew resulting from unsynchronized feature transformations after the refactor, correctly targets the feature pipeline and serving logic, and outlines concrete actions for reconciliation and testing."
+            "rationale": "The expert accurately identifies train/serve skew resulting from unaligned changes in the feature refactor, focuses on the relevant training vs. serving feature pipelines, and provides actionable steps to audit differences, update the serving path, and verify accuracy with tests."
           }
         },
         {
@@ -276,7 +276,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert accurately identifies train/serve skew resulting from diverged feature extraction logic during the refactor as the root cause. It targets the correct feature pipeline components and provides concrete, actionable steps to restore parity and add regression tests."
+            "rationale": "The expert summary correctly identifies the train/serve skew resulting from unsynchronized training and serving feature pipelines, targets the relevant feature logic components, and provides clear, actionable steps for remediation."
           }
         }
       ]
@@ -294,7 +294,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert accurately identifies that the load phase lacks idempotency/upsert/partition-delete logic, correctly targets the loading step, and provides clear, actionable steps to implement idempotent writes."
+            "rationale": "The expert's summary accurately captures the root cause (blindly appending without partition cleanup or upsert logic upon re-run), focuses on the correct area (ETL loading step), and provides clear, actionable steps for implementation and testing."
           }
         },
         {
@@ -306,7 +306,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert's summary accurately captures the underlying mechanism (load step lacks partition overwrite/upsert logic, causing duplicates on retry), focuses on the load pipeline components, and provides actionable recommendations."
+            "rationale": "The summary correctly identifies the root cause as the lack of idempotent write mechanisms (such as upsert/merge or partition-scoped delete-before-insert) during data loading, focuses accurately on the load pipeline component, and provides actionable implementation details and test verification guidelines."
           }
         }
       ]
@@ -316,27 +316,27 @@
       "domain": "cli",
       "reps": [
         {
-          "precision": 0.5,
+          "precision": 0.6666666666666666,
           "recall": 1.0,
           "hallucinated": [],
-          "n_files": 4,
+          "n_files": 3,
           "judge": {
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert's summary accurately captures the root cause described in the reference (failure path fails to propagate a non-zero exit code through main/cli), identifies the correct area (cli build command and main entrypoint), and provides clear, actionable steps for implementation and testing."
+            "rationale": "The expert accurately identifies the root cause matching the reference: the build failure path catches or logs the error without propagating a non-zero exit code back through the entry point/main. It points to the correct areas of the codebase (`cli/commands/build.py` and `cli/main.py`) and provides concrete, actionable steps to fix and test the issue."
           }
         },
         {
-          "precision": 0.5,
+          "precision": 0.6666666666666666,
           "recall": 1.0,
           "hallucinated": [],
-          "n_files": 4,
+          "n_files": 3,
           "judge": {
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert summary correctly identifies that the build failure path does not return or propagate a non-zero exit code through main(). It identifies the correct area (the CLI build command handling and main exit code propagation) and provides actionable guidance on how to fix it."
+            "rationale": "The expert accurately identifies that the build command's failure path fails to propagate a non-zero exit code, targets the CLI command and main entrypoint handling, and provides actionable implementation and testing steps."
           }
         }
       ]
@@ -354,7 +354,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert's summary accurately identifies the root cause in the configuration resolution and merge order, correctly targets the configuration merging logic, and provides actionable guidance on how to fix and test the precedence hierarchy."
+            "rationale": "The expert's summary accurately identifies the root cause (configuration resolution merging sources in the wrong order such that config files overwrite CLI flags), correctly targets the configuration precedence and flag-binding area of the codebase, and provides clear, actionable instructions for updating the merge logic and testing precedence."
           }
         },
         {
@@ -366,7 +366,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert summary accurately identifies the root cause (inverted configuration merging order where config file values overwrite CLI flags), points to the configuration loading and merging logic, and provides clear, actionable guidance on the required precedence fix and tests."
+            "rationale": "The summary accurately identifies the root cause (config resolution overwriting CLI flag values when loading ~/.toolrc), targets the correct configuration and flag binding components, and provides clear, actionable steps for implementation and testing."
           }
         }
       ]
@@ -384,7 +384,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert identifies the underlying failure mechanism (lack of A/B dual-slotting, in-place flashing without staging, and bootloader jumping without image validation/validity flags). The affected subsystems (OTA update writer, flash metadata, bootloader verification) are accurate, and the explanation provides clear, actionable steps for implementation."
+            "rationale": "The expert's summary correctly identifies that interrupted OTA flashing leaves partially written firmware that the bootloader boots due to a lack of dual-slot/atomic swap mechanism and validity/integrity flags. It focuses on the proper area (OTA flashing and boot validation) and provides actionable guidance on implementing validation flags, A/B staging, and atomic commit semantics."
           }
         },
         {
@@ -396,7 +396,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert's summary accurately captures the root cause (writing without an atomic/dual-slot swap mechanism or boot validity check, causing interrupted flashes to leave unbootable images), targets the relevant bootloader/OTA subsystems, and provides concrete, actionable steps to resolve the issue."
+            "rationale": "The expert's summary accurately captures the root cause (overwriting the running image directly without an A/B dual-slot or atomic swap mechanism, leaving incomplete images unbootable) and proposes actionable, technically detailed remediation steps focusing on the correct subsystems (OTA and bootloader)."
           }
         }
       ]
@@ -406,27 +406,27 @@
       "domain": "embedded",
       "reps": [
         {
-          "precision": 0.3333333333333333,
+          "precision": 0.4,
           "recall": 1.0,
           "hallucinated": [],
-          "n_files": 6,
+          "n_files": 5,
           "judge": {
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert's summary accurately identifies the root cause (absence of a timeout in the blocking I2C read when a device is missing/disconnected), focuses on the correct area (the I2C driver and upper-layer read handling), and gives clear, actionable implementation details."
+            "rationale": "The expert's summary accurately captures the ground truth root cause: the I2C read routine lacks a timeout and blocks indefinitely on a missing ACK/disconnected device. It correctly targets the I2C driver routines and provides actionable guidance on adding a timeout mechanism and error-handling path."
           }
         },
         {
-          "precision": 0.3333333333333333,
+          "precision": 0.4,
           "recall": 1.0,
           "hallucinated": [],
-          "n_files": 6,
+          "n_files": 5,
           "judge": {
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert accurately identifies that the blocking I2C read lacks a timeout on bus polling loops when the sensor is disconnected, leading to watchdog resets. It targets the correct I2C driver layer and provides clear, actionable steps for implementing timeout thresholds and error propagation."
+            "rationale": "The expert's summary accurately identifies the root cause (lack of timeout/error handling in the blocking I2C read during bus transactions), targets the correct component (I2C driver/HAL layer), and outlines clear, actionable implementation steps."
           }
         }
       ]
@@ -444,7 +444,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert's summary accurately identifies the root cause (instantiating new particle objects per frame instead of object pooling/reusing them, leading to GC pressure), focuses on the correct area (particle pipeline/ParticleSystem/ParticleEmitter), and provides concrete, actionable steps to implement pooling and remove per-frame allocations."
+            "rationale": "The expert accurately identifies per-frame particle instantiations/allocations as the root cause of GC spikes and frame rate drops, focuses on the particle system's emission and update loop, and provides actionable recommendations to implement object pooling or preallocated buffers."
           }
         },
         {
@@ -456,7 +456,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert's summary accurately identifies heap allocations of particles instead of pooling as the root cause, targets the particle system/emitters, and provides clear, actionable refactoring steps to resolve GC pressure."
+            "rationale": "The expert's summary accurately identifies the root cause (allocating particle objects per frame instead of reusing/pooling memory, leading to GC pressure), targets the correct subsystem (particle system/emitters), and provides clear, actionable steps to implement object pooling."
           }
         }
       ]
@@ -466,27 +466,27 @@
       "domain": "game",
       "reps": [
         {
-          "precision": 0.3333333333333333,
+          "precision": 0.4,
           "recall": 1.0,
           "hallucinated": [],
-          "n_files": 6,
+          "n_files": 5,
           "judge": {
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert summary accurately identifies the exact root cause: jump input is sampled in the variable render loop rather than queued/latched for the fixed-timestep update loop. It focuses on the correct area and provides clear, actionable instructions for fixing the problem."
+            "rationale": "The expert summary accurately identifies the root cause (sampling inputs in the variable-rate render loop rather than latching/buffering for fixed-timestep updates), pinpoints the correct game loop and input handling area, and gives specific actionable guidance on fixing it."
           }
         },
         {
-          "precision": 0.3333333333333333,
+          "precision": 0.4,
           "recall": 1.0,
           "hallucinated": [],
-          "n_files": 6,
+          "n_files": 5,
           "judge": {
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert accurately identified the root cause matching the reference: jump input is sampled in the variable render loop rather than queued and consumed deterministically during the fixed-timestep update. It identifies the correct functional area and provides a concrete, actionable solution."
+            "rationale": "The expert's summary accurately identifies the discrepancy between variable render frames and fixed-timestep physics updates causing missed or delayed input sampling, which directly aligns with the reference root cause. It targets the input system and main game loop, and provides clear, actionable steps (buffering, latching, or queuing discrete events)."
           }
         }
       ]
@@ -504,7 +504,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert's summary accurately captures the root cause of the stored XSS vulnerability (unsafe rendering/lack of sanitization, specifically pointing out dangerouslySetInnerHTML or lack of React text encoding), identifies the relevant area (profile bio handling and display), and provides clear, actionable remediation guidance."
+            "rationale": "The expert accurately identifies unescaped/unsanitized bio rendering (such as dangerouslySetInnerHTML) and lack of sanitization as the root cause, focuses on the relevant frontend rendering and backend storage layers, and provides concrete, actionable remediation steps."
           }
         },
         {
@@ -516,7 +516,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert accurately identifies the root cause (rendering unsanitized user input via mechanisms like dangerouslySetInnerHTML), targets the correct UI rendering components and server profile routes, and provides clear, actionable mitigation steps."
+            "rationale": "The expert's summary accurately captures the root cause (unencoded/unsanitized storage and raw HTML rendering of the bio field), points to the relevant profile rendering and handling areas, and gives actionable mitigation steps."
           }
         }
       ]
@@ -534,7 +534,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert summary accurately identifies the lack of outbound URL and IP validation as the root cause of the SSRF vulnerability, correctly focuses on webhook validation and outbound dispatch transport, and provides concrete, actionable steps to remediate the issue."
+            "rationale": "The expert's summary accurately captures the root cause (lack of validation/allowlisting on outbound webhook URLs enabling SSRF), targets the correct component (webhook URL handling and dispatch), and provides specific, actionable implementation steps."
           }
         },
         {
@@ -546,7 +546,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert's summary accurately captures the root cause (lack of validation/restriction on user-supplied webhook URLs fetched server-side), correctly targets webhook URL validation and egress dispatching, and provides highly actionable steps to remediate the vulnerability."
+            "rationale": "The expert summary accurately identifies the root cause (unvalidated user-supplied webhook URLs leading to SSRF), targets the correct area of the codebase (webhook input validation and outbound dispatch services), and provides detailed, actionable implementation guidance (scheme restrictions, IP/hostname checks including metadata and private subnets, and DNS rebinding mitigations)."
           }
         }
       ]
@@ -556,15 +556,15 @@
       "domain": "database",
       "reps": [
         {
-          "precision": 0.5,
+          "precision": 0.6666666666666666,
           "recall": 1.0,
           "hallucinated": [],
-          "n_files": 4,
+          "n_files": 3,
           "judge": {
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert's summary accurately pinpoints the root cause (missing composite index on status and created_at), focuses on the correct area (database schema/migration and Order model), and provides actionable, concrete implementation details."
+            "rationale": "The expert's summary accurately identifies the missing index on status and created_at causing full table scans, points to the correct database migration and model area, and provides actionable steps to implement the composite index."
           }
         },
         {
@@ -576,7 +576,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert accurately identified the lack of an index covering status and created_at as the root cause, correctly targeted the database indexing and migrations area, and provided specific, actionable instructions to resolve the problem."
+            "rationale": "The summary accurately identifies the root cause (unindexed columns status and created_at causing a full table scan), targets the correct database/model area, and provides clear, actionable steps to introduce a composite migration index."
           }
         }
       ]
@@ -594,7 +594,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert accurately identifies the root cause as a blocking ALTER TABLE / table rewrite on a large table. It targets the correct area (migrations/DDL execution) and provides clear, actionable steps including online migration patterns (nullable column + backfill) and setting lock_timeout."
+            "rationale": "The expert accurately identifies the root cause as a blocking ALTER TABLE acquiring an AccessExclusiveLock and rewriting the table, precisely aligns with the database migration area, and provides clear, actionable steps for online schema migration."
           }
         },
         {
@@ -606,7 +606,7 @@
             "root_cause_identified": true,
             "correct_area": true,
             "actionable": true,
-            "rationale": "The expert summary correctly identifies the root cause as a blocking ALTER TABLE operation taking an exclusive lock and rewriting the table, targets the database migrations area, and provides clear, actionable steps for implementing online migration patterns."
+            "rationale": "The expert's summary accurately identifies the root cause (blocking ALTER TABLE on a large table rather than an online DDL approach), pinpoints the correct migration area, and provides specific, actionable steps to resolve the issue safely."
           }
         }
       ]

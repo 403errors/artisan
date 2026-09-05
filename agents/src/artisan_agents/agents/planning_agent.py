@@ -9,6 +9,7 @@ from google.genai import types
 
 from artisan_agents.agents._run_agent import run_structured
 from artisan_agents.config import GEMINI_MODEL_ID
+from artisan_agents.repo_context_summary import ranked_file_sample
 
 APP_NAME = "artisan-planning"
 
@@ -67,10 +68,11 @@ _RETRY_NUDGE = (
 )
 
 
-def _repo_context_summary(repo_context: RepoContext) -> str:
+def _repo_context_summary(repo_context: RepoContext, query: str = "") -> str:
     # Cap the file tree sample so the prompt stays bounded on large repos, while still giving the
-    # model enough real paths to ground `touched_files`/`removed_code` in.
-    file_sample = repo_context.file_tree[:200]
+    # model enough real paths to ground `touched_files`/`removed_code` in. Wave 1.6: ranked by
+    # relevance to the issue (alphabetical first-200 covers ~2% of a SWE-bench-scale repo).
+    file_sample = ranked_file_sample(repo_context.file_tree, query)
     files_str = "\n".join(f"- {f}" for f in file_sample) or "(none given)"
     truncated_note = (
         f"\n... ({len(repo_context.file_tree) - len(file_sample)} more files not shown)"
@@ -107,7 +109,7 @@ def _build_prompt(
         f"Domain-expert summaries:\n{summaries}"
     )
     if repo_context is not None:
-        prompt += _repo_context_summary(repo_context)
+        prompt += _repo_context_summary(repo_context, query=f"{issue_title}\n{issue_body}")
     if prior_feedback:
         prompt += (
             f"\n\nPRIOR ATTEMPT FEEDBACK (address this explicitly):\n{wrap_untrusted(prior_feedback)}"

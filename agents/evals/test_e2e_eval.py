@@ -165,9 +165,23 @@ def _make_local_executor(scenario_dir: Path, scenario: dict, attempts: list[dict
             _git(workdir, "commit", "-q", "-m", "baseline")
             _git(workdir, "checkout", "-q", "-b", branch)
 
-            summary = await run_coding_agent(
-                workdir=workdir, plan=plan, prior_feedback=feedback
-            )
+            try:
+                summary = await run_coding_agent(
+                    workdir=workdir, plan=plan, prior_feedback=feedback
+                )
+            except Exception as exc:
+                # Tool-level failures (e.g. a model-chosen shell command timing out) degrade to
+                # a failed attempt — the pipeline retries/escalates — not a harness crash.
+                attempts.append(
+                    {"attempt": attempt, "changes": None, "visible_passed": False,
+                     "heldout_passed": False, "summary": f"coding agent error: {exc}"[:300]}
+                )
+                return ExecutionResult(
+                    branch=branch,
+                    diff_summary=f"coding agent raised: {type(exc).__name__}: {exc}"[:500],
+                    tests_passed=False,
+                    logs_uri="local-eval",
+                )
 
             _git(workdir, "add", "-A")
             diff_stat = _git(workdir, "diff", "--cached", "--stat").strip()
@@ -182,6 +196,14 @@ def _make_local_executor(scenario_dir: Path, scenario: dict, attempts: list[dict
                     tests_passed=False,
                     logs_uri="local-eval",
                 )
+            # #12: mirror production — verification sees the bounded real patch, not just a stat,
+            # plus full content of changed files (unchanged siblings carry the same bug class).
+            diff_patch = _git(workdir, "diff", "--cached")[:12_000]
+            changed_files = {
+                p: (workdir / p).read_text(errors="replace")[:8_000]
+                for p in _git(workdir, "diff", "--cached", "--name-only", "--diff-filter=ACMR").splitlines()[:10]
+                if (workdir / p).is_file()
+            }
 
             visible_ok, visible_out = _run_cmd(scenario["test_command"], workdir)
 
@@ -200,6 +222,8 @@ def _make_local_executor(scenario_dir: Path, scenario: dict, attempts: list[dict
                 diff_summary=f"{summary}\n\n{diff_stat}",
                 tests_passed=visible_ok,
                 logs_uri="local-eval",
+                diff_patch=diff_patch,
+                changed_file_contents=changed_files,
             )
 
     return local_trigger_execution

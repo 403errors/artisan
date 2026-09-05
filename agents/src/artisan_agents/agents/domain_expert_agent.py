@@ -220,7 +220,8 @@ directories/patterns if exact paths aren't knowable from the issue alone) that a
 would find reasonable as a starting point — never fabricate a suspiciously precise path you have \
 no basis for; a plausible directory or pattern is fine when a specific file isn't inferable. \
 When the repo context includes a file tree, name files from that tree verbatim — a path that \
-isn't in the tree is almost certainly wrong."""
+isn't in the tree is almost certainly wrong. Keep the list tight: name only files you would \
+modify or must read to plan the change, not everything tangentially related."""
 
 DOMAIN_EXPERT_INSTRUCTION = DOMAIN_EXPERT_INSTRUCTION + "\n\n" + UNTRUSTED_CONTENT_NOTICE
 
@@ -299,8 +300,12 @@ def _build_prompt(
     )
     if repo_context is not None:
         # include_file_tree: the expert's relevant_files output must name REAL paths — without
-        # the tree it hallucinated 71.6% of them in the wave-1.6 eval.
-        prompt += repo_context_summary(repo_context, include_file_tree=True)
+        # the tree it hallucinated 71.6% of them in the wave-1.6 eval. query=issue text ranks the
+        # sample by relevance, so big repos surface the right neighborhood instead of the
+        # alphabetical first 200.
+        prompt += repo_context_summary(
+            repo_context, include_file_tree=True, query=f"{issue_title}\n{issue_body}"
+        )
         if _lens_for(domain) is not None:
             prompt += _conventions_section(repo_context)
     return prompt

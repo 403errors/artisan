@@ -29,6 +29,18 @@ def stub_security_scan_clean(monkeypatch):
     monkeypatch.setattr(main_module.security_scan, "scan_new_dependencies", lambda repo_dir: [])
 
 
+@pytest.fixture(autouse=True)
+def stub_staged_diff(monkeypatch):
+    """#12's bounded real diff + changed-file contents ride along on the success-path
+    ExecutionResult — stub them so tests don't shell out to git in a nonexistent workdir."""
+    monkeypatch.setattr(
+        main_module.git_ops, "staged_diff", lambda repo_dir: "diff --git a/a.py b/a.py\n+x"
+    )
+    monkeypatch.setattr(
+        main_module.git_ops, "staged_file_contents", lambda repo_dir: {"a.py": "x"}
+    )
+
+
 @pytest.mark.asyncio
 async def test_happy_path_returns_passed_result(monkeypatch) -> None:
     monkeypatch.setattr(main_module.git_ops, "clone", lambda *a, **k: None)

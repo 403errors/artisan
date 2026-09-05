@@ -1,16 +1,16 @@
 {
-  "generated": "2026-09-05T15:41:50.719715+00:00",
+  "generated": "2026-09-05T18:25:18.036690+00:00",
   "n_cases": 25,
   "n_reps": 3,
-  "mean_match": 0.92,
+  "mean_match": 1.0,
   "stability": 0.96,
-  "fallback_rate": 0.1111111111111111,
+  "fallback_rate": 0.10714285714285714,
   "confidence_distribution": {
     "high": 75
   },
   "calibration": {
     "high": {
-      "correct": 69,
+      "correct": 75,
       "total": 75
     }
   },
@@ -223,24 +223,24 @@
       "id": "security-ssrf-webhook",
       "expected": "security",
       "passes": [
-        false,
-        false,
-        false
+        true,
+        true,
+        true
       ],
       "stable": true,
-      "predicted_run1": "backend",
+      "predicted_run1": "security",
       "confidence_run1": "high"
     },
     {
       "id": "database-slow-orders-query",
       "expected": "backend+database",
       "passes": [
-        false,
-        false,
-        false
+        true,
+        true,
+        true
       ],
       "stable": true,
-      "predicted_run1": "backend",
+      "predicted_run1": "backend+database",
       "confidence_run1": "high"
     },
     {
@@ -300,7 +300,7 @@
         true
       ],
       "stable": false,
-      "predicted_run1": "smart-contract",
+      "predicted_run1": "smart-contracts",
       "confidence_run1": "high"
     },
     {

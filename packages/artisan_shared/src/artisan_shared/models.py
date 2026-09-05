@@ -111,6 +111,17 @@ class ExecutionResult(BaseModel):
     diff_summary: str
     tests_passed: bool
     logs_uri: str
+    # Bounded full `git diff` content (v2 wave 1.6 #12): verification judged from the coding
+    # agent's self-summary + a numstat alone and shipped a partial security fix it couldn't see
+    # (false green on the E2E mini-bench). The actual patch — capped by the producer — lets the
+    # verifier check what the code DOES, including sibling paths the issue didn't name. Empty
+    # when no changes were staged or the producer predates the field.
+    diff_patch: str = ""
+    # Bounded full content of every changed file (#12 follow-up): a diff shows only changed
+    # hunks — an UNCHANGED sibling function with the same bug class (the false green's
+    # write_user_file next to the fixed read_user_file) never appears in it. The verifier needs
+    # to see what the change DIDN'T touch. Producers cap per-file and total size.
+    changed_file_contents: dict[str, str] = {}
 
 
 class CriterionResult(BaseModel):

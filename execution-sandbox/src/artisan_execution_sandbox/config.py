@@ -13,8 +13,10 @@ GITHUB_INSTALLATION_ID = os.environ.get("ARTISAN_GITHUB_INSTALLATION_ID", "15712
 SECRET_GITHUB_APP_PRIVATE_KEY = "github-app-private-key"
 
 # Bounds the coding agent's tool-call loop so a stuck model can't run past the job's own Cloud Run
-# Jobs execution timeout (MILESTONE.md Phase 3.4).
-MAX_CODING_AGENT_TOOL_CALLS = 40
+# Jobs execution timeout (MILESTONE.md Phase 3.4). Env-overridable: SWE-bench-scale repos need
+# more exploration than the demo repos this default was tuned on — the bench runner sets 80 and
+# records it in run_log, so bench-vs-production behavior differences stay visible.
+MAX_CODING_AGENT_TOOL_CALLS = int(os.environ.get("ARTISAN_MAX_CODING_AGENT_TOOL_CALLS", "40"))
 
 # v1 is scoped to exactly one fixed demo repo (docs/PRD.md §5), so a single configured test
 # command is legitimate rather than building generic multi-language test detection.

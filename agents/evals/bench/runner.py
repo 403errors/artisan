@@ -84,12 +84,13 @@ def require_env() -> None:
 # ----------------------------------------------------------------------------- docker images
 
 def image_for(benchmark: Benchmark, instance: dict) -> str:
-    """Official per-instance environment image (all verified against Docker Hub 2026-09).
-
-    Conventions differ per benchmark:
+    """Official per-instance environment image (all conventions verified against the registries
+    2026-09). Every benchmark has prebuilt images — no Dockerfile building needed:
     - SWE-bench Verified/Multilingual: swebench/sweb.eval.x86_64.<id with __->_1776_>:latest
     - SWE-bench-Live: same naming but under the starryzhang org
     - SWE-bench Pro: single repo jefzda/sweap-images, per-instance dockerhub_tag as the TAG
+    - SWE-PolyBench: ghcr.io/timesler/swe-polybench.eval.x86_64.<id>:v1.1 (keeps "__")
+    - Multi-SWE-bench: mswebench/<org>_m_<repo>:pr-<number>
     """
     if benchmark.key == "swebench-pro":
         tag = instance["extra"].get("dockerhub_tag")
@@ -100,25 +101,43 @@ def image_for(benchmark: Benchmark, instance: dict) -> str:
         org = "starryzhang" if benchmark.key == "swebench-live" else "swebench"
         hub_name = instance["instance_id"].replace("__", "_1776_")
         return f"{org}/sweb.eval.x86_64.{hub_name}:latest"
-    raise NotImplementedError(
-        f"{benchmark.key}: no prebuilt per-instance images — its official harness builds "
-        "environments from per-instance Dockerfiles. See README.md for the grading path; "
-        "runner support for this benchmark is a follow-up."
-    )
+    if benchmark.key == "swe-polybench":
+        return f"ghcr.io/timesler/swe-polybench.eval.x86_64.{instance['instance_id']}:v1.1"
+    if benchmark.key == "multi-swe-bench":
+        org_repo, number = instance["instance_id"].rsplit("-", 1)
+        org, repo_short = org_repo.split("__", 1)
+        return f"mswebench/{org}_m_{repo_short}:pr-{number}"
+    raise NotImplementedError(f"{benchmark.key}: no image rule registered")
 
 
-def ensure_image(image: str) -> None:
-    if subprocess.run(
-        ["docker", "image", "inspect", image], capture_output=True, check=False
-    ).returncode == 0:
-        return
-    print(f"    pulling {image} ...", flush=True)
-    result = subprocess.run(
-        ["docker", "pull", "--platform", "linux/amd64", image],
-        capture_output=True, text=True, check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"docker pull failed for {image}: {result.stderr[-500:]}")
+def container_workdir(benchmark: Benchmark, instance: dict) -> str:
+    """Where the repo lives inside the benchmark's image (bind-mount target for the host
+    checkout). SWE-bench family + PolyBench use /testbed; Multi-SWE-bench clones to
+    /home/<repo> (per its harness's Dockerfile templates)."""
+    if benchmark.key == "multi-swe-bench":
+        return f"/home/{instance['repo'].split('/', 1)[1]}"
+    return "/testbed"
+
+
+def ensure_image(image: str) -> str:
+    """Pull if missing; returns the image name actually available (PolyBench's GHCR tags are
+    ':v1.1' for refreshed instances and ':latest' for the rest — fall back on pull failure)."""
+    candidates = [image]
+    if image.endswith(":v1.1"):
+        candidates.append(image[: -len(":v1.1")] + ":latest")
+    for candidate in candidates:
+        if subprocess.run(
+            ["docker", "image", "inspect", candidate], capture_output=True, check=False
+        ).returncode == 0:
+            return candidate
+        print(f"    pulling {candidate} ...", flush=True)
+        result = subprocess.run(
+            ["docker", "pull", "--platform", "linux/amd64", candidate],
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode == 0:
+            return candidate
+    raise RuntimeError(f"docker pull failed for {candidates}: {result.stderr[-500:]}")
 
 
 # ----------------------------------------------------------------------------- repo checkouts
@@ -157,28 +176,69 @@ def patch_test_files(test_patch: str) -> list[str]:
     return files
 
 
-def internal_test_command(benchmark: Benchmark, instance: dict) -> str:
+def internal_test_command(benchmark: Benchmark, instance: dict) -> str | None:
+    """Dataset-shipped commands take precedence. Everything else is inferred from the checkout
+    at execution time (infer_test_command) — manifest-aware beats guessing."""
     extra = instance.get("extra") or {}
     if extra.get("test_cmds"):  # SWE-bench-Live ships per-instance commands
         return " && ".join(extra["test_cmds"])
     if extra.get("test_command"):  # SWE-PolyBench
         return extra["test_command"]
-    files = patch_test_files(instance["test_patch"])
-    if not files:
-        return "python -m pytest -x -q"
-    return "python -m pytest -x -q " + " ".join(shlex.quote(f) for f in files)
+    return None
 
 
-def run_tests_in_container(image: str, workdir: Path, command: str) -> tuple[bool, str]:
+def infer_test_command(workdir: Path, test_files: list[str]) -> str:
+    """Language-aware internal test signal for repos whose dataset ships no command (v2 wave 1.6
+    phase 4). Scoped to the oracle-touched test files where the ecosystem's runner supports it
+    (a full-suite run on a SWE-bench-scale repo blows the per-instance timeout); falls back to
+    broader runs where scoping is unreliable."""
+    if (workdir / "go.mod").exists():
+        dirs = sorted({str(Path(f).parent) for f in test_files if f.endswith("_test.go")})
+        return "go test " + " ".join(f"./{d}/..." for d in dirs) if dirs else "go test ./..."
+    if (workdir / "Cargo.toml").exists():
+        return "cargo test"
+    if (workdir / "pom.xml").exists():
+        classes = sorted({Path(f).stem for f in test_files if f.endswith(".java")})
+        return f"mvn test -q -Dtest={','.join(classes)}" if classes else "mvn test -q"
+    package_json = workdir / "package.json"
+    if package_json.exists():
+        try:
+            test_script = json.loads(package_json.read_text()).get("scripts", {}).get("test", "")
+        except json.JSONDecodeError:
+            test_script = ""
+        files = " ".join(shlex.quote(f) for f in test_files)
+        if "vitest" in test_script:
+            return f"npx vitest run {files}" if files else "npx vitest run"
+        if "jest" in test_script:
+            return f"npx jest {files}" if files else "npx jest"
+        if "mocha" in test_script:
+            return f"npx mocha {files}" if files else "npx mocha"
+        return "npm test"
+    files = " ".join(shlex.quote(f) for f in test_files)
+    return f"python -m pytest -x -q {files}".strip()
+
+
+def run_tests_in_container(
+    image: str, patch: str, command: str, container_dir: str = "/testbed"
+) -> tuple[bool, str]:
+    """Apply the agent's patch INSIDE the container over the image's own checkout, then run the
+    test command — the official-harness flow. (Bind-mounting the host checkout over the image's
+    repo would hide in-image build artifacts; repos with compiled extensions, e.g. astropy,
+    fail to import that way — found in the first smoke run.) The whole script goes via stdin so
+    the patch survives quoting."""
+    # Activation must NOT be subshell-parenthesized — `(source activate) && cmd` loses the env
+    # when the subshell exits (the images auto-activate only for LOGIN shells, which `bash -s`
+    # is not; found via "No module named pytest" in the first smoke run).
+    script = (
+        f"cd {container_dir} && git apply - <<'ARTISAN_PATCH_EOF_9f31'\n{patch}\n"
+        f"ARTISAN_PATCH_EOF_9f31\n"
+        f"source /opt/miniconda3/bin/activate testbed 2>/dev/null || true\n"
+        f"{command}"
+    )
     result = subprocess.run(
-        [
-            "docker", "run", "--rm", "--platform", "linux/amd64",
-            "-v", f"{workdir}:/testbed",
-            "--entrypoint", "bash",
-            image, "-lc",
-            f"cd /testbed && (source /opt/miniconda3/bin/activate testbed 2>/dev/null || true) && {command}",
-        ],
-        capture_output=True, text=True, check=False, timeout=TEST_TIMEOUT_S,
+        ["docker", "run", "--rm", "-i", "--platform", "linux/amd64",
+         "--entrypoint", "bash", image, "-s"],
+        input=script, capture_output=True, text=True, check=False, timeout=TEST_TIMEOUT_S,
     )
     return result.returncode == 0, (result.stdout + result.stderr)[-2000:]
 
@@ -302,20 +362,32 @@ async def run_instance(benchmark: Benchmark, instance: dict, *, max_attempts: in
     from artisan_shared.models import ExecutionResult
 
     iid = instance["instance_id"]
-    image = image_for(benchmark, instance)
-    ensure_image(image)
+    image = ensure_image(image_for(benchmark, instance))
+    container_dir = container_workdir(benchmark, instance)
 
     repo = instance["repo"]
     issue_number = abs(hash(iid)) % 90000 + 1
     store = _FakeTicketStore(repo, issue_number, max_attempts)
     attempts: list[dict] = []
-    test_cmd = internal_test_command(benchmark, instance)
+    preset_cmd = internal_test_command(benchmark, instance)
+    test_files = patch_test_files(instance["test_patch"])
 
     async def executor(*, repo, issue_number, branch, plan, attempt, feedback) -> ExecutionResult:
         with tempfile.TemporaryDirectory(prefix="artisan-bench-") as tmp:
             workdir = Path(tmp) / "repo"
             checkout_repo(repo, instance["base_commit"], workdir)
-            summary = await run_coding_agent(workdir=workdir, plan=plan, prior_feedback=feedback)
+            try:
+                summary = await run_coding_agent(workdir=workdir, plan=plan, prior_feedback=feedback)
+            except Exception as exc:
+                # A tool-level failure (e.g. the model's shell command timing out) must degrade
+                # to a failed ATTEMPT — retry/escalate — never crash the whole instance.
+                attempts.append({"attempt": attempt, "changes": None, "tests_passed": False,
+                                 "patch": "", "summary": f"coding agent error: {exc}"[:300]})
+                return ExecutionResult(
+                    branch=branch,
+                    diff_summary=f"coding agent raised: {type(exc).__name__}: {exc}"[:500],
+                    tests_passed=False, logs_uri="bench-local",
+                )
             _run(["git", "-C", str(workdir), "add", "-A"])
             patch = _run(["git", "-C", str(workdir), "diff", "--cached", instance["base_commit"]]).stdout
             if not patch.strip():
@@ -325,12 +397,23 @@ async def run_instance(benchmark: Benchmark, instance: dict, *, max_attempts: in
                     branch=branch, diff_summary=f"coding agent made no changes. Summary: {summary}",
                     tests_passed=False, logs_uri="bench-local",
                 )
-            tests_ok, test_out = run_tests_in_container(image, workdir, test_cmd)
+            cmd = preset_cmd or infer_test_command(workdir, test_files)
+            tests_ok, test_out = run_tests_in_container(image, patch, cmd, container_dir)
             attempts.append({"attempt": attempt, "changes": True, "tests_passed": tests_ok,
                              "patch": patch, "summary": summary, "test_output_tail": test_out[-500:]})
+            changed_files = {
+                p: (workdir / p).read_text(errors="replace")[:8_000]
+                for p in _run(
+                    ["git", "-C", str(workdir), "diff", "--cached", "--name-only",
+                     "--diff-filter=ACMR"]
+                ).stdout.splitlines()[:10]
+                if (workdir / p).is_file()
+            }
             return ExecutionResult(
                 branch=branch, diff_summary=f"{summary}\n\n{len(patch)} patch bytes",
                 tests_passed=tests_ok, logs_uri="bench-local",
+                diff_patch=patch[:12_000],  # #12: verification sees the bounded real patch
+                changed_file_contents=changed_files,  # ... and the unchanged siblings
             )
 
     # RepoContext from a throwaway checkout (the executor makes its own per attempt).
@@ -387,6 +470,10 @@ async def main() -> None:
     args = parser.parse_args()
 
     require_env()
+    # Real-scale repos need more exploration than the production default (40) was tuned on —
+    # set BEFORE the sandbox package is imported (config is read at import time) and recorded
+    # per-run so bench-vs-production behavior differences stay visible.
+    os.environ.setdefault("ARTISAN_MAX_CODING_AGENT_TOOL_CALLS", "80")
     benchmark = BENCHMARKS[args.benchmark]
     instances = load_selected(benchmark)[: args.limit]
 

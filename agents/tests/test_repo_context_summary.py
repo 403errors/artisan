@@ -110,3 +110,54 @@ def test_file_tree_sample_is_capped_with_truncation_note() -> None:
 def test_file_tree_empty_tree_renders_placeholder() -> None:
     summary = repo_context_summary(_ctx(manifests={}), include_file_tree=True)
     assert "(empty tree)" in summary
+
+
+# --- v2 wave 1.6: relevance-ranked tree sample ---
+
+
+def test_ranked_sample_surfaces_issue_relevant_paths() -> None:
+    from artisan_agents.repo_context_summary import ranked_file_sample
+
+    # Alphabetically the invoice module loses to aaa/ files — relevance must beat alphabet.
+    tree = [f"aaa/mod-{i}.py" for i in range(300)] + ["shop/pricing.py", "shop/invoice.py"]
+    sample = ranked_file_sample(tree, "Invoice discount applied twice in pricing")
+    assert "shop/pricing.py" in sample
+    assert "shop/invoice.py" in sample
+
+
+def test_ranked_sample_is_deterministic_and_respects_budget() -> None:
+    from artisan_agents.repo_context_summary import ranked_file_sample
+
+    tree = [f"pkg/f-{i}.py" for i in range(500)]
+    a = ranked_file_sample(tree, "unrelated words", budget=50)
+    b = ranked_file_sample(tree, "unrelated words", budget=50)
+    assert a == b == tree[:50]  # ties keep original (sorted) order
+
+
+def test_ranked_sample_empty_query_is_first_n() -> None:
+    from artisan_agents.repo_context_summary import ranked_file_sample
+
+    tree = ["b.py", "a.py", "c.py"]
+    assert ranked_file_sample(tree, "", budget=2) == ["b.py", "a.py"]
+
+
+def test_summary_includes_layout_skeleton_and_ranked_note() -> None:
+    tree = [f"src/mod-{i}.py" for i in range(250)] + ["shop/pricing.py"]
+    ctx = RepoContext(
+        repo="octocat/demo", head_sha="deadbeef", file_tree=tree, manifests={},
+        languages={".py": 251}, fetched_at=datetime.now(timezone.utc),
+    )
+    summary = repo_context_summary(ctx, include_file_tree=True, query="pricing bug")
+    assert "Repo layout:" in summary and "src/" in summary and "shop/" in summary
+    assert "ranked by relevance" in summary
+    assert "shop/pricing.py" in summary  # ranked into the sample despite alphabet
+
+
+def test_expert_prompt_passes_issue_as_ranking_query() -> None:
+    ctx = RepoContext(
+        repo="octocat/demo", head_sha="deadbeef",
+        file_tree=[f"zzz/f-{i}.py" for i in range(300)] + ["billing/invoice.py"],
+        manifests={}, languages={".py": 301}, fetched_at=datetime.now(timezone.utc),
+    )
+    prompt = domain_expert_agent._build_prompt("backend", "Invoice total wrong", "B", ctx)
+    assert "billing/invoice.py" in prompt
