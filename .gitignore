@@ -24,3 +24,7 @@ dashboard/test-results/
 docs/miscellaneous
 .claude
 
+
+# bench adapter: HF/repo caches and run outputs are local-only (GBs of downloads)
+agents/evals/bench/.cache/
+agents/evals/bench/bench_runs/

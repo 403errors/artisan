@@ -77,6 +77,29 @@ python -m swebench.harness.run_evaluation \
 The harness-reported **resolved rate** is the headline external number. Combine with
 `run_log.json` for Artisan-internal funnel metrics (routing accuracy, attempts, escalation).
 
+## Full runs (Phase 7 — manual, cost-bearing)
+
+Each full run is 50 live pipeline executions (~4–8 h wall time per benchmark on Apple Silicon,
+dominated by image pulls and amd64-under-Rosetta test runs; Gemini cost is real). Runs are
+resumable — re-invoking the same command skips completed instances.
+
+```bash
+cd agents/evals/bench
+export GOOGLE_GENAI_USE_VERTEXAI=TRUE GOOGLE_CLOUD_PROJECT=artisan-multiagent-ai \
+       GOOGLE_CLOUD_LOCATION=global
+for b in swebench-verified swebench-multilingual swebench-pro swebench-live multi-swe-bench swe-polybench; do
+  uv run --package artisan-agents python runner.py --benchmark "$b" --max-attempts 2
+done
+```
+
+Then grade with each benchmark's OFFICIAL harness (install it separately; point it at
+`bench_runs/<benchmark>/predictions.jsonl`) and import the verdicts:
+
+```bash
+python bench_report.py --import-harness swebench-verified <harness-log-dir>   # per benchmark
+python bench_report.py                                                      # renders BENCH_REPORT.md
+```
+
 ## Reporting
 
 ```bash
