@@ -4,7 +4,7 @@ artisan_shared.secrets at call time (never inlined)."""
 
 import os
 
-GEMINI_MODEL_ID = "gemini-3.7-flash"
+GEMINI_MODEL_ID = "gemini-3.8-flash"
 
 GCP_PROJECT_ID = os.environ.get("ARTISAN_GCP_PROJECT_ID", "artisan-multiagent-ai")
 CLOUD_RUN_REGION = os.environ.get("ARTISAN_CLOUD_RUN_REGION", "us-central1")

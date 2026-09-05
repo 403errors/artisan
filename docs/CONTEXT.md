@@ -347,6 +347,20 @@ Configured seamless end-to-end evaluation access across all three platforms for 
 3. **Sign-In Onboarding Guide:** `dashboard/src/app/signin/page.tsx` updated with clear evaluator instructions, direct link to the public demo repository (`403errors/artisan-demo`), and a note to accept the Jira invitation to view real-time Kanban board transitions.
 4. **Incident — Gate 1 duplicate check crashed on every new issue (2026-09-01):** the deployed `orchestrator:93bf62f` (Sprint 9 duplicate check) called `gh.rest.search.async_search_issues(...)` in `github/client.py::search_similar_issues`, a method that does **not** exist on `githubkit==0.16.1`'s `SearchClient` (the real name is `async_issues_and_pull_requests`). Every `issues.opened` delivery crashed with `AttributeError` during intake, returned HTTP 500, was redelivered 5× and then dropped (`processed_deliveries` → `failed`), leaving the ticket stuck in `intake`/`evaluating_intake` — `403errors/artisan-demo#24` ("need the documentation", `ART-20`) was hit live and had to be manually escalated + marked done from the dashboard. The unit tests missed it because the `_FakeSearch` fake in `test_github_client.py` mirrored the made-up method name. **Fixed:** `client.py` now calls `async_issues_and_pull_requests`, the fake was renamed to match, and a new regression guard (`test_search_similar_issues_uses_a_real_githubkit_method`) introspects the real installed `SearchClient` to prove the called method exists — so a made-up method name can never pass CI again. The `intake`/`in_progress`/`escalated` tickets for issues #2/#3/#6/#10 predate the duplicate-check deploy and are unrelated to this crash.
 
+### Milestone 15 — v2 wave 1: model bump `gemini-3.7-flash` → `gemini-3.8-flash` (2026-09-05)
+
+First item of v2 wave 1 (`docs/miscellaneous/V2_SCOPE.md` #3). Bumped the pinned model id in both
+services (`agents/src/artisan_agents/config.py`, `execution-sandbox/src/artisan_execution_sandbox/config.py`),
+the pin assertion in `agents/tests/test_models.py`, and the current-state doc references
+(`TECH_STACK.md`, `SYSTEM_DESIGN.md`, `DEPLOYMENT.md`); historical 3.7 narrative elsewhere in this
+file is left as-is. The scope doc's open check — whether 3.8 still accepts the
+`ThinkingConfig(thinking_level="HIGH")` enum that `planning_agent.py` uses — was verified live
+before flipping: a direct genai-SDK call against Vertex AI `global` with
+`ThinkingConfig(thinking_level="HIGH")` returned successfully, so the enum holds on 3.8. The
+`global`-only serving constraint is unchanged (3.8, like 3.7, is not served from regional
+endpoints). **Not yet deployed** — the bump takes effect on the next `orchestrator` /
+`execution-sandbox` deploy from the `v2` branch.
+
 ## Next Milestone Target
 
-**Sprint 7 is closed.** Next: **Sprint 8 (Post-Sprint Activity) — Demo, Docs & Submission** (architecture diagram submission asset, demo recording following the 6-step script, rubric self-check, written summary, Devpost submission).
+**v2 wave 1 (branch `v2`, `main` frozen):** #3 model bump ✅ (2026-09-05) → **#2 richer domain-expert agents** → **#7 per-repo build/test matrix** — see `docs/miscellaneous/V2_SCOPE.md`.

@@ -45,7 +45,7 @@ PLANNING_INSTRUCTION = PLANNING_INSTRUCTION + "\n\n" + UNTRUSTED_CONTENT_NOTICE
 # more than routing/domain-expert/verification's comparatively narrow judgment calls. The installed
 # google-genai==2.20.0 `ThinkingConfig` exposes both a numeric `thinking_budget` (token count) and
 # a `thinking_level` enum (MINIMAL/LOW/MEDIUM/HIGH) for Gemini 3-family models — `GEMINI_MODEL_ID`
-# ("gemini-3.7-flash") is one, so we use the coarser, forward-compatible `thinking_level="HIGH"`
+# ("gemini-3.8-flash") is one, so we use the coarser, forward-compatible `thinking_level="HIGH"`
 # (the top tier the installed API defines) rather than guessing a numeric budget that may not match
 # this model's actual allowed range.
 _PLANNING_GENERATE_CONTENT_CONFIG = types.GenerateContentConfig(

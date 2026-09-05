@@ -2,7 +2,7 @@
 
 import os
 
-GEMINI_MODEL_ID = "gemini-3.7-flash"
+GEMINI_MODEL_ID = "gemini-3.8-flash"
 
 # Caps enforced in Firestore (SYSTEM_DESIGN.md §7), mirrored here for agent-side reference only.
 MAX_CLARIFICATION_ROUNDS = 3
