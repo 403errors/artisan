@@ -1,0 +1,10 @@
+{
+  "id": "cli-exit-code",
+  "title": "`cfgtool check` exits 0 even when the config file is invalid",
+  "body": "Running `cfgtool check bad.ini` prints 'INVALID: ...' to stderr but the process still exits 0, so our CI gate passes on broken configs. An invalid config must exit non-zero (2 is the convention for a validation failure); a valid config keeps exiting 0.",
+  "expected_domains": ["cli"],
+  "test_command": "python -m pytest tests -q",
+  "heldout_command": "python -m pytest .heldout_tests -q",
+  "bug": "cmd_check prints INVALID but returns 0, and main() always exits with 0.",
+  "visible_failing_test": false
+}

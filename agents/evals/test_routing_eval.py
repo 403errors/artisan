@@ -38,6 +38,7 @@ pytestmark = pytest.mark.eval
 
 GOLDEN_PATH = Path(__file__).parent / "routing_golden.json"
 REPORT_PATH = Path(__file__).parent / "REPORT.md"
+SIDECAR_PATH = Path(__file__).parent / "routing_results.json"
 N_REPS = 3
 
 
@@ -101,12 +102,13 @@ async def test_routing_golden_dataset() -> None:
     typed_results: dict[str, list[RoutingDecision]] = {
         cid: [r for r in reps if r is not None] for cid, reps in results.items()
     }
-    report = _build_report(cases, typed_results)
+    report, sidecar = _build_report(cases, typed_results)
     REPORT_PATH.write_text(report)
+    SIDECAR_PATH.write_text(json.dumps(sidecar, indent=2))
     print(f"\n{report}")
 
 
-def _build_report(cases: list[dict], results: dict[str, list[RoutingDecision]]) -> str:
+def _build_report(cases: list[dict], results: dict[str, list[RoutingDecision]]) -> tuple[str, dict]:
     per_case: list[dict] = []
     for case in cases:
         reps = results[case["id"]]
@@ -121,6 +123,16 @@ def _build_report(cases: list[dict], results: dict[str, list[RoutingDecision]]) 
                 "confidence_run1": reps[0].confidence,
             }
         )
+
+    # Calibration (wave-2 #5 input): per-rep correctness bucketed by self-reported confidence.
+    # A calibrated router is right more often when it says "high" than when it says "low" — the
+    # wave-1.5 baseline answered "high" on all 75 reps including the wrong ones (uncalibrated).
+    calibration: dict[str, dict[str, int]] = {}
+    for case, p in zip(cases, per_case):
+        for rep, passes in zip(results[case["id"]], p["passes"]):
+            bucket = calibration.setdefault(rep.confidence, {"correct": 0, "total": 0})
+            bucket["total"] += 1
+            bucket["correct"] += int(passes)
 
     n = len(per_case)
     mean_match = sum(sum(p["passes"]) / N_REPS for p in per_case) / n
@@ -159,6 +171,18 @@ def _build_report(cases: list[dict], results: dict[str, list[RoutingDecision]]) 
         f"- **Fallback rate (predictions outside the bespoke registry):** {fallback_rate:.1%}",
         f"- **Self-reported confidence:** {dict(confidences)}",
         "",
+        "## Confidence calibration (accuracy within each confidence bucket)",
+        "",
+        "| Confidence | Correct | Total | Accuracy |",
+        "|---|---|---|---|",
+    ]
+    for level in ("low", "medium", "high"):
+        bucket = calibration.get(level)
+        if bucket:
+            acc = bucket["correct"] / bucket["total"]
+            lines.append(f"| {level} | {bucket['correct']} | {bucket['total']} | {acc:.0%} |")
+    lines += [
+        "",
         "Guidance thresholds (not yet enforced): match >= 90%, stability >= 95%, fallback < 10%.",
         "",
         "## Per-domain precision/recall (run 1)",
@@ -186,7 +210,19 @@ def _build_report(cases: list[dict], results: dict[str, list[RoutingDecision]]) 
             f"{sum(p['passes'])}/{N_REPS} | {'yes' if p['stable'] else 'NO'} | {p['confidence_run1']} |"
         )
     lines.append("")
-    return "\n".join(lines)
+
+    sidecar = {
+        "generated": datetime.now(timezone.utc).isoformat(),
+        "n_cases": len(cases),
+        "n_reps": N_REPS,
+        "mean_match": mean_match,
+        "stability": stability,
+        "fallback_rate": fallback_rate,
+        "confidence_distribution": dict(confidences),
+        "calibration": calibration,
+        "per_case": per_case,
+    }
+    return "\n".join(lines), sidecar
 
 
 def _pct(value: float | None) -> str:

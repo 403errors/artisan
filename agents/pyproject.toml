@@ -24,6 +24,7 @@ dependencies = [
 
 [tool.uv.sources]
 artisan-shared = { workspace = true }
+artisan-execution-sandbox = { workspace = true }
 
 [project.scripts]
 artisan-agents = "artisan_agents:main"
@@ -36,6 +37,10 @@ build-backend = "uv_build"
 dev = [
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
+    # The E2E eval harness (agents/evals/test_e2e_eval.py) runs the sandbox's coding agent
+    # locally against fixture repos — a dev-only dependency; production Gate 2 still triggers
+    # the sandbox as a Cloud Run Job.
+    "artisan-execution-sandbox",
 ]
 
 [tool.pytest.ini_options]
@@ -45,3 +50,6 @@ markers = [
 # Evals call live Gemini (non-deterministic, costs quota) — never in the default test run.
 # A `-m` flag on the command line overrides this (CLI args win over addopts).
 addopts = "-m 'not eval'"
+# The E2E eval's fixture repos contain their own test suites (they're the *subject* of the eval,
+# copied and run by the harness) — never collect them as tests of this project.
+norecursedirs = ["e2e_fixtures"]

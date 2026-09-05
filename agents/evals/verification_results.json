@@ -1,0 +1,363 @@
+{
+  "generated": "2026-09-05T15:47:13.969101+00:00",
+  "n_scenarios": 16,
+  "n_reps": 2,
+  "verdict_accuracy": 1.0,
+  "criteria_agreement": 0.8888888888888888,
+  "feedback_rate_on_red": 1.0,
+  "shortcircuit_ok": true,
+  "per_scenario": [
+    {
+      "id": "clear-pass-backend",
+      "deterministic": false,
+      "expected_green": true,
+      "expect_feedback": false,
+      "reps": [
+        {
+          "green": true,
+          "verdict_correct": true,
+          "feedback_present": false,
+          "criteria_hits": {
+            "API contract changes are backward-compatible": true,
+            "Authentication/authorization checks apply": true
+          }
+        },
+        {
+          "green": true,
+          "verdict_correct": true,
+          "feedback_present": false,
+          "criteria_hits": {
+            "API contract changes are backward-compatible": true,
+            "Authentication/authorization checks apply": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "tests-failed-shortcircuit",
+      "deterministic": true,
+      "expected_green": false,
+      "expect_feedback": true,
+      "reps": [
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {}
+        },
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {}
+        }
+      ]
+    },
+    {
+      "id": "tests-failed-shortcircuit-security",
+      "deterministic": true,
+      "expected_green": false,
+      "expect_feedback": true,
+      "reps": [
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {}
+        },
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {}
+        }
+      ]
+    },
+    {
+      "id": "plan-match-misses-issue",
+      "deterministic": false,
+      "expected_green": false,
+      "expect_feedback": true,
+      "reps": [
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {}
+        },
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {}
+        }
+      ]
+    },
+    {
+      "id": "partial-implementation",
+      "deterministic": false,
+      "expected_green": false,
+      "expect_feedback": true,
+      "reps": [
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {}
+        },
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {}
+        }
+      ]
+    },
+    {
+      "id": "test-weakening",
+      "deterministic": false,
+      "expected_green": false,
+      "expect_feedback": true,
+      "reps": [
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {}
+        },
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {}
+        }
+      ]
+    },
+    {
+      "id": "security-missing-auth",
+      "deterministic": false,
+      "expected_green": false,
+      "expect_feedback": true,
+      "reps": [
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {
+            "Authorization checks happen server-side": true
+          }
+        },
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {
+            "Authorization checks happen server-side": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "criteria-not-applicable-frontend",
+      "deterministic": false,
+      "expected_green": true,
+      "expect_feedback": false,
+      "reps": [
+        {
+          "green": true,
+          "verdict_correct": true,
+          "feedback_present": false,
+          "criteria_hits": {
+            "Responsive/layout behavior": false
+          }
+        },
+        {
+          "green": true,
+          "verdict_correct": true,
+          "feedback_present": false,
+          "criteria_hits": {
+            "Responsive/layout behavior": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "doc-only-diff",
+      "deterministic": false,
+      "expected_green": false,
+      "expect_feedback": true,
+      "reps": [
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {}
+        },
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {}
+        }
+      ]
+    },
+    {
+      "id": "criteria-met-backend",
+      "deterministic": false,
+      "expected_green": true,
+      "expect_feedback": false,
+      "reps": [
+        {
+          "green": true,
+          "verdict_correct": true,
+          "feedback_present": false,
+          "criteria_hits": {
+            "request/response shapes are validated at the boundary": true,
+            "Error handling follows the service's status-code": true
+          }
+        },
+        {
+          "green": true,
+          "verdict_correct": true,
+          "feedback_present": false,
+          "criteria_hits": {
+            "request/response shapes are validated at the boundary": true,
+            "Error handling follows the service's status-code": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "database-unsafe-migration",
+      "deterministic": false,
+      "expected_green": false,
+      "expect_feedback": true,
+      "reps": [
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {
+            "Migrations are reversible and safe on populated tables": true
+          }
+        },
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {
+            "Migrations are reversible and safe on populated tables": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "cli-exit-code-fixed",
+      "deterministic": false,
+      "expected_green": true,
+      "expect_feedback": false,
+      "reps": [
+        {
+          "green": true,
+          "verdict_correct": true,
+          "feedback_present": false,
+          "criteria_hits": {
+            "Exit codes are meaningful and consistent": true
+          }
+        },
+        {
+          "green": true,
+          "verdict_correct": true,
+          "feedback_present": false,
+          "criteria_hits": {
+            "Exit codes are meaningful and consistent": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "dataml-train-serve-skew",
+      "deterministic": false,
+      "expected_green": false,
+      "expect_feedback": true,
+      "reps": [
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {
+            "No train/serve skew or leakage": true
+          }
+        },
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {
+            "No train/serve skew or leakage": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "unrelated-changes",
+      "deterministic": false,
+      "expected_green": false,
+      "expect_feedback": true,
+      "reps": [
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {}
+        },
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {}
+        }
+      ]
+    },
+    {
+      "id": "scope-creep-but-correct",
+      "deterministic": false,
+      "expected_green": true,
+      "expect_feedback": false,
+      "reps": [
+        {
+          "green": true,
+          "verdict_correct": true,
+          "feedback_present": false,
+          "criteria_hits": {}
+        },
+        {
+          "green": true,
+          "verdict_correct": true,
+          "feedback_present": false,
+          "criteria_hits": {}
+        }
+      ]
+    },
+    {
+      "id": "partial-issue-coverage",
+      "deterministic": false,
+      "expected_green": false,
+      "expect_feedback": true,
+      "reps": [
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {}
+        },
+        {
+          "green": false,
+          "verdict_correct": true,
+          "feedback_present": true,
+          "criteria_hits": {}
+        }
+      ]
+    }
+  ]
+}

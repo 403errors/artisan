@@ -1,6 +1,6 @@
 # Routing eval report
 
-Generated: 2026-09-05T13:22:09.305429+00:00 — 25 cases x 3 reps, live Gemini via Vertex AI `global`, temperature=0.
+Generated: 2026-09-05T15:41:50.719585+00:00 — 25 cases x 3 reps, live Gemini via Vertex AI `global`, temperature=0.
 
 ## Headline metrics
 
@@ -8,6 +8,12 @@ Generated: 2026-09-05T13:22:09.305429+00:00 — 25 cases x 3 reps, live Gemini v
 - **Cross-run stability (all 3 reps agree):** 96.0%
 - **Fallback rate (predictions outside the bespoke registry):** 11.1%
 - **Self-reported confidence:** {'high': 75}
+
+## Confidence calibration (accuracy within each confidence bucket)
+
+| Confidence | Correct | Total | Accuracy |
+|---|---|---|---|
+| high | 69 | 75 | 92% |
 
 Guidance thresholds (not yet enforced): match >= 90%, stability >= 95%, fallback < 10%.
 
@@ -53,5 +59,5 @@ Guidance thresholds (not yet enforced): match >= 90%, stability >= 95%, fallback
 | multi-export-endpoint-and-button | backend+frontend | backend+frontend | 3/3 | yes | high |
 | multi-replica-and-migration | database+infra-devops | database+infra-devops | 3/3 | yes | high |
 | fallback-cobol-jcl | fallback | mainframe | 3/3 | yes | high |
-| fallback-solidity-contract | fallback | blockchain | 3/3 | NO | high |
+| fallback-solidity-contract | fallback | smart-contract | 3/3 | NO | high |
 | fallback-fortran-sim | fallback | scientific-computing | 3/3 | yes | high |

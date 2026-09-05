@@ -1,0 +1,319 @@
+{
+  "generated": "2026-09-05T15:41:50.719715+00:00",
+  "n_cases": 25,
+  "n_reps": 3,
+  "mean_match": 0.92,
+  "stability": 0.96,
+  "fallback_rate": 0.1111111111111111,
+  "confidence_distribution": {
+    "high": 75
+  },
+  "calibration": {
+    "high": {
+      "correct": 69,
+      "total": 75
+    }
+  },
+  "per_case": [
+    {
+      "id": "frontend-settings-button",
+      "expected": "frontend",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "frontend",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "frontend-form-validation",
+      "expected": "frontend",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "frontend",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "backend-csv-export",
+      "expected": "backend",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "backend",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "backend-rate-limit",
+      "expected": "backend",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "backend",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "infra-oom-deploy",
+      "expected": "infra-devops",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "infra-devops",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "infra-flaky-ci",
+      "expected": "infra-devops",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "infra-devops",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "mobile-rotation-crash",
+      "expected": "mobile",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "mobile",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "mobile-offline-sync",
+      "expected": "mobile",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "mobile",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "data-ml-accuracy-regression",
+      "expected": "data-ml",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "data-ml",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "data-ml-pipeline-idempotency",
+      "expected": "data-ml",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "data-ml",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "cli-exit-code",
+      "expected": "cli",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "cli",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "cli-config-precedence",
+      "expected": "cli",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "cli",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "embedded-watchdog-ota",
+      "expected": "embedded",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "embedded",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "embedded-i2c-hang",
+      "expected": "embedded",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "embedded",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "game-particle-framedrop",
+      "expected": "game",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "game",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "game-input-lag",
+      "expected": "game",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "game",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "security-xss-profile",
+      "expected": "security",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "security",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "security-ssrf-webhook",
+      "expected": "security",
+      "passes": [
+        false,
+        false,
+        false
+      ],
+      "stable": true,
+      "predicted_run1": "backend",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "database-slow-orders-query",
+      "expected": "backend+database",
+      "passes": [
+        false,
+        false,
+        false
+      ],
+      "stable": true,
+      "predicted_run1": "backend",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "database-migration-lock",
+      "expected": "database",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "database",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "multi-export-endpoint-and-button",
+      "expected": "backend+frontend",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "backend+frontend",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "multi-replica-and-migration",
+      "expected": "database+infra-devops",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "database+infra-devops",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "fallback-cobol-jcl",
+      "expected": "fallback",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "mainframe",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "fallback-solidity-contract",
+      "expected": "fallback",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": false,
+      "predicted_run1": "smart-contract",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "fallback-fortran-sim",
+      "expected": "fallback",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "scientific-computing",
+      "confidence_run1": "high"
+    }
+  ]
+}

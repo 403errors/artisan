@@ -1,0 +1,10 @@
+{
+  "id": "database-orders-pagination",
+  "title": "Orders pagination skips rows — page 1 starts at the wrong record",
+  "body": "list_orders is 1-indexed by page, but page 1 currently skips the first per_page rows (we seeded ids 1..9, page 1 with per_page 3 should return ids 1,2,3 but returns 4,5,6). Every page is shifted by one page worth of rows.",
+  "expected_domains": ["database"],
+  "test_command": "python -m pytest tests -q",
+  "heldout_command": "python -m pytest .heldout_tests -q",
+  "bug": "list_orders computes offset as page * per_page instead of (page - 1) * per_page.",
+  "visible_failing_test": false
+}

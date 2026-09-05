@@ -1,0 +1,345 @@
+{
+  "description": "Golden dataset for the domain-expert eval harness. Each case gives the CORRECT domain (routing quality is measured separately by routing_golden.json — this harness isolates expert quality given correct routing), an issue, a synthetic repo (file tree with plausible distractors + manifest excerpts), the labeled relevant files a good expert should identify, and a reference root_cause used by the judge to score the technical summary. Matching rules live in scoring.py (ancestor-directory and glob predictions count; fabricated paths are counted as hallucinations).",
+  "cases": [
+    {
+      "id": "frontend-settings-button",
+      "domain": "frontend",
+      "title": "Save button on settings page doesn't respond to clicks",
+      "body": "On /settings, clicking Save does nothing — no spinner, no request in the network tab. Started after the last release. Repro in Chrome and Safari.",
+      "repo": {
+        "languages": {".tsx": 48, ".ts": 20, ".css": 12},
+        "manifests": {"package.json": "{\"dependencies\": {\"react\": \"^19.0.0\", \"next\": \"15.0.0\"}}"},
+        "file_tree": [
+          "package.json", "next.config.js", "src/pages/_app.tsx", "src/pages/index.tsx",
+          "src/pages/settings.tsx", "src/components/SettingsForm.tsx", "src/components/Navbar.tsx",
+          "src/hooks/useSettings.ts", "src/lib/api.ts", "src/styles/settings.css",
+          "tests/settings.test.tsx", "README.md"
+        ]
+      },
+      "expected_files": ["src/pages/settings.tsx", "src/components/SettingsForm.tsx"],
+      "root_cause": "The save button's click/submit handler is not wired up or is broken on the settings page — the form never dispatches a save request."
+    },
+    {
+      "id": "frontend-form-validation",
+      "domain": "frontend",
+      "title": "Email field accepts invalid addresses",
+      "body": "The signup form submits 'a@b' as a valid email. Should validate format client-side before submit and show an inline error.",
+      "repo": {
+        "languages": {".tsx": 30, ".ts": 10},
+        "manifests": {"package.json": "{\"dependencies\": {\"react\": \"^18.3.0\", \"react-hook-form\": \"^7.0.0\"}}"},
+        "file_tree": [
+          "package.json", "src/App.tsx", "src/pages/Signup.tsx", "src/components/SignupForm.tsx",
+          "src/components/FormField.tsx", "src/lib/validation.ts", "src/lib/api.ts",
+          "src/styles/forms.css", "tests/signup.test.tsx", "README.md"
+        ]
+      },
+      "expected_files": ["src/components/SignupForm.tsx", "src/lib/validation.ts"],
+      "root_cause": "The signup form's email validation is missing or too weak — no format check runs before submit, so malformed addresses pass through."
+    },
+    {
+      "id": "backend-csv-export",
+      "domain": "backend",
+      "title": "Add CSV export endpoint for transactions",
+      "body": "Need GET /api/transactions/export returning CSV of all transactions for the authed user. Should stream for large datasets and require the same auth as /api/transactions.",
+      "repo": {
+        "languages": {".py": 85},
+        "manifests": {"pyproject.toml": "[project]\ndependencies = [\"fastapi>=0.110\", \"uvicorn\", \"sqlalchemy\"]"},
+        "file_tree": [
+          "pyproject.toml", "app/main.py", "app/routers/__init__.py", "app/routers/transactions.py",
+          "app/routers/users.py", "app/models/transaction.py", "app/models/user.py",
+          "app/auth.py", "app/db.py", "tests/test_transactions.py", "tests/test_users.py", "README.md"
+        ]
+      },
+      "expected_files": ["app/routers/transactions.py"],
+      "root_cause": "A new authenticated streaming CSV export endpoint must be added to the transactions router, reusing the existing auth dependency."
+    },
+    {
+      "id": "backend-rate-limit",
+      "domain": "backend",
+      "title": "Login endpoint has no rate limiting",
+      "body": "POST /auth/login can be hammered indefinitely. Add per-IP rate limiting (e.g. 5 req/min) returning 429 with Retry-After.",
+      "repo": {
+        "languages": {".js": 60},
+        "manifests": {"package.json": "{\"dependencies\": {\"express\": \"^4.19.0\", \"pg\": \"^8.0.0\"}}"},
+        "file_tree": [
+          "package.json", "src/index.js", "src/routes/auth.js", "src/routes/users.js",
+          "src/middleware/errorHandler.js", "src/middleware/authenticate.js", "src/db.js",
+          "src/config.js", "tests/auth.test.js", "README.md"
+        ]
+      },
+      "expected_files": ["src/routes/auth.js"],
+      "root_cause": "The login route has no rate-limiting middleware; one must be added (or a shared limiter module created and mounted) so repeated attempts get 429 with Retry-After."
+    },
+    {
+      "id": "infra-oom-deploy",
+      "domain": "infra-devops",
+      "title": "Deploys failing with OOM on the worker service",
+      "body": "Since last week the worker container gets OOMKilled during rollout. Bump memory limits and add a liveness probe so the rollout doesn't wedge halfway.",
+      "repo": {
+        "languages": {".tf": 15, ".yaml": 25, ".py": 40},
+        "manifests": {},
+        "file_tree": [
+          "deploy/worker-deployment.yaml", "deploy/api-deployment.yaml", "deploy/namespace.yaml",
+          "terraform/main.tf", "terraform/gke.tf", "terraform/variables.tf",
+          "worker/main.py", "worker/tasks.py", ".github/workflows/deploy.yml", "README.md"
+        ]
+      },
+      "expected_files": ["deploy/worker-deployment.yaml"],
+      "root_cause": "The worker deployment's container memory limits/requests are too low and it lacks a liveness probe, so the rollout OOMKills mid-deploy."
+    },
+    {
+      "id": "infra-flaky-ci",
+      "domain": "infra-devops",
+      "title": "CI pipeline intermittently fails on cache restore",
+      "body": "The build job fails ~30% of the time restoring the pnpm cache with a tar corruption error. Pin the cache key to the lockfile hash and add a fallback restore key.",
+      "repo": {
+        "languages": {".yml": 8, ".ts": 50},
+        "manifests": {"package.json": "{\"packageManager\": \"pnpm@9.0.0\"}"},
+        "file_tree": [
+          "package.json", "pnpm-lock.yaml", ".github/workflows/ci.yml", ".github/workflows/release.yml",
+          "src/index.ts", "src/server.ts", "tests/server.test.ts", "README.md"
+        ]
+      },
+      "expected_files": [".github/workflows/ci.yml"],
+      "root_cause": "The CI workflow's pnpm cache key is unstable (not pinned to the lockfile hash) and has no fallback restore-keys, so cache restores intermittently corrupt."
+    },
+    {
+      "id": "mobile-rotation-crash",
+      "domain": "mobile",
+      "title": "App crashes when rotating to landscape on profile screen",
+      "body": "On Android, rotating the device on the profile screen loses form state then crashes with a NPE. Repro: open profile, type in bio, rotate.",
+      "repo": {
+        "languages": {".dart": 120},
+        "manifests": {"pubspec.yaml": "name: app\ndependencies:\n  flutter:\n    sdk: flutter"},
+        "file_tree": [
+          "pubspec.yaml", "lib/main.dart", "lib/screens/profile_screen.dart", "lib/screens/home_screen.dart",
+          "lib/widgets/bio_field.dart", "lib/state/profile_state.dart", "lib/api/user_api.dart",
+          "test/profile_screen_test.dart", "README.md"
+        ]
+      },
+      "expected_files": ["lib/screens/profile_screen.dart", "lib/state/profile_state.dart"],
+      "root_cause": "The profile screen doesn't survive configuration change — form state isn't retained across rotation and a null reference is dereferenced after rebuild."
+    },
+    {
+      "id": "mobile-offline-sync",
+      "domain": "mobile",
+      "title": "Messages sent offline never sync when back online",
+      "body": "In airplane mode the app lets you 'send' messages, but they vanish instead of queuing and syncing when connectivity returns.",
+      "repo": {
+        "languages": {".kt": 80, ".java": 5},
+        "manifests": {},
+        "file_tree": [
+          "app/build.gradle.kts", "app/src/main/java/com/app/chat/ChatViewModel.kt",
+          "app/src/main/java/com/app/chat/MessageRepository.kt", "app/src/main/java/com/app/chat/MessageDao.kt",
+          "app/src/main/java/com/app/net/ConnectivityMonitor.kt", "app/src/main/java/com/app/MainActivity.kt",
+          "app/src/test/java/com/app/chat/MessageRepositoryTest.kt", "README.md"
+        ]
+      },
+      "expected_files": ["app/src/main/java/com/app/chat/MessageRepository.kt"],
+      "root_cause": "Offline sends aren't persisted to an outbox/queue that a connectivity-driven sync drains — messages composed offline are dropped instead of queued."
+    },
+    {
+      "id": "data-ml-accuracy-regression",
+      "domain": "data-ml",
+      "title": "Model accuracy dropped 8 points after feature pipeline refactor",
+      "body": "Validation accuracy fell from 0.91 to 0.83 right after the feature-pipeline refactor merged. Suspect train/serve skew — the serving path wasn't updated.",
+      "repo": {
+        "languages": {".py": 95},
+        "manifests": {"pyproject.toml": "[project]\ndependencies = [\"pandas\", \"scikit-learn\", \"pyarrow\"]"},
+        "file_tree": [
+          "pyproject.toml", "ml/train.py", "ml/evaluate.py", "ml/features/build.py",
+          "ml/features/serve.py", "ml/model.py", "ml/config.yaml",
+          "tests/test_features.py", "tests/test_evaluate.py", "README.md"
+        ]
+      },
+      "expected_files": ["ml/features/build.py", "ml/features/serve.py"],
+      "root_cause": "The refactor changed training-time feature logic without updating the serving path (or vice versa) — train/serve skew is degrading accuracy."
+    },
+    {
+      "id": "data-ml-pipeline-idempotency",
+      "domain": "data-ml",
+      "title": "Nightly ETL duplicates rows when re-run after failure",
+      "body": "If the nightly load job fails midway and re-runs, the warehouse ends up with duplicate rows for the same partition. Re-runs should be idempotent.",
+      "repo": {
+        "languages": {".py": 70, ".sql": 20},
+        "manifests": {"pyproject.toml": "[project]\ndependencies = [\"pandas\", \"sqlalchemy\", \"psycopg2-binary\"]"},
+        "file_tree": [
+          "pyproject.toml", "etl/extract.py", "etl/transform.py", "etl/load.py",
+          "etl/queries/upsert_orders.sql", "etl/config.py", "tests/test_load.py",
+          "tests/test_transform.py", "README.md"
+        ]
+      },
+      "expected_files": ["etl/load.py"],
+      "root_cause": "The load step appends blindly instead of upserting/deleting by partition, so a re-run after partial failure duplicates rows."
+    },
+    {
+      "id": "cli-exit-code",
+      "domain": "cli",
+      "title": "CLI exits 0 even when the build fails",
+      "body": "`artisan build` prints an error and 'BUILD FAILED' but still exits 0, so our CI step passes when it shouldn't. Failure should exit non-zero.",
+      "repo": {
+        "languages": {".py": 40},
+        "manifests": {"pyproject.toml": "[project]\n[project.scripts]\nartisan = \"cli.main:main\""},
+        "file_tree": [
+          "pyproject.toml", "cli/__init__.py", "cli/main.py", "cli/commands/__init__.py",
+          "cli/commands/build.py", "cli/commands/deploy.py", "cli/output.py",
+          "tests/test_build.py", "tests/test_deploy.py", "README.md"
+        ]
+      },
+      "expected_files": ["cli/commands/build.py", "cli/main.py"],
+      "root_cause": "The build command's failure path doesn't propagate a non-zero exit code through main() — the error is printed but the process exits 0."
+    },
+    {
+      "id": "cli-config-precedence",
+      "domain": "cli",
+      "title": "Config file overrides CLI flags — precedence is backwards",
+      "body": "`tool run --region eu` still uses the region from ~/.toolrc. Flags should beat env vars, which should beat the config file.",
+      "repo": {
+        "languages": {".go": 55},
+        "manifests": {"go.mod": "module tool\n\ngo 1.22"},
+        "file_tree": [
+          "go.mod", "main.go", "cmd/run.go", "cmd/root.go", "internal/config/config.go",
+          "internal/config/flags.go", "internal/runner/runner.go", "cmd/run_test.go", "README.md"
+        ]
+      },
+      "expected_files": ["internal/config/config.go", "cmd/run.go"],
+      "root_cause": "Configuration resolution merges sources in the wrong order — config-file values overwrite flag values instead of the reverse."
+    },
+    {
+      "id": "embedded-watchdog-ota",
+      "domain": "embedded",
+      "title": "OTA update bricks device if power drops mid-flash",
+      "body": "Two field units died during OTA when power dipped mid-flash — bootloader jumps into a half-written image. Update needs atomic swap or rollback.",
+      "repo": {
+        "languages": {".c": 90, ".h": 40},
+        "manifests": {},
+        "file_tree": [
+          "CMakeLists.txt", "src/main.c", "src/bootloader.c", "src/ota/ota_update.c",
+          "src/ota/ota_verify.c", "src/hal/flash_hal.c", "src/hal/watchdog.c",
+          "include/ota_update.h", "tests/test_ota.c", "README.md"
+        ]
+      },
+      "expected_files": ["src/ota/ota_update.c", "src/bootloader.c"],
+      "root_cause": "The OTA path writes over the running image in place with no dual-slot/atomic swap or validity flag, so an interrupted flash leaves an unbootable image."
+    },
+    {
+      "id": "embedded-i2c-hang",
+      "domain": "embedded",
+      "title": "I2C read hangs the whole main loop when sensor unplugged",
+      "body": "If the temp sensor is disconnected, the blocking I2C read never returns and the watchdog resets the board every ~2s. Needs a timeout.",
+      "repo": {
+        "languages": {".c": 70, ".h": 30},
+        "manifests": {},
+        "file_tree": [
+          "CMakeLists.txt", "src/main.c", "src/drivers/i2c.c", "src/drivers/temp_sensor.c",
+          "src/hal/i2c_hal.c", "src/hal/watchdog.c", "include/drivers/i2c.h",
+          "tests/test_i2c.c", "README.md"
+        ]
+      },
+      "expected_files": ["src/drivers/i2c.c", "src/drivers/temp_sensor.c"],
+      "root_cause": "The blocking I2C read has no timeout/error path for a missing device, so it spins forever and trips the watchdog."
+    },
+    {
+      "id": "game-particle-framedrop",
+      "domain": "game",
+      "title": "Frame rate tanks when explosion particles spawn",
+      "body": "FPS drops from 60 to ~20 whenever an explosion goes off. Profiler shows massive GC pressure from the particle system every frame.",
+      "repo": {
+        "languages": {".cs": 110},
+        "manifests": {},
+        "file_tree": [
+          "Game.sln", "src/Engine/GameLoop.cs", "src/Engine/Renderer.cs",
+          "src/Game/Particles/ParticleSystem.cs", "src/Game/Particles/ParticleEmitter.cs",
+          "src/Game/Entities/Explosion.cs", "src/Game/Entities/Player.cs",
+          "tests/ParticleSystemTests.cs", "README.md"
+        ]
+      },
+      "expected_files": ["src/Game/Particles/ParticleSystem.cs", "src/Game/Particles/ParticleEmitter.cs"],
+      "root_cause": "The particle system allocates new particle objects per frame instead of pooling/reusing them, causing GC spikes and frame drops."
+    },
+    {
+      "id": "game-input-lag",
+      "domain": "game",
+      "title": "Jump input feels laggy — sometimes eats the press",
+      "body": "Players report jump sometimes registers a beat late or not at all, especially at low FPS. Input is sampled inside the render loop instead of a fixed-timestep update.",
+      "repo": {
+        "languages": {".cpp": 80, ".h": 30},
+        "manifests": {},
+        "file_tree": [
+          "CMakeLists.txt", "src/main.cpp", "src/engine/GameLoop.cpp", "src/engine/Input.cpp",
+          "src/game/PlayerController.cpp", "src/game/Physics.cpp", "include/engine/Input.h",
+          "tests/PlayerControllerTest.cpp", "README.md"
+        ]
+      },
+      "expected_files": ["src/game/PlayerController.cpp", "src/engine/Input.cpp"],
+      "root_cause": "Jump input is polled in the variable-rate render path rather than queued and consumed by the fixed-timestep update, so presses are missed or delayed at low FPS."
+    },
+    {
+      "id": "security-xss-profile",
+      "domain": "security",
+      "title": "Stored XSS via profile bio field",
+      "body": "Saving <script>alert(1)</script> in the bio field executes for anyone viewing the profile. Needs output encoding/sanitization.",
+      "repo": {
+        "languages": {".ts": 45, ".tsx": 30},
+        "manifests": {"package.json": "{\"dependencies\": {\"react\": \"^18.3.0\", \"express\": \"^4.19.0\"}}"},
+        "file_tree": [
+          "package.json", "server/index.ts", "server/routes/profile.ts", "server/db.ts",
+          "client/src/pages/Profile.tsx", "client/src/components/Bio.tsx",
+          "client/src/lib/api.ts", "tests/profile.test.ts", "README.md"
+        ]
+      },
+      "expected_files": ["client/src/components/Bio.tsx", "server/routes/profile.ts"],
+      "root_cause": "The bio is stored and rendered without sanitization/output encoding (likely dangerouslySetInnerHTML or raw HTML injection), allowing stored XSS."
+    },
+    {
+      "id": "security-ssrf-webhook",
+      "domain": "security",
+      "title": "Webhook URL field allows SSRF to internal services",
+      "body": "Setting a webhook URL to http://169.254.169.254/latest/meta-data fetches it — the server makes the request from inside our VPC. Validate/allowlist outbound URLs.",
+      "repo": {
+        "languages": {".py": 65},
+        "manifests": {"pyproject.toml": "[project]\ndependencies = [\"fastapi\", \"httpx\", \"sqlalchemy\"]"},
+        "file_tree": [
+          "pyproject.toml", "app/main.py", "app/routers/webhooks.py", "app/services/webhook_sender.py",
+          "app/models/webhook.py", "app/auth.py", "tests/test_webhooks.py", "README.md"
+        ]
+      },
+      "expected_files": ["app/services/webhook_sender.py", "app/routers/webhooks.py"],
+      "root_cause": "User-supplied webhook URLs are fetched server-side with no scheme/host validation or egress allowlist, enabling SSRF against internal/metadata endpoints."
+    },
+    {
+      "id": "database-slow-orders-query",
+      "domain": "database",
+      "title": "Orders list endpoint takes 30s+ to load",
+      "body": "GET /orders?status=pending does a full table scan — 2M rows. The query filters on status and created_at but there's no index covering them.",
+      "repo": {
+        "languages": {".py": 55, ".sql": 15},
+        "manifests": {"pyproject.toml": "[project]\ndependencies = [\"fastapi\", \"sqlalchemy\", \"alembic\"]"},
+        "file_tree": [
+          "pyproject.toml", "app/routers/orders.py", "app/models/order.py", "app/db.py",
+          "alembic/env.py", "alembic/versions/0001_init.py", "alembic/versions/0002_add_users.py",
+          "tests/test_orders.py", "README.md"
+        ]
+      },
+      "expected_files": ["app/models/order.py", "alembic/versions"],
+      "root_cause": "The orders query filters/sorts on unindexed columns (status, created_at); a composite index via a new migration is needed."
+    },
+    {
+      "id": "database-migration-lock",
+      "domain": "database",
+      "title": "Migration locked the users table for 6 minutes in prod",
+      "body": "The last deploy's ALTER TABLE users ADD COLUMN took a full table lock and rewrote the table. Need an online approach for large tables.",
+      "repo": {
+        "languages": {".sql": 25, ".py": 40},
+        "manifests": {"pyproject.toml": "[project]\ndependencies = [\"alembic\", \"psycopg2-binary\"]"},
+        "file_tree": [
+          "pyproject.toml", "alembic/env.py", "alembic/versions/0003_user_avatar.py",
+          "alembic/versions/0002_add_users.py", "app/models/user.py", "app/db.py",
+          "tests/test_migrations.py", "README.md"
+        ]
+      },
+      "expected_files": ["alembic/versions/0003_user_avatar.py"],
+      "root_cause": "The migration performs a blocking ALTER TABLE on a large populated table instead of an online pattern (e.g. nullable column + backfill, or pg-safe concurrent approach)."
+    }
+  ]
+}

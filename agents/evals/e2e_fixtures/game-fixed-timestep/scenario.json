@@ -1,0 +1,10 @@
+{
+  "id": "game-fixed-timestep",
+  "title": "Physics speed changes with frame rate — dt is ignored",
+  "body": "World.step(dt) is supposed to advance the simulation by dt seconds, but it actually advances by a hardcoded 1/60s regardless of dt. At 30fps everything moves at half speed; at 144fps it's more than double. step(0.5) with velocity 120 should move x by 60.0.",
+  "expected_domains": ["game"],
+  "test_command": "python -m pytest tests -q",
+  "heldout_command": "python -m pytest .heldout_tests -q",
+  "bug": "World.step ignores its dt argument and integrates with a hardcoded 1/60 timestep.",
+  "visible_failing_test": false
+}

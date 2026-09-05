@@ -1,0 +1,10 @@
+{
+  "id": "multi-orders-report",
+  "title": "Customer totals report merges different customers and shows cents as dollars",
+  "body": "Two bugs in the customer-totals report: (1) customers who happen to share a name get merged into one row — totals must be grouped by customer id, not name; (2) amounts render 100x too large — total_cents is shown as if it were already dollars. A row for customer 2 ('Bob', 5000 cents) should render as 'Bob: $50.00'.",
+  "expected_domains": ["backend", "database"],
+  "test_command": "python -m pytest tests -q",
+  "heldout_command": "python -m pytest .heldout_tests -q",
+  "bug": "customer_totals groups by customer_name (merging namesakes) and render_report divides nothing — cents are printed as dollars.",
+  "visible_failing_test": false
+}

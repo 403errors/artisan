@@ -1,0 +1,10 @@
+{
+  "id": "frontend-cart-total",
+  "title": "Cart total shows $0.30000000000000004 in the UI",
+  "body": "Add three 10-cent items to the cart and the total renders as $0.30000000000000004 instead of $0.30. The total should be exact to the cent — do the math in integer cents internally and return dollars rounded to 2 decimals (a number like 0.3, not a string).",
+  "expected_domains": ["frontend"],
+  "test_command": "node --test \"tests/**/*.test.mjs\"",
+  "heldout_command": "node --test \".heldout_tests/**/*.test.mjs\"",
+  "bug": "cartTotal accumulates floating-point dollars, producing classic 0.1+0.2 rounding artifacts.",
+  "visible_failing_test": false
+}

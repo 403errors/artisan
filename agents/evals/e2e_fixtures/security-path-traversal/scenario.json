@@ -1,0 +1,10 @@
+{
+  "id": "security-path-traversal",
+  "title": "File download endpoint allows path traversal outside the upload dir",
+  "body": "read_user_file('../../etc/passwd') happily reads files outside the upload directory. Names must be confined to the upload dir — reject absolute paths and any name that escapes it (e.g. containing '..') with a ValueError.",
+  "expected_domains": ["security"],
+  "test_command": "python -m pytest tests -q",
+  "heldout_command": "python -m pytest .heldout_tests -q",
+  "bug": "read_user_file joins the upload dir with the user-supplied name without any validation.",
+  "visible_failing_test": true
+}

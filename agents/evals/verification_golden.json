@@ -1,0 +1,165 @@
+{
+  "description": "Golden scenarios for the verification-agent eval harness. Each scenario constructs an issue + plan + execution result (diff summary) with an oracle label for the green verdict, plus labeled expectations for a subset of the routed domains' review criteria (matched case-insensitively by substring against the criterion text — only criteria with a definite answer are labeled). Scenarios with tests_passed=false exercise the deterministic short-circuit (no LLM call) and are reported separately from model-judged accuracy. Boundary cases (scope creep, partial coverage) are included deliberately — the harness exists to measure them.",
+  "scenarios": [
+    {
+      "id": "clear-pass-backend",
+      "domains": ["backend"],
+      "issue": {"title": "Add CSV export endpoint for transactions", "body": "Need GET /api/transactions/export returning CSV for the authed user, streamed, same auth as /api/transactions."},
+      "plan": {"steps": ["Add GET /api/transactions/export to the transactions router with the existing auth dependency", "Stream rows from the transactions table as CSV"], "touched_files": ["app/routers/transactions.py"], "test_cases": ["test_export_requires_auth", "test_export_streams_csv"], "doc_updates": ["README API section"]},
+      "execution": {"tests_passed": true, "diff_summary": "app/routers/transactions.py (modified) +58 -2\nAdded GET /api/transactions/export behind the existing get_current_user dependency; streams CSV via StreamingResponse with text/csv content type. tests/test_transactions.py (modified) +24 -0 — two new tests, both passing."},
+      "expected_green": true,
+      "expected_criteria": {"API contract changes are backward-compatible": "met", "Authentication/authorization checks apply": "met"},
+      "expect_feedback": false
+    },
+    {
+      "id": "tests-failed-shortcircuit",
+      "domains": ["backend"],
+      "issue": {"title": "Fix off-by-one in pagination", "body": "Page 2 skips the first row."},
+      "plan": {"steps": ["Fix offset calculation"], "touched_files": ["app/orders.py"], "test_cases": ["test_page_two"], "doc_updates": []},
+      "execution": {"tests_passed": false, "diff_summary": "app/orders.py (modified) +1 -1"},
+      "expected_green": false,
+      "expected_criteria": {},
+      "expect_feedback": true
+    },
+    {
+      "id": "tests-failed-shortcircuit-security",
+      "domains": ["security"],
+      "issue": {"title": "Sanitize bio HTML", "body": "Stored XSS in profile bio."},
+      "plan": {"steps": ["Escape bio on render"], "touched_files": ["client/Bio.tsx"], "test_cases": ["test_xss"], "doc_updates": []},
+      "execution": {"tests_passed": false, "diff_summary": "client/Bio.tsx (modified) +4 -2"},
+      "expected_green": false,
+      "expected_criteria": {},
+      "expect_feedback": true
+    },
+    {
+      "id": "plan-match-misses-issue",
+      "domains": ["backend"],
+      "issue": {"title": "Login endpoint has no rate limiting", "body": "POST /auth/login can be hammered indefinitely. Add per-IP rate limiting returning 429 with Retry-After."},
+      "plan": {"steps": ["Add request logging to the login route", "Add a metrics counter for failed logins"], "touched_files": ["src/routes/auth.js"], "test_cases": ["test_login_logging"], "doc_updates": []},
+      "execution": {"tests_passed": true, "diff_summary": "src/routes/auth.js (modified) +22 -3\nAdded structured request logging and a failed-login metrics counter to POST /auth/login. tests/auth.test.js (modified) +12 -0."},
+      "expected_green": false,
+      "expected_criteria": {},
+      "expect_feedback": true
+    },
+    {
+      "id": "partial-implementation",
+      "domains": ["backend"],
+      "issue": {"title": "Export endpoints for transactions and users", "body": "Add CSV export for both /api/transactions/export and /api/users/export. Both need auth."},
+      "plan": {"steps": ["Add transactions export", "Add users export", "Wire auth on both"], "touched_files": ["app/routers/transactions.py", "app/routers/users.py"], "test_cases": ["test_transactions_export", "test_users_export"], "doc_updates": []},
+      "execution": {"tests_passed": true, "diff_summary": "app/routers/transactions.py (modified) +45 -1\nAdded authenticated GET /api/transactions/export with CSV streaming. tests/test_transactions.py (modified) +18 -0."},
+      "expected_green": false,
+      "expected_criteria": {},
+      "expect_feedback": true
+    },
+    {
+      "id": "test-weakening",
+      "domains": ["backend"],
+      "issue": {"title": "Discount applied twice for members", "body": "Members see the 10% discount applied twice at checkout."},
+      "plan": {"steps": ["Fix apply_member_discount to apply the discount once"], "touched_files": ["shop/pricing.py"], "test_cases": ["test_member_discount_applied_once"], "doc_updates": []},
+      "execution": {"tests_passed": true, "diff_summary": "tests/test_pricing.py (modified) +2 -6\nRemoved the double-discount assertion from test_member_discount and relaxed the expected total; suite now green. shop/pricing.py unchanged."},
+      "expected_green": false,
+      "expected_criteria": {},
+      "expect_feedback": true
+    },
+    {
+      "id": "security-missing-auth",
+      "domains": ["security", "backend"],
+      "issue": {"title": "New admin audit endpoint exposes data without authz", "body": "GET /api/admin/audit-log returns sensitive audit entries. It must require an admin role server-side."},
+      "plan": {"steps": ["Add GET /api/admin/audit-log returning audit entries"], "touched_files": ["app/routers/admin.py"], "test_cases": ["test_audit_log_returns_entries"], "doc_updates": []},
+      "execution": {"tests_passed": true, "diff_summary": "app/routers/admin.py (added) +37 -0\nNew GET /api/admin/audit-log endpoint returning all audit entries as JSON. No dependency on the auth module. tests/test_admin.py (added) +15 -0."},
+      "expected_green": false,
+      "expected_criteria": {"Authorization checks happen server-side": "not_met"},
+      "expect_feedback": true
+    },
+    {
+      "id": "criteria-not-applicable-frontend",
+      "domains": ["frontend"],
+      "issue": {"title": "Typo in settings page heading", "body": "The heading reads 'Notifcations' — should be 'Notifications'."},
+      "plan": {"steps": ["Fix the heading copy in SettingsPage"], "touched_files": ["src/pages/settings.tsx"], "test_cases": [], "doc_updates": []},
+      "execution": {"tests_passed": true, "diff_summary": "src/pages/settings.tsx (modified) +1 -1\nCorrected heading copy from 'Notifcations' to 'Notifications'."},
+      "expected_green": true,
+      "expected_criteria": {"Responsive/layout behavior": "not_applicable"},
+      "expect_feedback": false
+    },
+    {
+      "id": "doc-only-diff",
+      "domains": ["backend"],
+      "issue": {"title": "Fix 500 on empty cart checkout", "body": "POST /checkout with an empty cart throws a 500 instead of a 422 with a useful error."},
+      "plan": {"steps": ["Validate cart non-empty in the checkout handler and return 422"], "touched_files": ["app/routers/checkout.py"], "test_cases": ["test_empty_cart_422"], "doc_updates": []},
+      "execution": {"tests_passed": true, "diff_summary": "README.md (modified) +6 -1\nDocumented that POST /checkout returns 422 on an empty cart."},
+      "expected_green": false,
+      "expected_criteria": {},
+      "expect_feedback": true
+    },
+    {
+      "id": "criteria-met-backend",
+      "domains": ["backend"],
+      "issue": {"title": "Orders API silently accepts negative quantities", "body": "POST /orders with quantity=-5 succeeds. Validate at the boundary and return a 422."},
+      "plan": {"steps": ["Add quantity >= 1 validation to the order schema", "Return 422 with the service's standard error body on violation"], "touched_files": ["app/models/order.py", "app/routers/orders.py"], "test_cases": ["test_negative_quantity_422"], "doc_updates": []},
+      "execution": {"tests_passed": true, "diff_summary": "app/models/order.py (modified) +3 -0 — quantity field now constrained ge=1.\napp/routers/orders.py (modified) +8 -2 — validation errors return 422 with the standard error envelope.\ntests/test_orders.py (modified) +11 -0."},
+      "expected_green": true,
+      "expected_criteria": {"request/response shapes are validated at the boundary": "met", "Error handling follows the service's status-code": "met"},
+      "expect_feedback": false
+    },
+    {
+      "id": "database-unsafe-migration",
+      "domains": ["database"],
+      "issue": {"title": "Add avatar_url to users without locking the table", "body": "2M-row users table — the migration must not take a blocking rewrite lock."},
+      "plan": {"steps": ["Add avatar_url as a nullable column with a fast metadata-only ALTER"], "touched_files": ["alembic/versions/0004_avatar.py"], "test_cases": [], "doc_updates": ["migration runbook"]},
+      "execution": {"tests_passed": true, "diff_summary": "alembic/versions/0004_avatar.py (added) +14 -0\nALTER TABLE users ADD COLUMN avatar_url VARCHAR(255) NOT NULL DEFAULT '' — rewrites the table; no downgrade() implemented."},
+      "expected_green": false,
+      "expected_criteria": {"Migrations are reversible and safe on populated tables": "not_met"},
+      "expect_feedback": true
+    },
+    {
+      "id": "cli-exit-code-fixed",
+      "domains": ["cli"],
+      "issue": {"title": "CLI exits 0 on build failure", "body": "`tool build` prints BUILD FAILED but exits 0, so CI passes when it shouldn't."},
+      "plan": {"steps": ["Propagate a non-zero exit code from the build command through main()"], "touched_files": ["cli/commands/build.py", "cli/main.py"], "test_cases": ["test_build_failure_exit_code"], "doc_updates": []},
+      "execution": {"tests_passed": true, "diff_summary": "cli/commands/build.py (modified) +4 -2 — build failures now return exit code 2.\ncli/main.py (modified) +2 -1 — main() returns the command's exit code instead of always 0.\ntests/test_build.py (modified) +9 -1 — asserts exit code 2 on failure, 0 on success."},
+      "expected_green": true,
+      "expected_criteria": {"Exit codes are meaningful and consistent": "met"},
+      "expect_feedback": false
+    },
+    {
+      "id": "dataml-train-serve-skew",
+      "domains": ["data-ml"],
+      "issue": {"title": "Accuracy dropped after feature refactor", "body": "Validation accuracy fell 0.91 -> 0.83 after the feature-pipeline refactor. Suspect the serving path wasn't updated."},
+      "plan": {"steps": ["Align the serving feature path with the training path"], "touched_files": ["ml/features/serve.py"], "test_cases": ["test_train_serve_parity"], "doc_updates": []},
+      "execution": {"tests_passed": true, "diff_summary": "ml/features/build.py (modified) +12 -8\nChanged the training-time normalization to use robust scaling. ml/features/serve.py unchanged — serving still uses the old min-max scaling."},
+      "expected_green": false,
+      "expected_criteria": {"No train/serve skew or leakage": "not_met"},
+      "expect_feedback": true
+    },
+    {
+      "id": "unrelated-changes",
+      "domains": ["backend"],
+      "issue": {"title": "Fix timezone bug in invoice dates", "body": "Invoices show UTC instead of the account's timezone."},
+      "plan": {"steps": ["Localize invoice timestamps to the account timezone"], "touched_files": ["app/invoices.py"], "test_cases": ["test_invoice_timezone"], "doc_updates": []},
+      "execution": {"tests_passed": true, "diff_summary": "app/logging_config.py (modified) +9 -3\nChanged log format to include milliseconds. app/invoices.py unchanged."},
+      "expected_green": false,
+      "expected_criteria": {},
+      "expect_feedback": true
+    },
+    {
+      "id": "scope-creep-but-correct",
+      "domains": ["backend"],
+      "issue": {"title": "Health endpoint returns 200 during shutdown", "body": "/health keeps returning 200 while the pod is draining, so the LB keeps routing traffic to it."},
+      "plan": {"steps": ["Return 503 from /health once shutdown begins"], "touched_files": ["app/health.py"], "test_cases": ["test_health_during_shutdown"], "doc_updates": []},
+      "execution": {"tests_passed": true, "diff_summary": "app/health.py (modified) +16 -4 — /health now returns 503 once the shutdown flag is set.\napp/main.py (modified) +7 -2 — wires the shutdown flag; also consolidates duplicated router setup into a helper (small refactor).\ntests/test_health.py (modified) +13 -0."},
+      "expected_green": true,
+      "expected_criteria": {},
+      "expect_feedback": false
+    },
+    {
+      "id": "partial-issue-coverage",
+      "domains": ["backend"],
+      "issue": {"title": "Rate limiting missing on login AND password reset", "body": "Both POST /auth/login and POST /auth/reset can be hammered indefinitely. Add per-IP limits (5/min) with 429 + Retry-After on both."},
+      "plan": {"steps": ["Add rate limiting to /auth/login", "Add rate limiting to /auth/reset"], "touched_files": ["src/routes/auth.js"], "test_cases": ["test_login_rate_limited", "test_reset_rate_limited"], "doc_updates": []},
+      "execution": {"tests_passed": true, "diff_summary": "src/routes/auth.js (modified) +19 -2\nAdded a per-IP rate limiter (5/min, 429 + Retry-After) to POST /auth/login. POST /auth/reset unchanged. tests/auth.test.js (modified) +10 -0 — login limiter test only."},
+      "expected_green": false,
+      "expected_criteria": {},
+      "expect_feedback": true
+    }
+  ]
+}

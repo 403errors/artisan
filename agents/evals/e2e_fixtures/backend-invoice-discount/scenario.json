@@ -1,0 +1,10 @@
+{
+  "id": "backend-invoice-discount",
+  "title": "Members are getting the 10% discount applied twice at checkout",
+  "body": "A member buying a $10.00 item is charged $8.10 instead of $9.00 — the member discount is being applied twice. Non-member prices are correct. Please fix so members get exactly 10% off.",
+  "expected_domains": ["backend"],
+  "test_command": "python -m pytest tests -q",
+  "heldout_command": "python -m pytest .heldout_tests -q",
+  "bug": "apply_member_discount applies the 10% member discount twice.",
+  "visible_failing_test": true
+}

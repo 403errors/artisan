@@ -1,0 +1,10 @@
+{
+  "id": "data-ml-pipeline-idempotent",
+  "title": "Feature export duplicates rows when re-run",
+  "body": "write_features appends to the output CSV, so re-running the nightly feature export after a partial failure doubles the rows (and duplicates the header). Re-running with the same input must produce the same file — idempotent output.",
+  "expected_domains": ["data-ml"],
+  "test_command": "python -m pytest tests -q",
+  "heldout_command": "python -m pytest .heldout_tests -q",
+  "bug": "write_features opens the output CSV in append mode, duplicating rows (and headers) on re-run.",
+  "visible_failing_test": false
+}
