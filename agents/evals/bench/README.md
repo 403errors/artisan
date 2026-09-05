@@ -8,7 +8,7 @@ Everything here is **manual-only** — nothing runs in CI, every run spends real
 | Key | Dataset | Frozen? | Language | Notes |
 |---|---|---|---|---|
 | `swebench-verified` | princeton-nlp/SWE-bench_Verified | ✅ 50 frozen | Python | The industry headline benchmark |
-| `swebench-multilingual` | princeton-nlp/SWE-bench_Multilingual | ✅ 50 frozen | 9 languages | **Gated** — needs `HF_TOKEN` (see below) |
+| `swebench-multilingual` | SWE-bench/SWE-bench_Multilingual | ✅ 50 frozen | 9 languages | Moved to the SWE-bench org — no longer gated |
 | `swebench-pro` | ScaleAI/SWE-bench_Pro | ✅ 50 frozen | Python+ | Harder, contamination-screened |
 | `swebench-live` | SWE-bench-Live/SWE-bench-Live | ❌ dated snapshot | Python | Post-cutoff issues; re-freeze to refresh |
 | `multi-swe-bench` | ByteDance-Seed/Multi-SWE-bench | ✅ 50 frozen | Java/TS/Go/Rust/… | JSONL-tree dataset (not /rows-indexed) |
@@ -25,8 +25,8 @@ the current live set.
 2. **Docker**: must be running (`docker info`). Instance test environments come from the
    benchmarks' official images (pulled lazily, ~1–5 GB each). On Apple Silicon the x86_64
    images run under emulation — functional but slow.
-3. **Gated datasets** (Multilingual): accept terms on the dataset's HF page, create a token at
-   https://huggingface.co/settings/tokens, export `HF_TOKEN=...`.
+3. **Gated datasets**: none currently — if a future benchmark gates, accept its terms on the HF
+   page, create a token at https://huggingface.co/settings/tokens, export `HF_TOKEN=...`.
 
 ## Workflow
 

@@ -121,15 +121,15 @@ BENCHMARKS: dict[str, Benchmark] = {
         fetcher="rows",
         normalize=_norm_swebench,
     ),
-    # Same methodology, 42 repos across 9 languages. GATED on HuggingFace — needs a token with
-    # accepted terms before selection can run.
+    # Same methodology, 42 repos across 9 languages. Moved from princeton-nlp/ to the SWE-bench
+    # org, where it is NOT gated (verified 2026-09-05) — no token needed.
     "swebench-multilingual": Benchmark(
         key="swebench-multilingual",
-        dataset="princeton-nlp/SWE-bench_Multilingual",
+        dataset="SWE-bench/SWE-bench_Multilingual",
         config="default",
         split="test",
         frozen=True,
-        gated=True,
+        gated=False,
         language="multi",
         fetcher="rows",
         normalize=_norm_swebench,

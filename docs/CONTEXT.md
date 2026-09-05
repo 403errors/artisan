@@ -463,10 +463,10 @@ Pure-stdlib HF client (rows API + JSONL-tree fallback, retries); runner reuses t
 mini-bench's fake-externals pattern, executes tests in the benchmarks' official Docker images
 (colima + Rosetta on Apple Silicon; image naming verified against Docker Hub per family), emits
 standard `predictions.jsonl` for the OFFICIAL harnesses to grade — Artisan never grades itself.
-Resumable, cost-capped (`--limit`, `--max-attempts`). Multilingual's freeze awaits an HF token
-(gated dataset); Multi-SWE-bench/PolyBench runner support is a follow-up (no prebuilt images —
-their harnesses build from Dockerfiles). No external numbers yet — first bench run is a manual,
-cost-bearing decision.
+Resumable, cost-capped (`--limit`, `--max-attempts`). All six selections frozen (Multilingual
+moved to the ungated `SWE-bench/` org — no token needed); Multi-SWE-bench/PolyBench runner
+support is a follow-up (no prebuilt images — their harnesses build from Dockerfiles). No external
+numbers yet — first bench run is a manual, cost-bearing decision.
 
 ## Next Milestone Target
 
