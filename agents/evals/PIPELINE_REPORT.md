@@ -1,6 +1,6 @@
 # Artisan pipeline quality report
 
-Generated: 2026-09-05T17:07:50.814748+00:00 — aggregated from the eval harnesses' JSON sidecars (agents/evals/). All stages run live Gemini against golden datasets or seeded-bug fixture repos; nothing here is self-reported by the pipeline.
+Generated: 2026-09-05T17:16:00.811352+00:00 — aggregated from the eval harnesses' JSON sidecars (agents/evals/). All stages run live Gemini against golden datasets or seeded-bug fixture repos; nothing here is self-reported by the pipeline.
 
 ## The funnel
 
@@ -8,7 +8,7 @@ Generated: 2026-09-05T17:07:50.814748+00:00 — aggregated from the eval harness
 |---|---|---|---|
 | Routing | Exact-set domain match | 92.0% | 25 cases x 3 reps; stability 96.0%; fallback 11.1% |
 | Routing | Confidence calibration (accuracy per level) | — | high: 92.0% (69/75) |
-| Domain expert | Relevant-files recall | 50.0% | precision 18.3%; hallucination rate 71.6% |
+| Domain expert | Relevant-files recall | 100.0% | precision 38.6%; hallucination rate 0.0% |
 | Domain expert | Summary quality (SOFT, LLM judge) | — | root_cause_identified 100.0%; correct_area 100.0%; actionable 100.0% |
 | Verification | Verdict agreement with oracle | 100.0% | criteria agreement 88.9%; feedback-on-red 100.0% |
 | **End-to-end** | **Verified-correct rate** | **87.5%** | false-green 12.5%; escalations 0.0%; mean attempts 1.0 |

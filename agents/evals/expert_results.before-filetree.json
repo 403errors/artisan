@@ -1,0 +1,803 @@
+{
+  "generated": "2026-09-05T15:45:18.204101+00:00",
+  "n_cases": 20,
+  "n_reps": 2,
+  "mean_recall": 0.5,
+  "mean_precision": 0.1825595238095238,
+  "hallucination_rate": 0.7163461538461539,
+  "judge_means": {
+    "root_cause_identified": 1.0,
+    "correct_area": 1.0,
+    "actionable": 1.0
+  },
+  "per_case": [
+    {
+      "id": "frontend-settings-button",
+      "domain": "frontend",
+      "reps": [
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "hallucinated": [
+            "app/settings/page.tsx",
+            "pages/settings.tsx",
+            "app/settings/",
+            "components/settings/"
+          ],
+          "n_files": 4,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary correctly identifies that the save button's click or form submit handler is unwired, missing, or broken on the settings page. It focuses accurately on the settings form/page components and provides concrete, actionable technical hypotheses to investigate and resolve the issue without needing to re-read the original report."
+          }
+        },
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "hallucinated": [
+            "app/settings/page.tsx",
+            "src/app/settings/page.tsx",
+            "pages/settings.tsx",
+            "components/settings/",
+            "components/ui/button.tsx"
+          ],
+          "n_files": 5,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary accurately focuses on the settings page form and save button wiring, correctly identifying that the click/submit handler is not wired up or failing to trigger the save request, and provides actionable checks to resolve it."
+          }
+        }
+      ]
+    },
+    {
+      "id": "frontend-form-validation",
+      "domain": "frontend",
+      "reps": [
+        {
+          "precision": 0.25,
+          "recall": 0.5,
+          "hallucinated": [
+            "src/features/auth/SignupForm.tsx",
+            "src/utils/validation.ts"
+          ],
+          "n_files": 4,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The summary accurately identifies the root cause (lack of client-side email format validation before submit), focuses on the correct area (signup form email input and validation rules), and provides actionable technical guidance on implementation."
+          }
+        },
+        {
+          "precision": 0.2,
+          "recall": 0.5,
+          "hallucinated": [
+            "src/components/Signup.tsx",
+            "src/features/auth/SignupForm.tsx",
+            "src/utils/validation.ts"
+          ],
+          "n_files": 5,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary accurately identifies the root cause (lack of format validation on the email field prior to submission), correctly targets the signup form email validation area, and provides clear, actionable instructions for implementing the client-side check and inline error presentation."
+          }
+        }
+      ]
+    },
+    {
+      "id": "backend-csv-export",
+      "domain": "backend",
+      "reps": [
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "hallucinated": [
+            "app/api/routers/transactions.py",
+            "app/api/endpoints/transactions.py",
+            "app/services/transaction_service.py",
+            "app/crud/crud_transaction.py",
+            "app/schemas/transaction.py"
+          ],
+          "n_files": 5,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary accurately captures the need to add a new authenticated streaming CSV export endpoint to the transactions router reusing existing auth dependencies, matching the reference. It focuses on the correct area and provides detailed, actionable implementation guidance."
+          }
+        },
+        {
+          "precision": 0.16666666666666666,
+          "recall": 1.0,
+          "hallucinated": [
+            "app/api/endpoints/transactions.py",
+            "app/services/transaction.py",
+            "app/crud/transaction.py",
+            "app/api/deps.py"
+          ],
+          "n_files": 6,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert summary accurately identifies the need for a new authenticated streaming CSV export endpoint using the existing authentication dependency, targets the correct area, and provides clear, actionable implementation details."
+          }
+        }
+      ]
+    },
+    {
+      "id": "backend-rate-limit",
+      "domain": "backend",
+      "reps": [
+        {
+          "precision": 0.14285714285714285,
+          "recall": 1.0,
+          "hallucinated": [
+            "routes/auth.js",
+            "middleware/rateLimiter.js",
+            "src/middleware/rateLimiter.js",
+            "app.js",
+            "server.js"
+          ],
+          "n_files": 7,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary accurately identifies the absence of rate-limiting middleware on the login route as the root cause, targets the correct area of the Express routing pipeline, and provides clear, actionable technical details to implement the solution."
+          }
+        },
+        {
+          "precision": 0.16666666666666666,
+          "recall": 1.0,
+          "hallucinated": [
+            "src/middleware/rateLimiter.js",
+            "src/controllers/auth.js",
+            "src/app.js",
+            "src/server.js"
+          ],
+          "n_files": 6,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert accurately identifies the missing rate limiting middleware on the POST /auth/login endpoint as the root cause, focuses on the correct area of the codebase (auth routes/middleware), and provides concrete, actionable implementation details including thresholds, headers, status codes, and proxy configuration considerations."
+          }
+        }
+      ]
+    },
+    {
+      "id": "infra-oom-deploy",
+      "domain": "infra-devops",
+      "reps": [
+        {
+          "precision": 0.4,
+          "recall": 1.0,
+          "hallucinated": [
+            "k8s/"
+          ],
+          "n_files": 5,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary accurately captures the ground truth root cause (insufficient container memory limits/requests causing OOMKills during rollout and missing health probes), focuses on the deployment manifests/infrastructure configuration, and provides actionable recommendations to fix the issue."
+          }
+        },
+        {
+          "precision": 0.2,
+          "recall": 1.0,
+          "hallucinated": [
+            "k8s/",
+            "deployments/",
+            "helm/"
+          ],
+          "n_files": 5,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert summary accurately identifies the underlying root cause (insufficient memory requests/limits causing OOMKilled errors and absence/misconfiguration of liveness probes causing rollout hangs), targets the correct deployment configuration area, and provides actionable guidance on probe and resource adjustments."
+          }
+        }
+      ]
+    },
+    {
+      "id": "infra-flaky-ci",
+      "domain": "infra-devops",
+      "reps": [
+        {
+          "precision": 0.5,
+          "recall": 1.0,
+          "hallucinated": [],
+          "n_files": 4,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert summary accurately identifies the root cause (unstable cache key not pinned to the lockfile hash and missing fallback restore keys) in the correct area (CI workflow cache configuration) and provides actionable remediation steps."
+          }
+        },
+        {
+          "precision": 0.5,
+          "recall": 1.0,
+          "hallucinated": [
+            ".github/workflows/build.yml"
+          ],
+          "n_files": 4,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert summary accurately identifies the unstable cache key lacking lockfile hashing and missing fallback restore-keys as the root cause. It focuses on the correct CI configuration area and provides concrete, actionable syntax for the cache key and restore-keys."
+          }
+        }
+      ]
+    },
+    {
+      "id": "mobile-rotation-crash",
+      "domain": "mobile",
+      "reps": [
+        {
+          "precision": 0.4,
+          "recall": 0.5,
+          "hallucinated": [
+            "lib/features/profile/",
+            "lib/features/profile/presentation/",
+            "lib/features/profile/screens/"
+          ],
+          "n_files": 5,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary accurately captures the ground truth: the profile screen drops state during configuration change rebuilds, leading to an NPE. It targets the correct component (profile screen state retention across configuration changes) and provides concrete, actionable remediation steps."
+          }
+        },
+        {
+          "precision": 0.25,
+          "recall": 1.0,
+          "hallucinated": [
+            "lib/screens/profile/",
+            "lib/features/profile/",
+            "android/app/src/main/AndroidManifest.xml"
+          ],
+          "n_files": 4,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert summary accurately identifies the root cause matching the reference: failure to retain form state across configuration change/rebuild during device rotation, resulting in a NullPointerException upon accessing an uninitialized or lost reference. It targets the correct area (profile screen form state and lifecycle) and provides clear, actionable steps for remediation."
+          }
+        }
+      ]
+    },
+    {
+      "id": "mobile-offline-sync",
+      "domain": "mobile",
+      "reps": [
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "hallucinated": [
+            "app/src/main/java/**/data/repository/*Message*Repository.kt",
+            "app/src/main/java/**/data/local/*Dao.kt",
+            "app/src/main/java/**/data/model/*Message*.kt",
+            "app/src/main/java/**/sync/*SyncWorker.kt",
+            "app/src/main/java/**/network/*NetworkMonitor.kt",
+            "app/src/main/java/**/ui/*Chat*ViewModel.kt"
+          ],
+          "n_files": 6,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary accurately captures the ground truth root cause: messages composed offline are discarded instead of being persisted to an outbox/queue for sync. It identifies the correct functional area and provides clear, actionable steps for persistence and connectivity-driven queue draining."
+          }
+        },
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "hallucinated": [
+            "app/src/main/java/**/data/repository/*MessageRepository*.kt",
+            "app/src/main/java/**/data/local/*MessageDao*.kt",
+            "app/src/main/java/**/sync/*SyncWorker*.kt",
+            "app/src/main/java/**/network/*NetworkMonitor*.kt",
+            "app/src/main/java/**/ui/**/*ChatViewModel*.kt"
+          ],
+          "n_files": 5,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert summary correctly identifies the root cause (absence of persistent offline queuing and connectivity-driven sync draining), focuses on the exact right area (local persistence and background sync), and provides concrete actionable technical steps."
+          }
+        }
+      ]
+    },
+    {
+      "id": "data-ml-accuracy-regression",
+      "domain": "data-ml",
+      "reps": [
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "hallucinated": [
+            "src/features/",
+            "src/pipelines/",
+            "src/serving/",
+            "src/inference/",
+            "src/train.py"
+          ],
+          "n_files": 6,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert accurately identifies train/serve feature skew caused by unaligned updates across the training and serving pathways during the pipeline refactor. The summary focuses on the correct area and provides concrete, actionable steps to unify preprocessing and add parity tests."
+          }
+        },
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "hallucinated": [
+            "src/features/",
+            "src/pipeline.py",
+            "src/train.py",
+            "src/inference.py",
+            "src/evaluate.py"
+          ],
+          "n_files": 6,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The summary accurately identifies the exact root cause (train/serve skew resulting from the serving path not being updated to match training transformations after the feature pipeline refactor), pinpoints the correct feature preprocessing and serving areas, and gives actionable, concrete steps to rectify and test the issue."
+          }
+        }
+      ]
+    },
+    {
+      "id": "data-ml-pipeline-idempotency",
+      "domain": "data-ml",
+      "reps": [
+        {
+          "precision": 0.25,
+          "recall": 1.0,
+          "hallucinated": [
+            "pipelines/",
+            "sql/",
+            "scripts/"
+          ],
+          "n_files": 4,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert accurately identifies that the load step blindly appends data without idempotency safeguards or partition overwrite/upsert mechanisms, focuses on the ingestion/load step, and provides clear, actionable technical remedies."
+          }
+        },
+        {
+          "precision": 0.4,
+          "recall": 1.0,
+          "hallucinated": [
+            "scripts/",
+            "sql/"
+          ],
+          "n_files": 5,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert accurately identifies that the load step appends data blindly without partition overwrites or upsert/merge logic, correctly focuses on the ETL load step, and provides actionable recommendations for implementing idempotency."
+          }
+        }
+      ]
+    },
+    {
+      "id": "cli-exit-code",
+      "domain": "cli",
+      "reps": [
+        {
+          "precision": 0.4,
+          "recall": 1.0,
+          "hallucinated": [
+            "cli/build.py",
+            "tests/test_cli.py"
+          ],
+          "n_files": 5,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert accurately identified that the CLI build command catches/logs errors without propagating a non-zero exit code to main/the system shell, pointed directly to the CLI entrypoint/command handler, and provided clear, actionable steps for implementation."
+          }
+        },
+        {
+          "precision": 0.5,
+          "recall": 1.0,
+          "hallucinated": [
+            "cli/build.py",
+            "tests/test_cli.py"
+          ],
+          "n_files": 4,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary accurately captures the root cause (failure path in the build command/main CLI entrypoint does not propagate a non-zero exit code), identifies the correct area of the codebase, and provides actionable guidance on how to fix it."
+          }
+        }
+      ]
+    },
+    {
+      "id": "cli-config-precedence",
+      "domain": "cli",
+      "reps": [
+        {
+          "precision": 0.5,
+          "recall": 1.0,
+          "hallucinated": [
+            "pkg/config/"
+          ],
+          "n_files": 6,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary correctly identifies that configuration resolution precedence merges sources incorrectly (config file values overwriting CLI flags), targets the CLI configuration merging logic, and provides clear, actionable guidance on adjusting the precedence order."
+          }
+        },
+        {
+          "precision": 0.6,
+          "recall": 1.0,
+          "hallucinated": [
+            "pkg/config/"
+          ],
+          "n_files": 5,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert correctly identifies the root cause as inverted configuration precedence during resolution/merging, pinpoints the configuration resolution logic, and provides actionable steps to fix the merge order and add tests."
+          }
+        }
+      ]
+    },
+    {
+      "id": "embedded-watchdog-ota",
+      "domain": "embedded",
+      "reps": [
+        {
+          "precision": 0.14285714285714285,
+          "recall": 0.5,
+          "hallucinated": [
+            "bootloader/",
+            "ota/",
+            "src/bootloader/",
+            "drivers/flash/",
+            "include/ota.h",
+            "include/bootloader.h"
+          ],
+          "n_files": 7,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary correctly identifies the root cause (flashing without dual-bank/atomic slot swap and lacking integrity/validity verification before boot), targets the OTA update and bootloader validation logic, and provides concrete, actionable guidance on how to fix the issue."
+          }
+        },
+        {
+          "precision": 0.16666666666666666,
+          "recall": 0.5,
+          "hallucinated": [
+            "bootloader/",
+            "include/bootloader.h",
+            "include/ota.h",
+            "drivers/flash/",
+            "src/flash.c"
+          ],
+          "n_files": 6,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary accurately captures the root cause (overwriting the active firmware slot in-place without dual-bank/atomic slot swap and verification), focuses on the correct area (bootloader and OTA flashing logic), and provides a highly actionable plan for remediation."
+          }
+        }
+      ]
+    },
+    {
+      "id": "embedded-i2c-hang",
+      "domain": "embedded",
+      "reps": [
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "hallucinated": [
+            "drivers/i2c.c",
+            "drivers/i2c.h",
+            "drivers/sensors/temp_sensor.c",
+            "src/i2c.c"
+          ],
+          "n_files": 5,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary accurately identifies the root cause (an unbounded polling loop in the blocking I2C read lacking timeout/error handling for a disconnected slave), targets the correct area of the codebase (I2C driver and sensor read routines), and provides clear, actionable instructions on implementing bounded timeouts and error propagation."
+          }
+        },
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "hallucinated": [
+            "drivers/i2c.c",
+            "drivers/i2c.h",
+            "src/i2c.c",
+            "src/sensor.c"
+          ],
+          "n_files": 5,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary accurately identifies the exact root cause described in the reference (the blocking I2C read lacks a timeout and error handling, causing unbounded spinning that triggers the watchdog). It focuses on the correct area (the I2C driver/read routine and sensor driver error handling) and provides clear, actionable steps to implement timeouts, bus error detection, and error return paths."
+          }
+        }
+      ]
+    },
+    {
+      "id": "game-particle-framedrop",
+      "domain": "game",
+      "reps": [
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "hallucinated": [
+            "Assets/Scripts/Effects/",
+            "Assets/Scripts/VFX/",
+            "Assets/Scripts/Combat/Explosion.cs",
+            "Assets/Scripts/Pooling/",
+            "Assets/Scripts/Particles/"
+          ],
+          "n_files": 5,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary accurately identifies the root cause (allocating particle objects/prefabs on demand per frame instead of pooling or reusing them, leading to GC pressure), focuses on the correct area (particle system emission and pooling), and provides clear, actionable steps to resolve the issue."
+          }
+        },
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "hallucinated": [
+            "Assets/Scripts/Effects/",
+            "Assets/Scripts/VFX/",
+            "Assets/Scripts/Combat/Explosion.cs",
+            "Assets/Scripts/Pooling/ObjectPool.cs",
+            "Assets/Scripts/Managers/ParticleManager.cs"
+          ],
+          "n_files": 5,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary accurately identifies the root cause (per-frame allocations instead of object pooling/reuse causing GC spikes), targets the correct area (particle system lifecycle and pooling), and provides clear, actionable mitigation steps."
+          }
+        }
+      ]
+    },
+    {
+      "id": "game-input-lag",
+      "domain": "game",
+      "reps": [
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "hallucinated": [
+            "src/input/",
+            "src/player/",
+            "src/physics/",
+            "src/engine/GameLoop.h"
+          ],
+          "n_files": 5,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert accurately identified that jump input is polled/sampled in the variable render loop rather than buffered and consumed by the fixed physics timestep. The summary targets the correct components (input manager and fixed physics/movement update) and provides clear, actionable steps to decouple and buffer the input."
+          }
+        },
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "hallucinated": [
+            "src/input/InputManager.cpp",
+            "src/input/InputManager.h",
+            "src/player/PlayerController.cpp",
+            "src/player/PlayerMovement.cpp",
+            "src/core/GameLoop.cpp",
+            "src/core/Engine.cpp",
+            "src/physics/"
+          ],
+          "n_files": 7,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary accurately identifies the root cause (polling input in the variable-rate render loop rather than buffering and consuming it during the fixed-timestep update), identifies the correct subsystems, and provides clear, actionable steps for remediation."
+          }
+        }
+      ]
+    },
+    {
+      "id": "security-xss-profile",
+      "domain": "security",
+      "reps": [
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "hallucinated": [
+            "src/controllers/profile.ts",
+            "src/routes/profile.ts",
+            "src/components/Profile.tsx",
+            "src/pages/Profile.tsx",
+            "src/utils/sanitize.ts"
+          ],
+          "n_files": 5,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary accurately identifies unescaped/raw HTML injection during bio rendering (such as dangerouslySetInnerHTML) and unvalidated persistence as the root cause. It targets the correct areas (profile rendering component and profile update route) and provides clear, actionable mitigation steps."
+          }
+        },
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "hallucinated": [
+            "src/controllers/*profile*.ts",
+            "src/routes/*profile*.ts",
+            "src/controllers/*user*.ts",
+            "src/routes/*user*.ts",
+            "src/components/*Profile*.tsx",
+            "src/pages/*Profile*.tsx"
+          ],
+          "n_files": 6,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert accurately identifies the root cause (rendering unescaped/unsanitized user bio input, highlighting dangerouslySetInnerHTML and lack of sanitization), pinpoints the correct frontend/backend areas, and provides clear, actionable mitigation steps."
+          }
+        }
+      ]
+    },
+    {
+      "id": "security-ssrf-webhook",
+      "domain": "security",
+      "reps": [
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "hallucinated": [
+            "app/schemas/webhook.py",
+            "app/services/webhook.py",
+            "app/core/security.py",
+            "app/utils/validators.py",
+            "app/api/webhooks.py"
+          ],
+          "n_files": 5,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary accurately identifies the root cause (unvalidated webhook URLs allowing SSRF to internal/metadata services), focuses on the correct area (webhook URL validation and outbound request dispatching), and provides concrete, actionable implementation details."
+          }
+        },
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "hallucinated": [
+            "webhooks/validators.py",
+            "webhooks/service.py",
+            "webhooks/client.py",
+            "routers/webhooks.py",
+            "schemas/webhook.py",
+            "services/webhook_dispatcher.py"
+          ],
+          "n_files": 6,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary accurately captures the root cause (lack of validation/filtering on outbound webhook requests allowing SSRF to metadata/internal addresses), identifies the correct functional area, and provides specific, actionable steps to remediate the vulnerability."
+          }
+        }
+      ]
+    },
+    {
+      "id": "database-slow-orders-query",
+      "domain": "database",
+      "reps": [
+        {
+          "precision": 0.16666666666666666,
+          "recall": 0.5,
+          "hallucinated": [
+            "models/order.py",
+            "models/",
+            "routers/orders.py",
+            "api/endpoints/orders.py",
+            "crud/orders.py"
+          ],
+          "n_files": 6,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert accurately identified the root cause as the missing composite index on status and created_at causing full table scans, correctly targeted the database models/migrations area, and provided actionable, specific steps to implement the fix."
+          }
+        },
+        {
+          "precision": 0.5,
+          "recall": 1.0,
+          "hallucinated": [
+            "alembic.ini",
+            "app/api/orders.py",
+            "app/crud/order.py"
+          ],
+          "n_files": 6,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert accurately identified the missing composite index on (status, created_at) as the root cause, focused on the database schema and migration area, and provided actionable next steps including migration strategy and model updates."
+          }
+        }
+      ]
+    },
+    {
+      "id": "database-migration-lock",
+      "domain": "database",
+      "reps": [
+        {
+          "precision": 0.25,
+          "recall": 1.0,
+          "hallucinated": [
+            "alembic.ini",
+            "migrations/"
+          ],
+          "n_files": 4,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert summary correctly identifies the root cause as running a blocking ALTER TABLE DDL on a large populated table, matching the reference. It focuses on the database migration layer and provides a concrete, multi-step online migration strategy that a planning agent can directly execute."
+          }
+        },
+        {
+          "precision": 0.25,
+          "recall": 1.0,
+          "hallucinated": [
+            "alembic.ini",
+            "migrations/"
+          ],
+          "n_files": 4,
+          "judge": {
+            "root_cause_identified": true,
+            "correct_area": true,
+            "actionable": true,
+            "rationale": "The expert's summary accurately identifies the mechanism causing table locking and rewrites during migrations on large tables, targets the appropriate migration area, and provides a clear, actionable multi-step plan to implement safe online migrations."
+          }
+        }
+      ]
+    }
+  ]
+}

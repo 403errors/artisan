@@ -79,3 +79,34 @@ def test_routing_and_domain_expert_prompts_share_the_same_summary() -> None:
     for prompt in (routing_prompt, expert_prompt):
         assert "fastapi" in prompt
         assert "Manifest excerpts" in prompt
+
+
+def test_file_tree_is_opt_in_and_expert_opts_in() -> None:
+    # The expert names concrete relevant_files, so it gets the tree (wave-1.6: without it, 71.6%
+    # of predicted paths were hallucinated). Routing only classifies domains — it keeps the
+    # cheaper prompt.
+    ctx = _ctx(manifests={"pyproject.toml": _PYPROJECT})
+    assert "Repo file tree" not in repo_context_summary(ctx)
+    assert "Repo file tree" in repo_context_summary(ctx, include_file_tree=True)
+
+    routing_prompt = routing_agent._build_prompt("T", "B", "ART-1", ctx)
+    expert_prompt = domain_expert_agent._build_prompt("backend", "T", "B", ctx)
+    assert "Repo file tree" not in routing_prompt
+    assert "Repo file tree" in expert_prompt
+
+
+def test_file_tree_sample_is_capped_with_truncation_note() -> None:
+    tree = [f"src/mod-{i}.py" for i in range(250)]
+    ctx = RepoContext(
+        repo="octocat/demo", head_sha="deadbeef", file_tree=tree, manifests={},
+        languages={".py": 250}, fetched_at=datetime.now(timezone.utc),
+    )
+    summary = repo_context_summary(ctx, include_file_tree=True)
+    assert "src/mod-199.py" in summary
+    assert "src/mod-200.py" not in summary  # beyond _MAX_FILE_TREE_SAMPLE
+    assert "50 more files not shown" in summary
+
+
+def test_file_tree_empty_tree_renders_placeholder() -> None:
+    summary = repo_context_summary(_ctx(manifests={}), include_file_tree=True)
+    assert "(empty tree)" in summary

@@ -21,6 +21,7 @@ _MAX_LANGUAGES = 5
 _MAX_MANIFESTS = 4
 _MAX_MANIFEST_LINES = 40
 _MAX_MANIFEST_CHARS = 2000
+_MAX_FILE_TREE_SAMPLE = 200  # same budget planning_agent uses for grounding touched_files
 
 
 def _manifest_excerpt(content: str) -> str:
@@ -28,7 +29,7 @@ def _manifest_excerpt(content: str) -> str:
     return excerpt[:_MAX_MANIFEST_CHARS]
 
 
-def repo_context_summary(repo_context: RepoContext) -> str:
+def repo_context_summary(repo_context: RepoContext, *, include_file_tree: bool = False) -> str:
     top_languages = sorted(repo_context.languages.items(), key=lambda kv: kv[1], reverse=True)[
         :_MAX_LANGUAGES
     ]
@@ -47,4 +48,17 @@ def repo_context_summary(repo_context: RepoContext) -> str:
             excerpts.append(f"--- {path} (excerpt) ---\n{wrap_untrusted(_manifest_excerpt(content))}")
     if excerpts:
         summary += "\n\nManifest excerpts:\n" + "\n\n".join(excerpts)
+
+    # Opt-in: the domain expert names concrete relevant_files — without the tree it invents
+    # plausible paths (measured 71.6% hallucinated in the wave-1.6 expert eval). Routing keeps
+    # the cheaper prompt: it classifies domains, it doesn't name files.
+    if include_file_tree:
+        sample = repo_context.file_tree[:_MAX_FILE_TREE_SAMPLE]
+        listing = "\n".join(f"- {p}" for p in sample) or "(empty tree)"
+        truncated = (
+            f"\n... ({len(repo_context.file_tree) - len(sample)} more files not shown)"
+            if len(repo_context.file_tree) > len(sample)
+            else ""
+        )
+        summary += f"\n\nRepo file tree (sample):\n{listing}{truncated}"
     return summary

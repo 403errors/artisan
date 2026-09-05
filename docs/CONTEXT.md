@@ -421,7 +421,56 @@ backend only; index+pagination issue → backend only, no database) — left as 
 rather than overfitting the instruction to single cases. 263 agents + 58 sandbox + 41 shared + 110
 dashboard tests green. Not deployed — takes effect on the next deploy from `v2`.
 
+### Milestone 18 — v2 wave 1.6: full-funnel evals + external bench adapter (2026-09-05)
+
+#19 measured routing; this wave measured the whole pipeline and built the path to external
+validation (`docs/miscellaneous/V2_SCOPE.md` #20/#21). All harnesses are manual-only
+(`-m eval`, live Gemini, never CI) and write JSON sidecars that `pipeline_report.py` aggregates
+into one funnel (`agents/evals/PIPELINE_REPORT.md`).
+
+**First full-funnel numbers (live Gemini, 2026-09-05):**
+
+| Stage | Metric | Value |
+|---|---|---|
+| Routing | exact-set match (25 goldens x 3 reps) | 92.0% (stability 96.0%) |
+| Domain expert | relevant-files recall (20 goldens x 2 reps) | 100.0% after file-tree fix (was 50.0% / 71.6% hallucinated) |
+| Verification | verdict agreement with oracle (16 scenarios x 2 reps) | 100% (criteria agreement 88.9%) |
+| **End-to-end** | **verified-correct rate (8 seeded-bug fixtures)** | **87.5%** — false-green 12.5%, escalations 0% |
+
+The harnesses earned their keep immediately, twice over:
+
+- **Expert hallucination finding — FIXED same-day:** the domain expert's 71.6% hallucinated-path
+  rate traced to `repo_context_summary.py` never giving the expert the repo file tree — it saw
+  languages + manifest excerpts only, so it invented plausible paths. Fix: opt-in bounded
+  file-tree sample (200 paths, planning_agent's existing budget) via
+  `repo_context_summary(..., include_file_tree=True)` — the expert opts in (it names concrete
+  `relevant_files`); routing keeps the cheaper prompt (it only classifies). Re-measured live:
+  **recall 50.0% → 100.0%, hallucination 71.6% → 0.0%**, precision 18.3% → 38.6% (over-listing
+  remains, but every named path is real). Before-snapshot kept at
+  `agents/evals/EXPERT_REPORT.before-filetree.md`.
+- **E2E false green — diagnosed, fix queued:** `security-path-traversal` opened a PR the held-out
+  oracle rejects (agent fixed the `read_user_file` traversal the issue named; the oracle also
+  requires the sibling `write_user_file` — same vulnerability class). Two-layer cause: (1) routing
+  sent it to `backend`, so the security lens criteria never entered the verification prompt;
+  (2) structural — verification judges from the coding agent's self-summary + `git diff --stat`
+  and never sees the actual diff, so "all input validated at the trust boundary" is unverifiable.
+  Queued fix: verification receives the bounded real diff.
+
+**Bench adapter (`agents/evals/bench/`):** manual runner for six independent benchmarks —
+SWE-bench Verified / Multilingual / Pro / Live, Multi-SWE-bench, SWE-PolyBench — 50 frozen
+instances each (pinned seed, checked into `selected/`; Live is a dated snapshot by design).
+Pure-stdlib HF client (rows API + JSONL-tree fallback, retries); runner reuses the E2E
+mini-bench's fake-externals pattern, executes tests in the benchmarks' official Docker images
+(colima + Rosetta on Apple Silicon; image naming verified against Docker Hub per family), emits
+standard `predictions.jsonl` for the OFFICIAL harnesses to grade — Artisan never grades itself.
+Resumable, cost-capped (`--limit`, `--max-attempts`). Multilingual's freeze awaits an HF token
+(gated dataset); Multi-SWE-bench/PolyBench runner support is a follow-up (no prebuilt images —
+their harnesses build from Dockerfiles). No external numbers yet — first bench run is a manual,
+cost-bearing decision.
+
 ## Next Milestone Target
 
 **v2 wave 1 (branch `v2`, `main` frozen):** #3 ✅ → #2 ✅ → **#7 per-repo build/test matrix** (last
-wave-1 item). Wave 1.5 (#12–#19) ✅ complete as of 2026-09-05 — see `docs/miscellaneous/V2_SCOPE.md`.
+wave-1 item). Wave 1.5 (#12–#19) ✅ and wave 1.6 (#20–#21) ✅ complete as of 2026-09-05 — see
+`docs/miscellaneous/V2_SCOPE.md`. Queued follow-ups from eval data: expert file-tree grounding,
+`security-path-traversal` false-green investigation, first external bench run (manual).
