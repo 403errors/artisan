@@ -21,5 +21,6 @@ dashboard/test-results/
 # OS
 .DS_Store
 
-docs/SPRINT.md
+docs/miscellaneous
 .claude
+
