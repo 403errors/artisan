@@ -67,11 +67,18 @@ class RoutingDecision(BaseModel):
     routing agent derives a fitting domain name from the issue text and repo context, so
     "frontend"/"backend"/"infra-devops" remain the common defaults but aren't the only valid
     answers (e.g. "mobile", "data-ml", "cli"). `subproject` gives basic monorepo support: it points
-    at a relevant subdirectory when the repo has multiple manifest roots, else stays `None`."""
+    at a relevant subdirectory when the repo has multiple manifest roots, else stays `None`.
+
+    v2 wave 1.5 (#15): `rationale`/`confidence` make the decision auditable — *why* these domains
+    and how sure the router was. Report-first: recorded and surfaced, never gated on (an
+    abstain/escalate path on low confidence is deferred to wave 2's autonomy tiers). Defaults keep
+    pre-#15 producers (and test doubles) valid."""
 
     domains: list[str]
     parallel: bool
     subproject: str | None = None
+    rationale: str = ""
+    confidence: Literal["low", "medium", "high"] = "medium"
 
 
 class DomainExpertOutput(BaseModel):
@@ -106,9 +113,23 @@ class ExecutionResult(BaseModel):
     logs_uri: str
 
 
+class CriterionResult(BaseModel):
+    """One domain-lens review criterion judged against the executed change (v2 wave 1.5 #17).
+    `evidence` names what in the diff/logs grounds the judgment — a criterion verdict without
+    evidence is just a vibe."""
+
+    criterion: str
+    status: Literal["met", "not_met", "not_applicable"]
+    evidence: str
+
+
 class VerificationVerdict(BaseModel):
     green: bool
     feedback: str | None = None
+    # Report-first (#17): per-criterion results are recorded and surfaced, but overall `green`
+    # stays a holistic model judgment — hard-gating on criteria flips only once the eval harness
+    # shows criteria verdicts are reliable. Default keeps pre-#17 producers valid.
+    criteria_results: list[CriterionResult] = []
 
 
 class ConflictVerdict(BaseModel):
@@ -158,6 +179,10 @@ class RepoContext(BaseModel):
     file_tree: list[str]
     manifests: dict[str, str]
     languages: dict[str, int]
+    # v2 wave 1.5 (#18): the repo's own conventions (CONTRIBUTING / style guides / ADRs), fetched
+    # and cached alongside manifests so domain-expert lenses judge changes against *this repo's*
+    # rules, not just generic best practice. Default keeps pre-#18 cached docs valid.
+    convention_docs: dict[str, str] = {}
     fetched_at: datetime
 
 

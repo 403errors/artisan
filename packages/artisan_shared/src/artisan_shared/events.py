@@ -16,6 +16,7 @@ TicketEventType = Literal[
     "step_changed",
     "agent_invoked",
     "agent_completed",
+    "domain_lens_used",
     "tool_call",
     "job_started",
     "job_completed",

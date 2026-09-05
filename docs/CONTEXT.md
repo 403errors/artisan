@@ -361,6 +361,67 @@ before flipping: a direct genai-SDK call against Vertex AI `global` with
 endpoints). **Not yet deployed** — the bump takes effect on the next `orchestrator` /
 `execution-sandbox` deploy from the `v2` branch.
 
+### Milestone 16 — v2 wave 1: richer domain-expert agents (2026-09-05)
+
+Second item of v2 wave 1 (`docs/miscellaneous/V2_SCOPE.md` #2). The domain-expert lens registry in
+`agents/src/artisan_agents/agents/domain_expert_agent.py` went from 3 one-paragraph blurbs
+(`frontend`/`backend`/`infra-devops`) + a one-line generic fallback to a structured `PersonaLens`
+spec (`focus` + concrete `review_criteria`) with **10 bespoke lenses** — the original three deepened,
+plus `mobile`, `data-ml`, `cli`, `embedded`, `game`, `security`, `database`. The routing
+instruction (`routing_agent.py`) now interpolates the registry's domain names verbatim
+(`PERSONA_DOMAINS` is the single source of truth) so routing prefers bespoke lenses and is warned
+against near-duplicate spellings, which would silently route to the shallower fallback; the lens
+lookup itself also normalizes case/whitespace. The "real review criteria, not a label" contract is
+enforced by a structural test (every lens needs a substantive focus and ≥3 concrete criteria), so a
+shallow entry can't pass CI. `_DEFAULT_LENS` remains for any domain outside the registry —
+"extensible, not exhaustive" preserved. Prompt-content only: no schema, dispatch, or Firestore
+changes; takes effect on the next deploy from `v2`.
+
+### Milestone 17 — v2 wave 1.5: routing & verification hardening (2026-09-05)
+
+Landed all 8 items from the enterprise-grade critique of routing + domain-expert personas
+(`docs/miscellaneous/V2_SCOPE.md` #12–#19; critique items #7/#8 became roadmap #10/#11 in wave 2).
+Report-first throughout: nothing here hard-gates the pipeline on a new LLM judgment.
+
+- **#12 injection fix:** `routing_agent._build_prompt` now wraps issue title/body with
+  `wrap_untrusted` (it was the one reasoning prompt Sprint 7's WS2 missed); the same gap in
+  `verification_agent` was found and fixed alongside #17.
+- **#13 determinism pin:** routing agent runs at `temperature=0` (classification-style decision).
+- **#14 fallback metric:** every domain-expert dispatch emits a `domain_lens_used` event
+  (`domain` + `bespoke|fallback`) on the existing event sink; fallback rate documented in
+  SYSTEM_DESIGN §10 as the lens-investment health signal. Dashboard got a presentation entry.
+- **#15 routing auditability:** `RoutingDecision` gains `rationale` + `confidence`
+  (low/medium/high), persisted on the ticket doc (`routing_rationale`/`routing_confidence`).
+  Known limitation, measured by #19: self-reported confidence is uncalibrated — all 75 eval reps
+  answered "high", including wrong ones. Abstain-on-low-confidence stays deferred to wave 2 #5.
+- **#16 richer repo signal:** the duplicated thin `_repo_context_summary` in routing/domain-expert
+  became one shared `repo_context_summary.py` that surfaces *bounded manifest excerpts* (4
+  manifests x 40 lines x 2k chars, untrusted-wrapped), not just paths — contents were already
+  cached in `RepoContext.manifests`, so zero new GitHub calls.
+- **#17 criteria-aware verification (report-first):** `CriterionResult` +
+  `VerificationVerdict.criteria_results`; `criteria_for_domains()` threads the routed bespoke
+  lenses' criteria into the verification prompt; overall `green` stays holistic. Hard-gating flips
+  only once eval data justifies it.
+- **#18 grounded lenses:** `RepoContext.convention_docs` (CONTRIBUTING/style guides/`docs/adr/*`,
+  5 docs x 8k chars, cached alongside manifests); bespoke-lens prompts append a wrapped
+  "Repo conventions" section (12k-char section budget).
+- **#19 eval harness:** `agents/evals/` — 25-case golden dataset (all 10 bespoke domains + 3
+  fallback + 2 multi-domain), live-Gemini runner marked `@pytest.mark.eval` (deselected by default
+  via addopts; run with `-m eval`), N=3 reps, writes `REPORT.md` (match rate, per-domain P/R,
+  fallback rate, stability, confidence distribution).
+
+**The harness immediately earned its keep.** Baseline run: 81.3% exact-set match, and all 3
+fallback cases failed — #2's "prefer bespoke" instruction pressure was forcing bespoke labels onto
+off-registry repos (COBOL→backend, Solidity→security, Fortran→data-ml). One evidence-based
+instruction fix (explicit "none of the bespoke domains fit → name an off-registry domain" clause)
+plus one honest relabel (database-slow-orders-query is genuinely backend+database) took it to
+**92.0% match / 96.0% stability**, with all fallback cases routing correctly (`mainframe`,
+`blockchain`, `scientific-computing`). Two documented boundary misses remain (SSRF-via-webhook →
+backend only; index+pagination issue → backend only, no database) — left as tracked boundary cases
+rather than overfitting the instruction to single cases. 263 agents + 58 sandbox + 41 shared + 110
+dashboard tests green. Not deployed — takes effect on the next deploy from `v2`.
+
 ## Next Milestone Target
 
-**v2 wave 1 (branch `v2`, `main` frozen):** #3 model bump ✅ (2026-09-05) → **#2 richer domain-expert agents** → **#7 per-repo build/test matrix** — see `docs/miscellaneous/V2_SCOPE.md`.
+**v2 wave 1 (branch `v2`, `main` frozen):** #3 ✅ → #2 ✅ → **#7 per-repo build/test matrix** (last
+wave-1 item). Wave 1.5 (#12–#19) ✅ complete as of 2026-09-05 — see `docs/miscellaneous/V2_SCOPE.md`.

@@ -177,6 +177,85 @@ async def test_single_domain_routes_sequentially_and_multi_domain_dispatches_in_
 
 
 @pytest.mark.asyncio
+async def test_start_gate2_persists_routing_rationale_and_confidence(
+    fake_store, stub_jira_and_github, monkeypatch
+) -> None:
+    # v2 wave 1.5 (#15): the routing decision's audit trail lands on the ticket doc next to
+    # `domains` — report-first (recorded + surfaced, never gated on).
+    async def fake_run_routing(**kwargs):
+        return RoutingDecision(
+            domains=["backend"],
+            parallel=False,
+            rationale="Pure API change, no UI surface.",
+            confidence="high",
+        )
+
+    async def fake_run_domain_expert(*, domain, issue_title, issue_body, repo_context=None):
+        return _domain_output(domain)
+
+    async def fake_run_planning(**kwargs):
+        return _PLAN
+
+    async def fake_trigger_execution(**kwargs):
+        return ExecutionResult(branch="artisan/x", diff_summary="x", tests_passed=True, logs_uri="gs://x")
+
+    async def fake_run_verification(**kwargs):
+        from artisan_shared.models import VerificationVerdict
+
+        return VerificationVerdict(green=True)
+
+    monkeypatch.setattr(gate2, "run_routing", fake_run_routing)
+    monkeypatch.setattr(gate2, "run_domain_expert", fake_run_domain_expert)
+    monkeypatch.setattr(gate2, "run_planning", fake_run_planning)
+    monkeypatch.setattr(gate2.cloud_run_jobs, "trigger_execution", fake_trigger_execution)
+    monkeypatch.setattr(gate2, "run_verification", fake_run_verification)
+
+    await gate2.start_gate2(REPO, ISSUE_NUMBER, JIRA_KEY, issue_title="T", issue_body="B")
+
+    assert fake_store.doc.routing_rationale == "Pure API change, no UI surface."
+    assert fake_store.doc.routing_confidence == "high"
+
+
+@pytest.mark.asyncio
+async def test_start_gate2_threads_lens_criteria_into_verification(
+    fake_store, stub_jira_and_github, monkeypatch
+) -> None:
+    # v2 wave 1.5 (#17): the routed domains' review criteria reach the verification agent.
+    captured: dict = {}
+
+    async def fake_run_routing(**kwargs):
+        return RoutingDecision(domains=["backend", "quantum-computing"], parallel=True)
+
+    async def fake_run_domain_expert(*, domain, issue_title, issue_body, repo_context=None):
+        return _domain_output(domain)
+
+    async def fake_run_planning(**kwargs):
+        return _PLAN
+
+    async def fake_trigger_execution(**kwargs):
+        return ExecutionResult(branch="artisan/x", diff_summary="x", tests_passed=True, logs_uri="gs://x")
+
+    async def fake_run_verification(**kwargs):
+        captured.update(kwargs)
+        from artisan_shared.models import VerificationVerdict
+
+        return VerificationVerdict(green=True)
+
+    monkeypatch.setattr(gate2, "run_routing", fake_run_routing)
+    monkeypatch.setattr(gate2, "run_domain_expert", fake_run_domain_expert)
+    monkeypatch.setattr(gate2, "run_planning", fake_run_planning)
+    monkeypatch.setattr(gate2.cloud_run_jobs, "trigger_execution", fake_trigger_execution)
+    monkeypatch.setattr(gate2, "run_verification", fake_run_verification)
+
+    await gate2.start_gate2(REPO, ISSUE_NUMBER, JIRA_KEY, issue_title="T", issue_body="B")
+
+    criteria = captured["review_criteria"]
+    assert criteria and all(c.startswith("[backend] ") for c in criteria)
+    # The fallback-lens domain contributes no criteria — nothing bespoke to verify against.
+    assert not any("quantum-computing" in c for c in criteria)
+
+
+@pytest.mark.asyncio
 async def test_pr_open_jira_comment_wraps_diff_summary_in_noformat(
     fake_store, stub_jira_and_github, monkeypatch
 ) -> None:

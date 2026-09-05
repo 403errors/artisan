@@ -19,7 +19,10 @@ from artisan_shared.models import (
 
 from artisan_agents import event_context, tracing
 from artisan_agents import repo_context as repo_context_module
-from artisan_agents.agents.domain_expert_agent import run_domain_expert
+from artisan_agents.agents.domain_expert_agent import (
+    criteria_for_domains,
+    run_domain_expert,
+)
 from artisan_agents.agents.planning_agent import run_planning
 from artisan_agents.agents.routing_agent import run_routing
 from artisan_agents.agents.verification_agent import run_verification
@@ -63,12 +66,21 @@ async def start_gate2(
     decision = await run_routing(
         issue_title=issue_title, issue_body=issue_body, jira_key=jira_key, repo_context=repo_context
     )
-    await firestore_client.update_ticket(repo, issue_number, domains=list(decision.domains))
+    await firestore_client.update_ticket(
+        repo,
+        issue_number,
+        domains=list(decision.domains),
+        routing_rationale=decision.rationale,
+        routing_confidence=decision.confidence,
+    )
     async with tracing.gate_span(ticket_id, "2", "proceed", label="Gate 2: routing decided"):
         pass
 
     await firestore_client.update_ticket(repo, issue_number, current_step="domain_expert")
     domain_outputs = await _run_domain_experts(decision, issue_title, issue_body, repo_context)
+    # v2 wave 1.5 (#17): the routed domains' lens criteria follow the ticket into verification,
+    # so "verified" means the change was actually judged against the expertise routing selected.
+    review_criteria = criteria_for_domains(list(decision.domains))
 
     feedback: str | None = None
     for attempt in range(1, MAX_EXECUTION_RETRIES + 1):
@@ -116,7 +128,7 @@ async def start_gate2(
         await firestore_client.update_ticket(repo, issue_number, current_step="verifying")
         verdict = await run_verification(
             plan=plan, execution_result=execution_result, issue_title=issue_title,
-            issue_body=issue_body,
+            issue_body=issue_body, review_criteria=review_criteria,
         )
 
         if verdict.green:

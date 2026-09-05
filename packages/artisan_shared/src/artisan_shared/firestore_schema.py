@@ -69,6 +69,10 @@ class TicketDoc(BaseModel):
     # branch a prior run already pushed. 0 keeps today's branch-name format byte-identical.
     manual_retry_generation: int = 0
     domains: list[str] = []
+    # v2 wave 1.5 (#15): the routing decision's audit trail — why these domains were picked and
+    # how confident the router was. Report-first: surfaced for review, never gated on.
+    routing_rationale: str | None = None
+    routing_confidence: Literal["low", "medium", "high"] | None = None
     plan: Plan | None = None
     last_execution_result: ExecutionResult | None = None
     pr_url: str | None = None

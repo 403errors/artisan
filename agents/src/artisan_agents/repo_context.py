@@ -26,6 +26,19 @@ KNOWN_MANIFESTS = (
     "Cargo.toml",
     "composer.json",
 )
+# v2 wave 1.5 (#18): convention docs ground the domain-expert lenses in the repo's own rules.
+# Fixed known-locations fetch (not retrieval/RAG — out of scope for v2): these basenames anywhere
+# in the tree, plus anything under the conventional ADR directory.
+KNOWN_CONVENTION_BASENAMES = (
+    "CONTRIBUTING.md",
+    "STYLE_GUIDE.md",
+    "STYLEGUIDE.md",
+    "CONVENTIONS.md",
+    "CODING_STANDARDS.md",
+)
+ADR_DIR_PREFIX = "docs/adr/"
+MAX_CONVENTION_DOCS = 5
+MAX_CONVENTION_DOC_CHARS = 8000
 REPO_CONTEXT_TTL_SECONDS = 6 * 3600
 
 
@@ -50,6 +63,27 @@ async def _fetch_manifests(repo: str, file_tree: list[str], sha: str) -> dict[st
     return manifests
 
 
+def _convention_doc_paths(file_tree: list[str]) -> list[str]:
+    # Sorted for determinism; capped *before* fetching so a huge ADR directory can't fan out
+    # into unbounded Contents-API calls.
+    paths = sorted(
+        path
+        for path in file_tree
+        if Path(path).name in KNOWN_CONVENTION_BASENAMES
+        or (path.startswith(ADR_DIR_PREFIX) and path.endswith(".md"))
+    )
+    return paths[:MAX_CONVENTION_DOCS]
+
+
+async def _fetch_convention_docs(repo: str, file_tree: list[str], sha: str) -> dict[str, str]:
+    docs: dict[str, str] = {}
+    for path in _convention_doc_paths(file_tree):
+        content = await github_client.get_file_content(repo, path, sha)
+        if content is not None:
+            docs[path] = content[:MAX_CONVENTION_DOC_CHARS]
+    return docs
+
+
 def _languages_histogram(file_tree: list[str]) -> dict[str, int]:
     return dict(Counter(suffix for p in file_tree if (suffix := Path(p).suffix)))
 
@@ -63,6 +97,7 @@ async def get_repo_context(repo: str) -> RepoContext:
 
     file_tree = await github_client.get_repo_tree(repo, head_sha)
     manifests = await _fetch_manifests(repo, file_tree, head_sha)
+    convention_docs = await _fetch_convention_docs(repo, file_tree, head_sha)
     languages = _languages_histogram(file_tree)
 
     context = RepoContext(
@@ -71,6 +106,7 @@ async def get_repo_context(repo: str) -> RepoContext:
         file_tree=file_tree,
         manifests=manifests,
         languages=languages,
+        convention_docs=convention_docs,
         fetched_at=datetime.now(timezone.utc),
     )
     await firestore_client.set_repo_context(repo, context)

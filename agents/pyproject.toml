@@ -37,3 +37,11 @@ dev = [
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
 ]
+
+[tool.pytest.ini_options]
+markers = [
+    "eval: live-Gemini eval harness (agents/evals/) — excluded from default runs; run explicitly with `uv run --package artisan-agents pytest agents/evals -m eval`",
+]
+# Evals call live Gemini (non-deterministic, costs quota) — never in the default test run.
+# A `-m` flag on the command line overrides this (CLI args win over addopts).
+addopts = "-m 'not eval'"

@@ -32,6 +32,7 @@ export const EVENT_PRESENTATION: Record<string, EventPresentation> = {
   step_changed: { icon: CircleIcon, tone: "default", label: "Step changed" },
   agent_invoked: { icon: BotIcon, tone: "active", label: "Agent invoked" },
   agent_completed: { icon: BotIcon, tone: "ok", label: "Agent completed" },
+  domain_lens_used: { icon: BotIcon, tone: "default", label: "Domain lens" },
   tool_call: { icon: WrenchIcon, tone: "default", label: "Tool call" },
   retry: { icon: RotateCcwIcon, tone: "active", label: "Retry" },
   clarification_asked: { icon: MessageCircleQuestionIcon, tone: "warn", label: "Clarification asked" },

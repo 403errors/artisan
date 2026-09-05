@@ -1,0 +1,180 @@
+{
+  "description": "Golden dataset for the routing eval harness (v2 wave 1.5 #19). Each case: a GitHub issue title/body plus a synthetic repo-context signal (language histogram + manifest excerpts, shaped like what get_repo_context produces), and the expected routing outcome. 'expected' lists the exact bespoke domain set; 'expect_fallback: true' instead means every predicted domain must fall OUTSIDE the bespoke registry. Boundary cases are included deliberately — the harness exists to measure them, not to look good.",
+  "cases": [
+    {
+      "id": "frontend-settings-button",
+      "title": "Save button on settings page doesn't respond to clicks",
+      "body": "On /settings, clicking Save does nothing — no spinner, no request in the network tab. Started after the last release. Repro in Chrome and Safari.",
+      "repo": {"languages": {".tsx": 48, ".ts": 20, ".css": 12}, "manifests": {"package.json": "{\"dependencies\": {\"react\": \"^19.0.0\", \"next\": \"15.0.0\"}}"}},
+      "expected": ["frontend"]
+    },
+    {
+      "id": "frontend-form-validation",
+      "title": "Email field accepts invalid addresses",
+      "body": "The signup form submits 'a@b' as a valid email. Should validate format client-side before submit and show an inline error.",
+      "repo": {"languages": {".tsx": 30, ".ts": 10}, "manifests": {"package.json": "{\"dependencies\": {\"react\": \"^18.3.0\", \"react-hook-form\": \"^7.0.0\"}}"}},
+      "expected": ["frontend"]
+    },
+    {
+      "id": "backend-csv-export",
+      "title": "Add CSV export endpoint for transactions",
+      "body": "Need GET /api/transactions/export returning CSV of all transactions for the authed user. Should stream for large datasets and require the same auth as /api/transactions.",
+      "repo": {"languages": {".py": 85}, "manifests": {"pyproject.toml": "[project]\ndependencies = [\"fastapi>=0.110\", \"uvicorn\", \"sqlalchemy\"]"}},
+      "expected": ["backend"]
+    },
+    {
+      "id": "backend-rate-limit",
+      "title": "Login endpoint has no rate limiting",
+      "body": "POST /auth/login can be hammered indefinitely. Add per-IP rate limiting (e.g. 5 req/min) returning 429 with Retry-After.",
+      "repo": {"languages": {".js": 60}, "manifests": {"package.json": "{\"dependencies\": {\"express\": \"^4.19.0\", \"pg\": \"^8.0.0\"}}"}},
+      "expected": ["backend"]
+    },
+    {
+      "id": "infra-oom-deploy",
+      "title": "Deploys failing with OOM on the worker service",
+      "body": "Since last week the worker container gets OOMKilled during rollout. Bump memory limits and add a liveness probe so the rollout doesn't wedge halfway.",
+      "repo": {"languages": {".tf": 15, ".yaml": 25, ".py": 40}, "manifests": {}},
+      "expected": ["infra-devops"]
+    },
+    {
+      "id": "infra-flaky-ci",
+      "title": "CI pipeline intermittently fails on cache restore",
+      "body": "The build job fails ~30% of the time restoring the pnpm cache with a tar corruption error. Pin the cache key to the lockfile hash and add a fallback restore key.",
+      "repo": {"languages": {".yml": 8, ".ts": 50}, "manifests": {"package.json": "{\"packageManager\": \"pnpm@9.0.0\"}"}},
+      "expected": ["infra-devops"]
+    },
+    {
+      "id": "mobile-rotation-crash",
+      "title": "App crashes when rotating to landscape on profile screen",
+      "body": "On Android, rotating the device on the profile screen loses form state then crashes with a NPE. Repro: open profile, type in bio, rotate.",
+      "repo": {"languages": {".dart": 120}, "manifests": {"pubspec.yaml": "name: app\ndependencies:\n  flutter:\n    sdk: flutter"}},
+      "expected": ["mobile"]
+    },
+    {
+      "id": "mobile-offline-sync",
+      "title": "Messages sent offline never sync when back online",
+      "body": "In airplane mode the app lets you 'send' messages, but they vanish instead of queuing and syncing when connectivity returns.",
+      "repo": {"languages": {".kt": 80, ".java": 5}, "manifests": {}},
+      "expected": ["mobile"]
+    },
+    {
+      "id": "data-ml-accuracy-regression",
+      "title": "Churn model accuracy dropped 12% after pipeline refactor",
+      "body": "After merging the feature-pipeline refactor, offline eval AUC fell from 0.81 to 0.69. Suspect train/serve skew in the new feature code. Need the eval re-run and the skew found.",
+      "repo": {"languages": {".py": 45, ".ipynb": 12}, "manifests": {"requirements.txt": "pandas==2.2.0\nscikit-learn==1.5.0\nfeast==0.40.0"}},
+      "expected": ["data-ml"]
+    },
+    {
+      "id": "data-ml-pipeline-idempotency",
+      "title": "Re-running the nightly ETL duplicates rows in the features table",
+      "body": "The nightly feature pipeline isn't idempotent — a retry after a partial failure double-writes rows. Make re-runs safe (upsert or delete-then-write per partition).",
+      "repo": {"languages": {".py": 60, ".sql": 20}, "manifests": {"requirements.txt": "apache-airflow==2.9.0\npandas==2.2.0"}},
+      "expected": ["data-ml"]
+    },
+    {
+      "id": "cli-exit-code",
+      "title": "CLI exits 0 when the input file doesn't exist",
+      "body": "`tool convert missing.json` prints an error but exits 0, so our CI step silently passes. Should exit non-zero and print the error to stderr.",
+      "repo": {"languages": {".rs": 95}, "manifests": {"Cargo.toml": "[package]\nname = \"tool\"\n[[bin]]\nname = \"tool\"\n[dependencies]\nclap = \"4.5\""}},
+      "expected": ["cli"]
+    },
+    {
+      "id": "cli-config-precedence",
+      "title": "Flag doesn't override config file value",
+      "body": "`--format json` is ignored when ~/.toolrc sets format=yaml. Expected precedence: flag > env var > config file. Document the order in --help too.",
+      "repo": {"languages": {".go": 70}, "manifests": {"go.mod": "module github.com/acme/tool\nrequire github.com/spf13/cobra v1.8.0"}},
+      "expected": ["cli"]
+    },
+    {
+      "id": "embedded-watchdog-ota",
+      "title": "Device resets mid-OTA when flash write takes too long",
+      "body": "During OTA update the watchdog fires while the new image is being written to flash, bricking the device until power cycle. Feed the watchdog during long flash ops or use a hardware timeout window.",
+      "repo": {"languages": {".c": 150, ".h": 60}, "manifests": {}},
+      "expected": ["embedded"]
+    },
+    {
+      "id": "embedded-i2c-hang",
+      "title": "Sensor read hangs forever when I2C bus is stuck",
+      "body": "If the sensor holds SDA low, i2c_read blocks forever and the main loop stalls. Add a bus-timeout and recovery (clock out 9 pulses) instead of blocking.",
+      "repo": {"languages": {".cpp": 40, ".c": 90}, "manifests": {}},
+      "expected": ["embedded"]
+    },
+    {
+      "id": "game-particle-framedrop",
+      "title": "FPS tanks from 60 to 20 when explosion particles spawn",
+      "body": "Every explosion allocates new particle objects per frame. Profile shows GC spikes. Pool the particles and pre-warm the pool at scene load.",
+      "repo": {"languages": {".cs": 200}, "manifests": {"Packages/manifest.json": "{\"dependencies\": {\"com.unity.modules.particlesystem\": \"1.0.0\"}}"}},
+      "expected": ["game"]
+    },
+    {
+      "id": "game-input-lag",
+      "title": "Jump input feels delayed on gamepad",
+      "body": "Jump registers ~100ms late on gamepad but instantly on keyboard. Input is polled in the render loop instead of the fixed update; move it and buffer presses.",
+      "repo": {"languages": {".gd": 80}, "manifests": {}},
+      "expected": ["game"]
+    },
+    {
+      "id": "security-xss-profile",
+      "title": "Stored XSS via profile bio field",
+      "body": "Setting my bio to `<img src=x onerror=alert(1)>` executes JS for anyone viewing my profile. Sanitize/escape user content before rendering.",
+      "repo": {"languages": {".tsx": 40, ".py": 50}, "manifests": {"package.json": "{\"dependencies\": {\"react\": \"^18.3.0\"}}", "pyproject.toml": "[project]\ndependencies = [\"django>=5.0\"]"}},
+      "expected": ["security"]
+    },
+    {
+      "id": "security-ssrf-webhook",
+      "title": "Webhook URL field allows hitting internal metadata endpoint",
+      "body": "Registering a webhook with URL http://169.254.169.254/latest/meta-data makes our server fetch it. Validate outbound webhook URLs against internal ranges.",
+      "repo": {"languages": {".py": 70}, "manifests": {"pyproject.toml": "[project]\ndependencies = [\"fastapi>=0.110\", \"httpx\"]"}},
+      "expected": ["security"]
+    },
+    {
+      "id": "database-slow-orders-query",
+      "title": "Orders list endpoint takes 8s for accounts with many orders",
+      "body": "GET /orders does a full table scan — seq scan on 2M rows in pg_stat. Add an index on (account_id, created_at) and paginate the endpoint.",
+      "repo": {"languages": {".py": 55, ".sql": 15}, "manifests": {"requirements.txt": "django==5.0\npsycopg==3.2"}},
+      "expected": ["backend", "database"]
+    },
+    {
+      "id": "database-migration-lock",
+      "title": "Last migration locked the users table for 4 minutes in prod",
+      "body": "Adding a column with a default rewrote the whole table. Rewrite the migration to add the column nullable, backfill in batches, then set the default.",
+      "repo": {"languages": {".ts": 65}, "manifests": {"package.json": "{\"dependencies\": {\"@prisma/client\": \"^5.0.0\"}}"}},
+      "expected": ["database"]
+    },
+    {
+      "id": "multi-export-endpoint-and-button",
+      "title": "Add /export API endpoint and an Export button in the UI",
+      "body": "Backend: GET /api/reports/export returning CSV. Frontend: an Export button on the reports page that downloads it, with loading and error states.",
+      "repo": {"languages": {".tsx": 35, ".py": 60}, "manifests": {"package.json": "{\"dependencies\": {\"react\": \"^18.3.0\"}}", "pyproject.toml": "[project]\ndependencies = [\"fastapi>=0.110\"]"}},
+      "expected": ["backend", "frontend"]
+    },
+    {
+      "id": "multi-replica-and-migration",
+      "title": "Route read queries to the new read replica and migrate the schema",
+      "body": "Infra: stand up the read replica and wire failover into the deploy. Data: migrate orders to include region_id (batched backfill) so reads can be routed by region.",
+      "repo": {"languages": {".tf": 20, ".py": 70, ".sql": 10}, "manifests": {"requirements.txt": "sqlalchemy==2.0\nalembic==1.13"}},
+      "expected": ["database", "infra-devops"]
+    },
+    {
+      "id": "fallback-cobol-jcl",
+      "title": "Nightly batch job abends with S0C7 in the settlement step",
+      "body": "The settlement COBOL step abends on packed-decimal data from the upstream feed. Need the copybook validated and a graceful abend handler.",
+      "repo": {"languages": {".cbl": 40, ".jcl": 12}, "manifests": {}},
+      "expect_fallback": true
+    },
+    {
+      "id": "fallback-solidity-contract",
+      "title": "Staking contract allows re-entrant reward claims",
+      "body": "claimRewards() updates state after the external call — a malicious contract can drain rewards via re-entrancy. Apply checks-effects-interactions.",
+      "repo": {"languages": {".sol": 25}, "manifests": {}},
+      "expect_fallback": true
+    },
+    {
+      "id": "fallback-fortran-sim",
+      "title": "Monte Carlo sim produces different results across runs",
+      "body": "The atmospheric sim isn't seeding its RNG from the namelist parameter, so results differ run to run. Thread the seed through init_rng.",
+      "repo": {"languages": {".f90": 90}, "manifests": {}},
+      "expect_fallback": true
+    }
+  ]
+}

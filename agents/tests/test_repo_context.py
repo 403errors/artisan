@@ -141,3 +141,62 @@ async def test_manifest_not_found_is_skipped_not_raised(fake_clients) -> None:
     context = await repo_context_module.get_repo_context(REPO)
 
     assert context.manifests == {}
+
+
+# --- v2 wave 1.5 (#18): convention docs ---
+
+
+@pytest.mark.asyncio
+async def test_convention_docs_fetched_from_known_locations(fake_clients) -> None:
+    fake_clients["cached"] = None
+    fake_clients["tree"] = [
+        "src/app.py",
+        "CONTRIBUTING.md",
+        "docs/adr/0001-use-postgres.md",
+        "docs/adr/0002-no-orm.md",
+        "docs/README.md",  # not a convention doc
+    ]
+    fake_clients["file_contents"] = {
+        "CONTRIBUTING.md": "We use ruff.",
+        "docs/adr/0001-use-postgres.md": "Postgres it is.",
+        "docs/adr/0002-no-orm.md": "No ORM.",
+    }
+
+    context = await repo_context_module.get_repo_context(REPO)
+
+    assert context.convention_docs == {
+        "CONTRIBUTING.md": "We use ruff.",
+        "docs/adr/0001-use-postgres.md": "Postgres it is.",
+        "docs/adr/0002-no-orm.md": "No ORM.",
+    }
+
+
+@pytest.mark.asyncio
+async def test_convention_docs_are_capped_in_count_and_size(fake_clients) -> None:
+    fake_clients["cached"] = None
+    fake_clients["tree"] = [f"docs/adr/{i:04d}.md" for i in range(8)]
+    fake_clients["file_contents"] = {
+        path: "x" * (repo_context_module.MAX_CONVENTION_DOC_CHARS + 100)
+        for path in fake_clients["tree"]
+    }
+
+    context = await repo_context_module.get_repo_context(REPO)
+
+    assert len(context.convention_docs) == repo_context_module.MAX_CONVENTION_DOCS
+    assert all(
+        len(content) == repo_context_module.MAX_CONVENTION_DOC_CHARS
+        for content in context.convention_docs.values()
+    )
+
+
+def test_repo_context_without_convention_docs_still_validates() -> None:
+    # Cache back-compat: docs cached before #18 have no convention_docs key.
+    context = RepoContext(
+        repo=REPO,
+        head_sha="sha1",
+        file_tree=["a.py"],
+        manifests={},
+        languages={".py": 1},
+        fetched_at=datetime.now(timezone.utc),
+    )
+    assert context.convention_docs == {}
