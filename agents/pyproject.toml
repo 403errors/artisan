@@ -1,7 +1,7 @@
 [project]
 name = "artisan-agents"
 version = "0.1.0"
-description = "Add your description here"
+description = "Artisan's orchestrator: FastAPI webhook/Pub/Sub ingress, Gate 1 intake, Gate 2 plan-execute-verify-PR, Gate 3 merge-conflict triage, and the ADK reasoning agents. See docs/SYSTEM_DESIGN.md."
 authors = [
     { name = "Sameer Verma", email = "na21b061@smail.iitm.ac.in" }
 ]
@@ -51,5 +51,7 @@ markers = [
 # A `-m` flag on the command line overrides this (CLI args win over addopts).
 addopts = "-m 'not eval'"
 # The E2E eval's fixture repos contain their own test suites (they're the *subject* of the eval,
-# copied and run by the harness) — never collect them as tests of this project.
-norecursedirs = ["e2e_fixtures"]
+# copied and run by the harness) — never collect them as tests of this project. NOTE: overriding
+# norecursedirs replaces pytest's defaults, so the defaults are restated here — without `.*` the
+# bench harness's local .cache checkouts (GBs of cloned repos) get collected and crash collection.
+norecursedirs = ["e2e_fixtures", "*.egg", ".*", "_darcs", "build", "CVS", "dist", "node_modules", "venv", "{arch}"]

@@ -226,11 +226,8 @@ version = "0.1.0"
 source = { editable = "execution-sandbox" }
 dependencies = [
     { name = "artisan-shared" },
-    { name = "githubkit", extra = ["auth-app"] },
     { name = "google-adk" },
     { name = "google-cloud-firestore" },
-    { name = "google-cloud-secret-manager" },
-    { name = "pydantic" },
     { name = "semgrep" },
 ]
 
@@ -243,11 +240,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "artisan-shared", editable = "packages/artisan_shared" },
-    { name = "githubkit", extras = ["auth-app"], specifier = "==0.16.1" },
     { name = "google-adk", specifier = "==2.8.0" },
     { name = "google-cloud-firestore", specifier = "==2.29.0" },
-    { name = "google-cloud-secret-manager", specifier = "==2.30.0" },
-    { name = "pydantic", specifier = "==2.13.4" },
     { name = "semgrep", specifier = "==1.79.0" },
 ]
 

@@ -9,6 +9,7 @@ import type { TicketSummary } from "@/types/ticket";
 const TICKET: TicketSummary = {
   id: "403errors_artisan-demo__4",
   jiraKey: "ART-10",
+  jiraSummary: null,
   githubIssueNumber: 4,
   githubRepo: "403errors/artisan-demo",
   status: "pr_open",

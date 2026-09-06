@@ -11,6 +11,7 @@ function ticket(overrides: Partial<TicketDoc>): TicketDoc {
     githubIssueNumber: 4,
     githubRepo: "403errors/artisan-demo",
     jiraKey: "ART-10",
+    jiraSummary: null,
     status: "escalated",
     currentStep: null,
     clarificationRounds: 0,

@@ -27,6 +27,7 @@ function ticket(overrides: Partial<TicketSummary>): TicketSummary {
   return {
     id: "1",
     jiraKey: "ART-1",
+    jiraSummary: null,
     githubIssueNumber: 1,
     githubRepo: "403errors/artisan-demo",
     status: "in_progress",

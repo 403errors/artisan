@@ -29,6 +29,7 @@ const TICKET: TicketDoc = {
   githubIssueNumber: 4,
   githubRepo: "403errors/artisan-demo",
   jiraKey: "ART-10",
+  jiraSummary: null,
   status: "done",
   currentStep: null,
   clarificationRounds: 0,
