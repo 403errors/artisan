@@ -1,0 +1,10 @@
+{
+  "id": "backend-two-endpoints-same-validation",
+  "title": "Orders accept negative quantities — negative invoice totals",
+  "body": "create_order doesn't validate item quantities: an order with quantity -1 produces a negative total. quantity must be a positive integer; anything else must be rejected with a ValueError.",
+  "expected_domains": ["backend"],
+  "test_command": "python -m pytest tests -q",
+  "heldout_command": "python -m pytest .heldout_tests -q",
+  "bug": "create_order and create_refund both skip quantity validation; the issue names only create_order.",
+  "visible_failing_test": true
+}

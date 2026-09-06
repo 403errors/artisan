@@ -1,17 +1,17 @@
 {
-  "generated": "2026-09-05T18:25:18.036690+00:00",
-  "n_cases": 25,
+  "generated": "2026-09-05T20:35:09.821272+00:00",
+  "n_cases": 28,
   "n_reps": 3,
   "mean_match": 1.0,
-  "stability": 0.96,
-  "fallback_rate": 0.10714285714285714,
+  "stability": 0.9642857142857143,
+  "fallback_rate": 0.09375,
   "confidence_distribution": {
-    "high": 75
+    "high": 84
   },
   "calibration": {
     "high": {
-      "correct": 75,
-      "total": 75
+      "correct": 84,
+      "total": 84
     }
   },
   "per_case": [
@@ -313,6 +313,42 @@
       ],
       "stable": true,
       "predicted_run1": "scientific-computing",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "database-orders-pagination-skips",
+      "expected": "database",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "database",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "multi-customer-totals-report",
+      "expected": "backend+database",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "backend+database",
+      "confidence_run1": "high"
+    },
+    {
+      "id": "security-path-traversal-download",
+      "expected": "security",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "security",
       "confidence_run1": "high"
     }
   ]

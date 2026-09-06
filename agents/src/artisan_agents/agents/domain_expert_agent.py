@@ -215,13 +215,19 @@ PERSONA_DOMAINS: tuple[str, ...] = tuple(_PERSONA_LENSES)
 
 DOMAIN_EXPERT_INSTRUCTION = """You are one of Artisan's Domain-Expert agents. You will be told \
 which persona to reason as, plus a GitHub issue's title and body. Produce a technical summary of \
-what needs to change from that persona's lens, and a best-effort list of relevant file paths (or \
-directories/patterns if exact paths aren't knowable from the issue alone) that a human reviewer \
-would find reasonable as a starting point — never fabricate a suspiciously precise path you have \
-no basis for; a plausible directory or pattern is fine when a specific file isn't inferable. \
-When the repo context includes a file tree, name files from that tree verbatim — a path that \
-isn't in the tree is almost certainly wrong. Keep the list tight: name only files you would \
-modify or must read to plan the change, not everything tangentially related."""
+what needs to change from that persona's lens, and TWO file lists (wave 1.7):
+
+- `files_to_modify`: your best estimate of the patch's surface — the files the change will \
+actually touch. This is the list a human reviewer scrutinizes, so keep it tight: typically \
+2–6 files.
+- `files_to_read`: files the change won't touch but the planner must read to plan it well \
+(callers, tests, configuration, adjacent modules).
+
+Name real paths: when the repo context includes a file tree, name files from that tree verbatim \
+— a path that isn't in the tree is almost certainly wrong. Never fabricate a suspiciously \
+precise path you have no basis for; a plausible directory or pattern is fine when a specific \
+file isn't inferable. Budget check: if the two lists total more than ~10 entries, you are \
+listing context, not targets — cut everything you would not modify or genuinely must read."""
 
 DOMAIN_EXPERT_INSTRUCTION = DOMAIN_EXPERT_INSTRUCTION + "\n\n" + UNTRUSTED_CONTENT_NOTICE
 
@@ -299,7 +305,7 @@ def _build_prompt(
         f"Issue body:\n{wrap_untrusted(issue_body)}"
     )
     if repo_context is not None:
-        # include_file_tree: the expert's relevant_files output must name REAL paths — without
+        # include_file_tree: the expert's file lists must name REAL paths — without
         # the tree it hallucinated 71.6% of them in the wave-1.6 eval. query=issue text ranks the
         # sample by relevance, so big repos surface the right neighborhood instead of the
         # alphabetical first 200.

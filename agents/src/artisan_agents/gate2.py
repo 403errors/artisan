@@ -6,6 +6,7 @@ retry, so the whole pipeline runs as one bounded loop within a single call, unli
 clarification loop (which re-enters via a new webhook event)."""
 
 import asyncio
+import json
 from datetime import datetime, timezone
 
 from artisan_shared.firestore_schema import EscalationEntry
@@ -131,7 +132,21 @@ async def start_gate2(
             issue_body=issue_body, review_criteria=review_criteria,
         )
 
-        if verdict.green:
+        # #17 hard-gating (wave 1.7, unlocked by the verification eval reaching 100% criteria
+        # agreement — the 95% reliability bar the report-first rollout was gated on): a not_met
+        # lens criterion forces the attempt red even when the model's holistic verdict is green,
+        # and its evidence becomes the retry feedback. not_applicable never gates.
+        not_met = [c for c in verdict.criteria_results if c.status == "not_met"]
+        if not_met and verdict.green:
+            await event_context.current_sink().emit(
+                type="criteria_hard_gate",
+                summary=(
+                    f"{len(not_met)} review criterion(s) not met — holistic green overridden to red"
+                ),
+                detail=json.dumps([c.model_dump() for c in not_met]),
+            )
+
+        if verdict.green and not not_met:
             async with tracing.gate_span(ticket_id, "2", "proceed", label="Gate 2: verification passed"):
                 pass
             await firestore_client.update_ticket(repo, issue_number, current_step="opening_pr")
@@ -140,7 +155,12 @@ async def start_gate2(
             )
             return
 
-        feedback = verdict.feedback or "Verification failed with no specific feedback."
+        if not_met and verdict.green:
+            feedback = "Verification criteria not met: " + "; ".join(
+                f"{c.criterion} (evidence: {c.evidence})" for c in not_met
+            )
+        else:
+            feedback = verdict.feedback or "Verification failed with no specific feedback."
         async with tracing.gate_span(ticket_id, "2", "retry", label="Gate 2: verification failed, retrying"):
             pass
         try:

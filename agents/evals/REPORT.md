@@ -1,19 +1,19 @@
 # Routing eval report
 
-Generated: 2026-09-05T18:25:18.036531+00:00 — 25 cases x 3 reps, live Gemini via Vertex AI `global`, temperature=0.
+Generated: 2026-09-05T20:35:09.821154+00:00 — 28 cases x 3 reps, live Gemini via Vertex AI `global`, temperature=0.
 
 ## Headline metrics
 
 - **Exact-set match (mean over reps):** 100.0%
-- **Cross-run stability (all 3 reps agree):** 96.0%
-- **Fallback rate (predictions outside the bespoke registry):** 10.7%
-- **Self-reported confidence:** {'high': 75}
+- **Cross-run stability (all 3 reps agree):** 96.4%
+- **Fallback rate (predictions outside the bespoke registry):** 9.4%
+- **Self-reported confidence:** {'high': 84}
 
 ## Confidence calibration (accuracy within each confidence bucket)
 
 | Confidence | Correct | Total | Accuracy |
 |---|---|---|---|
-| high | 75 | 75 | 100% |
+| high | 84 | 84 | 100% |
 
 Guidance thresholds (not yet enforced): match >= 90%, stability >= 95%, fallback < 10%.
 
@@ -22,15 +22,15 @@ Guidance thresholds (not yet enforced): match >= 90%, stability >= 95%, fallback
 | Domain | Precision | Recall | TP/FP/FN |
 |---|---|---|---|
 | frontend | 100% | 100% | 3/0/0 |
-| backend | 100% | 100% | 4/0/0 |
+| backend | 100% | 100% | 5/0/0 |
 | infra-devops | 100% | 100% | 3/0/0 |
 | mobile | 100% | 100% | 2/0/0 |
 | data-ml | 100% | 100% | 2/0/0 |
 | cli | 100% | 100% | 2/0/0 |
 | embedded | 100% | 100% | 2/0/0 |
 | game | 100% | 100% | 2/0/0 |
-| security | 100% | 100% | 2/0/0 |
-| database | 100% | 100% | 3/0/0 |
+| security | 100% | 100% | 3/0/0 |
+| database | 100% | 100% | 5/0/0 |
 
 ## Per-case results
 
@@ -61,3 +61,6 @@ Guidance thresholds (not yet enforced): match >= 90%, stability >= 95%, fallback
 | fallback-cobol-jcl | fallback | mainframe | 3/3 | yes | high |
 | fallback-solidity-contract | fallback | smart-contracts | 3/3 | NO | high |
 | fallback-fortran-sim | fallback | scientific-computing | 3/3 | yes | high |
+| database-orders-pagination-skips | database | database | 3/3 | yes | high |
+| multi-customer-totals-report | backend+database | backend+database | 3/3 | yes | high |
+| security-path-traversal-download | security | security | 3/3 | yes | high |

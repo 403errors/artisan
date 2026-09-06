@@ -62,9 +62,10 @@ def _stage_rows(routing: dict | None, expert: dict | None, verification: dict | 
         rows.append("| Routing | — | not yet run | |")
     if expert:
         rows.append(
-            f"| Domain expert | Relevant-files recall | {_pct(expert['mean_recall'])} "
+            f"| Domain expert | Files-to-modify recall | {_pct(expert['mean_recall'])} "
             f"| precision {_pct(expert.get('mean_precision'))}; hallucination rate "
-            f"{_pct(expert['hallucination_rate'])} |"
+            f"{_pct(expert['hallucination_rate'])}; union-recall guard "
+            f"{_pct(expert.get('mean_union_recall'))} |"
         )
         judge = expert.get("judge_means") or {}
         if judge:
@@ -109,13 +110,14 @@ def build_pipeline_report(
         "## How to read this",
         "",
         "- **Routing** answers: did the right specialist get the ticket? (exact-set match on a "
-        "25-case golden dataset, plus confidence calibration — a calibrated router is right more "
+        "golden dataset, plus confidence calibration — a calibrated router is right more "
         "often when it says \"high\".)",
         "- **Domain expert** answers: given the right specialist, did it identify the right "
-        "files and root cause? (file recall/precision are hard metrics; summary quality is "
-        "judge-scored and deliberately not a headline.)",
-        "- **Verification** answers: does the gate agree with a known-correct oracle? (This is "
-        "the number #17's criteria hard-gating decision waits on.)",
+        "files and root cause? (file recall/precision are hard metrics scored on the "
+        "files-to-modify list, with union-of-both-lists recall as the anti-gaming guard; "
+        "summary quality is judge-scored and deliberately not a headline.)",
+        "- **Verification** answers: does the gate agree with a known-correct oracle? (Criteria "
+        "agreement is what #17's hard-gating was gated on — flipped ON in wave 1.7 at 100%.)",
         "- **End-to-end** answers: on seeded real bugs, how often does the pipeline ship a fix "
         "that passes tests it never saw? And how often does it ship a wrong fix believing it's "
         "right (false green) — the number verification exists to keep at zero.",

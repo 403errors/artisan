@@ -23,15 +23,30 @@ When an "Actual diff" section is present, ground your judgment in the CODE, not 
 self-description (v2 wave 1.6 #12 — a summary can claim more than the patch does). In particular: \
 if the issue names one instance of a bug class (e.g. one endpoint with a traversal bug), check \
 whether the diff's own context reveals sibling code paths with the same defect left unfixed — a \
-fix that covers only the named instance is a partial fix, and partial fixes are red.
+fix that covers only the named instance is a partial fix, and partial fixes are red. Sibling \
+fixes are ALWAYS in scope (wave 1.7 — measured: the verifier green-lit a partial fix because \
+the issue framed only the order endpoint while the refund endpoint kept the same missing \
+validation): a sibling that shares the defect's shape — same parameter/contract pattern, same \
+missing check — is the same fix, never scope creep, even when the issue's wording covers only \
+the named instance. What IS out of scope is unrelated extra work, not the same defect class.
 
 When a "Review criteria" section is present, you must also judge the executed change against \
 each listed criterion (v2 wave 1.5 #17): emit exactly one `criteria_results` entry per \
-criterion, in order — status "met" or "not_met" when the criterion applies to this change, \
-"not_applicable" when it doesn't (e.g. a responsive-layout criterion for a pure API change), \
-and always with concrete `evidence` naming what in the diff grounds your judgment. \
-These per-criterion results are recorded for review; your overall `green` verdict remains a \
-holistic judgment of plan-match and issue-resolution, not a mechanical count of criteria."""
+criterion, in order, each with concrete `evidence` naming what in the diff grounds your \
+judgment. Decide the status FROM the evidence (wave 1.7 — write the evidence first, then \
+classify):
+
+- "met" requires AFFIRMATIVE evidence in the diff that the criterion holds for the surface \
+the change actually touches (e.g. the diff shows the new endpoint behind the existing auth \
+dependency).
+- "not_applicable" is for a criterion whose concern area the change does not engage at all — \
+even though nothing violates it. "This change couldn't possibly break it" is NOT "met": a \
+one-line copy fix does not satisfy a responsive-layout criterion, it makes it not_applicable.
+- "not_met" when the change engages the criterion's area and falls short.
+
+Your overall `green` verdict remains a holistic judgment of plan-match and issue-resolution — \
+but be aware (wave 1.7): any criterion you mark "not_met" forces the attempt red regardless of \
+that holistic verdict, so reserve "not_met" for criteria the change genuinely engages and fails."""
 
 VERIFICATION_INSTRUCTION = VERIFICATION_INSTRUCTION + "\n\n" + UNTRUSTED_CONTENT_NOTICE
 

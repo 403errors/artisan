@@ -54,7 +54,7 @@ def test_intake_verdict_rejects_unknown_verdict_value() -> None:
 
 def test_domain_expert_output_accepts_non_web_domain() -> None:
     # WS4: `domain` is an open-ended string matching `RoutingDecision.domains`'s new type.
-    output = DomainExpertOutput(domain="devops-unknown", technical_summary="x", relevant_files=[])
+    output = DomainExpertOutput(domain="devops-unknown", technical_summary="x", files_to_modify=[])
     assert output.domain == "devops-unknown"
 
 

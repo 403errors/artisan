@@ -33,6 +33,23 @@ Writes `agents/evals/E2E_REPORT.md` and an `e2e_results.json` sidecar (consumed 
 pipeline_report.py). N_REPS=1 by default (each scenario costs multiple live coding-agent runs);
 set ARTISAN_E2E_REPS=2+ for variance estimates. The only hard assertion is structural: every
 scenario reached a terminal state.
+
+Fixture filter + run tags (v2 wave 1.7) — the fast iteration loop for authoring fixtures and
+for parallel shards:
+
+    ARTISAN_E2E_FIXTURES=security-xss-two-sinks,backend-two-endpoints-same-validation \
+    ARTISAN_E2E_TAG=sibling-1 \
+    GOOGLE_GENAI_USE_VERTEXAI=TRUE GOOGLE_CLOUD_PROJECT=artisan-multiagent-ai \
+    GOOGLE_CLOUD_LOCATION=global \
+        uv run --package artisan-agents pytest agents/evals/test_e2e_eval.py -m eval -s
+
+A filtered run's outputs are tagged (`E2E_REPORT.<tag>.md` / `e2e_results.<tag>.json`) so it can
+never overwrite the untagged full-run record that pipeline_report.py aggregates. Parallelism is
+process-level ONLY — scenarios monkeypatch shared module-level clients, so in-process
+concurrency would race. Run one pytest process per fixture (or per fixture group), each with its
+own tag, then merge the tagged shards back into the untagged record:
+
+    cd agents/evals && uv run --package artisan-agents python merge_e2e_shards.py tag1 tag2 ...
 """
 
 import json
@@ -59,6 +76,17 @@ FIXTURES_DIR = Path(__file__).parent / "e2e_fixtures"
 REPORT_PATH = Path(__file__).parent / "E2E_REPORT.md"
 SIDECAR_PATH = Path(__file__).parent / "e2e_results.json"
 N_REPS = int(os.environ.get("ARTISAN_E2E_REPS", "1"))
+
+# Fixture filter + run tagging (see module docstring). A filtered run MUST NOT overwrite the
+# untagged full-run report/sidecar that pipeline_report.py aggregates, so filtered outputs are
+# always tagged — explicitly via ARTISAN_E2E_TAG, or derived from the filter itself.
+_FIXTURE_FILTER = {
+    f.strip() for f in os.environ.get("ARTISAN_E2E_FIXTURES", "").split(",") if f.strip()
+}
+_RUN_TAG = os.environ.get("ARTISAN_E2E_TAG") or "-".join(sorted(_FIXTURE_FILTER))
+if _RUN_TAG:
+    REPORT_PATH = REPORT_PATH.with_name(f"{REPORT_PATH.stem}.{_RUN_TAG}{REPORT_PATH.suffix}")
+    SIDECAR_PATH = SIDECAR_PATH.with_name(f"{SIDECAR_PATH.stem}.{_RUN_TAG}{SIDECAR_PATH.suffix}")
 
 _MANIFEST_NAMES = ("pyproject.toml", "package.json", "go.mod", "Cargo.toml", "pubspec.yaml")
 
@@ -316,6 +344,11 @@ async def test_e2e_gate2_on_seeded_bugs(monkeypatch) -> None:
     scenario_dirs = sorted(
         d for d in FIXTURES_DIR.iterdir() if (d / "scenario.json").exists()
     )
+    if _FIXTURE_FILTER:
+        scenario_dirs = [d for d in scenario_dirs if d.name in _FIXTURE_FILTER]
+        missing = _FIXTURE_FILTER - {d.name for d in scenario_dirs}
+        if missing:
+            pytest.fail(f"ARTISAN_E2E_FIXTURES names unknown fixtures: {sorted(missing)}")
     results = []
     for rep in range(N_REPS):
         for i, scenario_dir in enumerate(scenario_dirs):

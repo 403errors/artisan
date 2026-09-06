@@ -132,7 +132,7 @@ def stub_jira_and_github(monkeypatch):
 
 
 def _domain_output(domain: str) -> DomainExpertOutput:
-    return DomainExpertOutput(domain=domain, technical_summary=f"{domain} summary", relevant_files=["a.py"])
+    return DomainExpertOutput(domain=domain, technical_summary=f"{domain} summary", files_to_modify=["a.py"])
 
 
 @pytest.mark.asyncio
@@ -422,6 +422,73 @@ async def test_green_on_second_attempt_reaches_pr_open_with_retry_count_one(
     assert len(github_comments) == 0
     assert github_labels == [(REPO, 42, "artisan:ready-for-review")]
     assert jira_labels == [(JIRA_KEY, "artisan-pr-open")]
+
+
+@pytest.mark.asyncio
+async def test_not_met_criterion_overrides_holistic_green_and_retries(
+    fake_store, stub_jira_and_github, monkeypatch
+) -> None:
+    """#17 hard-gating (wave 1.7): a not_met lens criterion forces the attempt red even when the
+    model's holistic verdict is green; the criteria evidence becomes the retry feedback, and the
+    next attempt (clean criteria) proceeds to PR."""
+    prs, _, _, _, _ = stub_jira_and_github
+    execution_calls = []
+    planning_feedbacks = []
+
+    async def fake_run_routing(**kwargs):
+        return RoutingDecision(domains=["backend"], parallel=False)
+
+    async def fake_run_domain_expert(*, domain, issue_title, issue_body, repo_context=None):
+        return _domain_output(domain)
+
+    async def fake_run_planning(**kwargs):
+        planning_feedbacks.append(kwargs["prior_feedback"])
+        return _PLAN
+
+    async def fake_trigger_execution(**kwargs):
+        execution_calls.append(kwargs["attempt"])
+        return ExecutionResult(
+            branch=f"artisan/x-{kwargs['attempt']}",
+            diff_summary="x",
+            tests_passed=True,
+            logs_uri="gs://x",
+        )
+
+    verification_calls = []
+
+    async def fake_run_verification(**kwargs):
+        from artisan_shared.models import CriterionResult, VerificationVerdict
+
+        verification_calls.append(1)
+        if len(verification_calls) == 1:
+            return VerificationVerdict(
+                green=True,
+                criteria_results=[
+                    CriterionResult(
+                        criterion="[backend] Writes are idempotent or transactional",
+                        evidence="The new endpoint performs two writes without a transaction.",
+                        status="not_met",
+                    )
+                ],
+            )
+        return VerificationVerdict(green=True)
+
+    monkeypatch.setattr(gate2, "run_routing", fake_run_routing)
+    monkeypatch.setattr(gate2, "run_domain_expert", fake_run_domain_expert)
+    monkeypatch.setattr(gate2, "run_planning", fake_run_planning)
+    monkeypatch.setattr(gate2.cloud_run_jobs, "trigger_execution", fake_trigger_execution)
+    monkeypatch.setattr(gate2, "run_verification", fake_run_verification)
+
+    await gate2.start_gate2(REPO, ISSUE_NUMBER, JIRA_KEY, issue_title="T", issue_body="B")
+
+    assert execution_calls == [1, 2]
+    assert fake_store.doc.retry_count == 1
+    assert fake_store.doc.status == "pr_open"
+    assert len(prs) == 1
+    # The hard-gate's criteria evidence, not the model's (absent) holistic feedback, drove the retry.
+    assert planning_feedbacks[0] is None
+    assert "not met" in planning_feedbacks[1]
+    assert "two writes without a transaction" in planning_feedbacks[1]
 
 
 @pytest.mark.asyncio

@@ -45,7 +45,7 @@ def stub_model(monkeypatch):
 async def test_frontend_persona_produces_frontend_domain_output(stub_model) -> None:
     stub_model(
         '{"domain": "frontend", "technical_summary": "Change the submit button color to blue.", '
-        '"relevant_files": ["src/components/SubmitButton.tsx"]}'
+        '"files_to_modify": ["src/components/SubmitButton.tsx"]}'
     )
     output = await run_domain_expert(
         domain="frontend",
@@ -53,14 +53,14 @@ async def test_frontend_persona_produces_frontend_domain_output(stub_model) -> N
         issue_body="The submit button should be blue, not red.",
     )
     assert output.domain == "frontend"
-    assert output.relevant_files
+    assert output.files_to_modify
 
 
 @pytest.mark.asyncio
 async def test_backend_persona_produces_backend_domain_output(stub_model) -> None:
     stub_model(
         '{"domain": "backend", "technical_summary": "Add a /export endpoint returning CSV.", '
-        '"relevant_files": ["src/routes/export.py"]}'
+        '"files_to_modify": ["src/routes/export.py"]}'
     )
     output = await run_domain_expert(
         domain="backend",
@@ -68,14 +68,14 @@ async def test_backend_persona_produces_backend_domain_output(stub_model) -> Non
         issue_body="Need a backend endpoint that exports data as CSV.",
     )
     assert output.domain == "backend"
-    assert output.relevant_files
+    assert output.files_to_modify
 
 
 @pytest.mark.asyncio
 async def test_unknown_domain_falls_back_to_default_lens_instead_of_raising(stub_model) -> None:
     stub_model(
         '{"domain": "quantum-computing", "technical_summary": "Fix the qubit decoherence.", '
-        '"relevant_files": ["circuits/main.py"]}'
+        '"files_to_modify": ["circuits/main.py"]}'
     )
     output = await run_domain_expert(
         domain="quantum-computing",
@@ -196,7 +196,7 @@ async def test_run_domain_expert_emits_domain_lens_used_event(
     # v2 wave 1.5 (#14): every dispatch records which side of the lens registry it hit, so the
     # fallback rate — the health signal for the bespoke-lens investment — is computable.
     stub_model(
-        '{"domain": "d", "technical_summary": "s", "relevant_files": ["f"]}'
+        '{"domain": "d", "technical_summary": "s", "files_to_modify": ["f"]}'
     )
     sink = _RecordingSink()
     event_context.set_sink(sink)

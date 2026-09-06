@@ -82,7 +82,7 @@ def test_routing_and_domain_expert_prompts_share_the_same_summary() -> None:
 
 
 def test_file_tree_is_opt_in_and_expert_opts_in() -> None:
-    # The expert names concrete relevant_files, so it gets the tree (wave-1.6: without it, 71.6%
+    # The expert names concrete file paths, so it gets the tree (wave-1.6: without it, 71.6%
     # of predicted paths were hallucinated). Routing only classifies domains — it keeps the
     # cheaper prompt.
     ctx = _ctx(manifests={"pyproject.toml": _PYPROJECT})

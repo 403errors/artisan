@@ -36,7 +36,13 @@ given, use your best judgment from the issue and domain-expert summaries alone.
 Dead code: when the new requirement makes an existing function, branch, or exported symbol stale \
 or fully superseded, identify it explicitly — real file path, symbol name, and a one-line reason \
 — and add it to `removed_code`. A later coding stage will delete it as part of this same change. \
-Leave `removed_code` empty when nothing is actually superseded; don't invent removals to fill it."""
+Leave `removed_code` empty when nothing is actually superseded; don't invent removals to fill it.
+
+Bug-class completeness (wave 1.7): when the issue names ONE instance of a defect class (one \
+endpoint, one function, one query with a bug its siblings likely share), enumerate every sibling \
+instance visible in the repo context or domain-expert summaries explicitly as its own step — a \
+plan that fixes only the named instance is a partial fix, and verification rejects partial \
+fixes."""
 
 PLANNING_INSTRUCTION = PLANNING_INSTRUCTION + "\n\n" + UNTRUSTED_CONTENT_NOTICE
 
@@ -100,7 +106,9 @@ def _build_prompt(
     repo_context: RepoContext | None = None,
 ) -> str:
     summaries = "\n---\n".join(
-        f"[{o.domain}] {o.technical_summary}\nRelevant files: {', '.join(o.relevant_files) or '(none given)'}"
+        f"[{o.domain}] {o.technical_summary}\n"
+        f"Files to modify: {', '.join(o.files_to_modify) or '(none given)'}\n"
+        f"Files to read for context: {', '.join(o.files_to_read) or '(none given)'}"
         for o in domain_outputs
     )
     prompt = (

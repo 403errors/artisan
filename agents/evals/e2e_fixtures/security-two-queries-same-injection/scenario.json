@@ -1,0 +1,10 @@
+{
+  "id": "security-two-queries-same-injection",
+  "title": "User search is SQL-injectable",
+  "body": "find_users_by_name(conn, \"' OR '1'='1\") returns every row in users — the name is interpolated straight into the SQL. Lookups must treat the input as a literal value (parameterized queries, not string interpolation).",
+  "expected_domains": ["security"],
+  "test_command": "python -m pytest tests -q",
+  "heldout_command": "python -m pytest .heldout_tests -q",
+  "bug": "find_users_by_name and find_orders_by_ref both interpolate their parameter into SQL via f-string; the issue names only the user lookup.",
+  "visible_failing_test": true
+}

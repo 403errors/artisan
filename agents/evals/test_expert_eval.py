@@ -5,9 +5,10 @@ given goldens that pin the domain, so routing noise can't contaminate the expert
 Per case (golden issue + synthetic repo with a realistic file tree), the live expert agent runs
 N_REPS times and is scored on:
 
-- relevant-files recall / precision (hard metric; matching rules in scoring.py — ancestor
+- files-to-modify recall / precision (hard metric; matching rules in scoring.py — ancestor
   directories and globs count, per the expert instruction's "plausible directory or pattern"
-  allowance)
+  allowance). Wave 1.7: scored on the modify list alone, with union-of-both-lists recall as
+  a guard metric against dumping everything into files_to_read.
 - hallucinated-path count (hard metric; the instruction forbids fabricating precise paths)
 - judge-scored summary quality (SOFT metric, clearly labeled): a reference-based judge compares
   the technical summary against the case's labeled root cause — root-cause identified, correct
@@ -150,21 +151,34 @@ def _build_report(cases: list[dict], results: dict) -> tuple[str, dict]:
         reps = results[case["id"]]
         rep_scores = []
         for output, judge in reps:
+            # Wave 1.7: precision AND recall are scored on `files_to_modify` alone — goldens
+            # label the patch surface, and mixing read-for-context files into the score is what
+            # made precision unreadable (40%) before the schema split.
             precision, recall, hallucinated = file_precision_recall(
-                output.relevant_files, case["expected_files"], case["repo"]["file_tree"]
+                output.files_to_modify, case["expected_files"], case["repo"]["file_tree"]
+            )
+            # Guard metric: recall over the UNION of both lists must stay at ceiling — it
+            # catches the degenerate "dump every file into files_to_read" response that would
+            # otherwise game the modify-set scores.
+            _, union_recall, union_hallucinated = file_precision_recall(
+                [*output.files_to_modify, *output.files_to_read],
+                case["expected_files"],
+                case["repo"]["file_tree"],
             )
             rep_scores.append(
                 {
                     "precision": precision,
                     "recall": recall,
-                    "hallucinated": hallucinated,
-                    "n_files": len(output.relevant_files),
+                    "union_recall": union_recall,
+                    "hallucinated": sorted(set(hallucinated) | set(union_hallucinated)),
+                    "n_files": len(output.files_to_modify) + len(output.files_to_read),
                     "judge": judge.model_dump() if judge else None,
                 }
             )
         per_case.append({"id": case["id"], "domain": case["domain"], "reps": rep_scores})
 
     recalls = [r["recall"] for p in per_case for r in p["reps"]]
+    union_recalls = [r["union_recall"] for p in per_case for r in p["reps"]]
     precisions = [r["precision"] for p in per_case for r in p["reps"] if r["precision"] is not None]
     hallucinations = [len(r["hallucinated"]) for p in per_case for r in p["reps"]]
     total_files = [r["n_files"] for p in per_case for r in p["reps"]]
@@ -175,6 +189,7 @@ def _build_report(cases: list[dict], results: dict) -> tuple[str, dict]:
     } if judge_scores else {}
 
     mean_recall = sum(recalls) / len(recalls)
+    mean_union_recall = sum(union_recalls) / len(union_recalls)
     mean_precision = sum(precisions) / len(precisions) if precisions else None
 
     # Per-domain rollup (run 1 only, mirrors the routing report's per-domain table).
@@ -190,8 +205,9 @@ def _build_report(cases: list[dict], results: dict) -> tuple[str, dict]:
         "",
         "## Headline metrics (hard)",
         "",
-        f"- **Relevant-files recall (mean over reps):** {mean_recall:.1%}",
-        f"- **Relevant-files precision (mean over reps):** {_pct(mean_precision)}",
+        (f"- **Files-to-modify recall (mean over reps):** {mean_recall:.1%} "
+         "(guard — union of both lists: " + f"{mean_union_recall:.1%})"),
+        f"- **Files-to-modify precision (mean over reps):** {_pct(mean_precision)}",
         (f"- **Hallucinated paths:** {sum(hallucinations)} across {sum(total_files)} predicted "
          f"paths ({_pct(sum(hallucinations) / max(sum(total_files), 1))})"),
         "",
@@ -239,6 +255,7 @@ def _build_report(cases: list[dict], results: dict) -> tuple[str, dict]:
         "n_cases": len(cases),
         "n_reps": N_REPS,
         "mean_recall": mean_recall,
+        "mean_union_recall": mean_union_recall,
         "mean_precision": mean_precision,
         "hallucination_rate": sum(hallucinations) / max(sum(total_files), 1),
         "judge_means": judge_means,

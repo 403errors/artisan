@@ -43,13 +43,17 @@ irrelevant review criteria, which is worse than the honest generic fallback.
 
 Most issues need exactly one domain. Only select more than one when the issue clearly spans \
 multiple layers (e.g. a new API endpoint plus the UI that calls it). Label by the nature of the \
-FIX, not the location of the symptom (v2 wave 1.6 — both directions of failure measured): a \
-vulnerability report (SSRF, path traversal, injection, XSS) is "security" — the fix is a \
-security control, even though the vulnerable code sits in a backend or frontend module; a \
-slow-query or missing-index report includes "database" alongside the endpoint's layer; but a \
-rate-limit, pagination, or validation logic bug is just "backend" — don't add a dimension the \
-fix won't exercise. Never substitute the layer for the dimension, and never stack the layer on \
-top of a fix that is purely the dimension. Set parallel=true only when the selected domains are \
+FIX, not the location of the symptom (v2 wave 1.6 — both directions of failure measured; wave \
+1.7 added the query-semantics boundary cases below): a vulnerability report (SSRF, path \
+traversal, injection, XSS) is "security" — the fix is a security control, even though the \
+vulnerable code sits in a backend or frontend module; a slow-query or missing-index report \
+includes "database" alongside the endpoint's layer; and a query-SEMANTICS bug — wrong \
+OFFSET/LIMIT window arithmetic behind a pagination symptom, GROUP BY/aggregation logic that \
+merges or splits the wrong rows — is "database" (alone when the fix is purely in the query, \
+alongside the endpoint's layer when both must change); but a rate-limit, validation, or \
+pagination parameter/display logic bug is just "backend" — don't add a dimension the fix won't \
+exercise. Never substitute the layer for the dimension, and never stack the layer on top of a \
+fix that is purely the dimension. Set parallel=true only when the selected domains are \
 independent enough to reason about concurrently without one needing the other's output first \
 (e.g. two domains touching disjoint files); set parallel=false when the domains would need to be \
 reasoned about in sequence (e.g. one domain's technical summary should inform the other's), or \

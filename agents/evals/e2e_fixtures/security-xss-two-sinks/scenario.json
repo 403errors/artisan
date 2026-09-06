@@ -1,0 +1,10 @@
+{
+  "id": "security-xss-two-sinks",
+  "title": "Profile bio renders unescaped HTML (XSS)",
+  "body": "render_profile_bio('<script>alert(1)</script>') returns the script tag verbatim into the page — user bios can inject arbitrary markup. User content must be HTML-escaped (at minimum <, >, & and quotes) before it is interpolated.",
+  "expected_domains": ["security"],
+  "test_command": "python -m pytest tests -q",
+  "heldout_command": "python -m pytest .heldout_tests -q",
+  "bug": "render_profile_bio and render_comment both interpolate user input into HTML without escaping; the issue names only the bio sink.",
+  "visible_failing_test": true
+}

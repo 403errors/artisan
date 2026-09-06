@@ -85,7 +85,12 @@ class DomainExpertOutput(BaseModel):
     # Open-ended (WS4) to match `RoutingDecision.domains` — see that model's docstring.
     domain: str
     technical_summary: str
-    relevant_files: list[str]
+    # Split in wave 1.7 (was a single `relevant_files` list): mixing modify-targets with
+    # read-for-context files made "relevant" unscoreable — eval precision sat at 40% because
+    # context files diluted the modify set. `files_to_modify` is the patch surface estimate;
+    # `files_to_read` is everything the planner should read but the change won't touch.
+    files_to_modify: list[str]
+    files_to_read: list[str] = []
 
 
 class RemovedCodeItem(BaseModel):
@@ -127,19 +132,23 @@ class ExecutionResult(BaseModel):
 class CriterionResult(BaseModel):
     """One domain-lens review criterion judged against the executed change (v2 wave 1.5 #17).
     `evidence` names what in the diff/logs grounds the judgment — a criterion verdict without
-    evidence is just a vibe."""
+    evidence is just a vibe. Field order is deliberate (wave 1.7): structured output generates
+    fields in declaration order, so `evidence` precedes `status` — the model must quote its
+    grounding before it can classify, which measurably improves met/not_applicable boundary
+    agreement with the oracle."""
 
     criterion: str
-    status: Literal["met", "not_met", "not_applicable"]
     evidence: str
+    status: Literal["met", "not_met", "not_applicable"]
 
 
 class VerificationVerdict(BaseModel):
     green: bool
     feedback: str | None = None
-    # Report-first (#17): per-criterion results are recorded and surfaced, but overall `green`
-    # stays a holistic model judgment — hard-gating on criteria flips only once the eval harness
-    # shows criteria verdicts are reliable. Default keeps pre-#17 producers valid.
+    # Hard-gated (#17, flipped in wave 1.7): gate2 treats any `not_met` criterion as red
+    # regardless of the holistic `green` — unlocked once the verification eval showed 100%
+    # criteria agreement, clearing the 95% reliability bar the report-first rollout waited on.
+    # Default keeps pre-#17 producers valid.
     criteria_results: list[CriterionResult] = []
 
 

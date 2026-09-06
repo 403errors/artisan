@@ -105,7 +105,7 @@ flowchart TD
 1. Orchestrator (Gemini 3.8 Flash, temperature pinned to 0 — routing is a classification-style decision kept reproducible; the high-thinking config belongs to the Planning Agent in step 2) decides which domain-expert persona(s) apply and whether they run in parallel or in sequence. `domains` is an open string, but ten domains have bespoke expert lenses with concrete review criteria — `frontend`, `backend`, `infra-devops`, `mobile`, `data-ml`, `cli`, `embedded`, `game`, `security`, `database` (v2 wave 1 #2; the routing instruction names this set verbatim and any other domain falls back to a generic lens). As of v2 wave 1.5 the decision is auditable: `RoutingDecision` carries a `rationale` and a self-reported `confidence` (`low`/`medium`/`high`), both persisted on the ticket doc next to `domains` — recorded and surfaced, never gated on (an abstain path on low confidence is deferred to wave 2's autonomy tiers).
 2. Domain-expert output (refined technical description through that domain's lens, including its review criteria) → Planning Agent (Gemini 3.8 Flash, `thinking_level=HIGH`) → a plan (steps, touched files, test cases, doc updates) stored on the Firestore ticket doc.
 3. Orchestrator triggers a Cloud Run Job (`execution-sandbox`) with the plan and repo reference as job args (`agents/gcp/cloud_run_jobs.py`, via env-var overrides on a synchronous `run_job(...).result()` call — Cloud Run supports request timeouts up to 60 minutes, so this needs no separate async completion signal at this scope). The job (`execution-sandbox/`): clones the repo, creates a branch, runs a bounded ADK function-calling agent against the plan to write code/tests/docs (never a shelled-out external coding CLI, per PRD §5's non-goal), runs the full test suite, pushes the branch, and writes a structured `ExecutionResult` (success + diff, or failure + logs) directly onto the ticket's Firestore doc for the orchestrator to read back.
-4. Verification Agent compares the job's result against the plan and the original issue (short-circuiting to a failed verdict without a model call when the test run itself failed — a red test run can never be verified green). As of v2 wave 1.5 (#17) the verdict is criteria-aware: the routed domains' lens review-criteria are threaded into the verification prompt, and `VerificationVerdict.criteria_results` records a per-criterion judgment (`met`/`not_met`/`not_applicable` + evidence) that lands in the event log with the verdict. Report-first by design — overall `green` remains a holistic model judgment; hard-gating on individual criteria flips only once the eval harness (`agents/evals/`, #19) shows criteria verdicts are reliable.
+4. Verification Agent compares the job's result against the plan and the original issue (short-circuiting to a failed verdict without a model call when the test run itself failed — a red test run can never be verified green). As of v2 wave 1.5 (#17) the verdict is criteria-aware: the routed domains' lens review-criteria are threaded into the verification prompt, and `VerificationVerdict.criteria_results` records a per-criterion judgment (`met`/`not_met`/`not_applicable` + evidence) that lands in the event log with the verdict. **Hard-gated as of wave 1.7:** any `not_met` criterion forces the attempt red regardless of the holistic `green` (the override is emitted to the event log as `criteria_hard_gate`, and the criteria evidence becomes the retry feedback) — flipped once the verification eval showed 100% criteria agreement with the oracle, clearing the 95% reliability bar the report-first rollout waited on.
    - **Green + tests pass:** orchestrator opens the PR (via GitHub App), tagging the issue and summarizing the approach; mirrors the summary as a Jira comment. The PR's base is the repo's **actual default branch** (resolved via the GitHub API when Gate 2 starts — never a hardcoded `main`), so a repo whose default branch is `master`/`develop`/etc. still gets PRs targeted at the right branch. **Jira status is not transitioned on this path** — this Jira site's real team-managed Kanban workflow only has `Backlog`/`Selected for Development`/`In Progress`/`Done` (confirmed live against `ART-8`/`ART-9` in Sprint 3), with no "PR Open — Awaiting Review" status to move into; the ticket stays *In Progress* in Jira, and the PR link/summary is communicated via the comment instead. Firestore's own `TicketDoc.status` still tracks `"pr_open"` precisely — it, not Jira's coarser workflow, is the source of truth for this state.
    - **Failed verification or failed tests:** specific feedback is appended to the ticket's Firestore doc, `retry_count` increments transactionally (same commit-then-raise shape as Gate 1's clarification cap), and the loop returns to step 2 (Planning) with that feedback in context.
 5. On exceeding the retry cap, the ticket is flagged `escalated` with the last failure appended to `escalation_history` (an atomic `firestore.ArrayUnion`, not read-modify-write), and Jira/GitHub are notified — no further automated retries.
@@ -257,9 +257,11 @@ class DuplicateConfirmVerdict(BaseModel):
     target_issue_number: int | None = None
 
 class DomainExpertOutput(BaseModel):
-    domain: Literal["frontend", "backend", "infra-devops"]
+    domain: str  # open-ended (WS4) — any domain routing names, bespoke lens or fallback
     technical_summary: str
-    relevant_files: list[str]
+    # wave 1.7: was a single relevant_files list — split so eval precision is scoreable
+    files_to_modify: list[str]  # the patch surface estimate
+    files_to_read: list[str] = []  # context the planner must read but the change won't touch
 
 class RemovedCodeItem(BaseModel):
     file: str
@@ -279,9 +281,15 @@ class ExecutionResult(BaseModel):
     tests_passed: bool
     logs_uri: str
 
+class CriterionResult(BaseModel):
+    criterion: str
+    evidence: str  # before status: generation order forces grounding before classification
+    status: Literal["met", "not_met", "not_applicable"]
+
 class VerificationVerdict(BaseModel):
     green: bool
     feedback: str | None = None
+    criteria_results: list[CriterionResult] = []  # hard-gated: any not_met => red (wave 1.7)
 
 class ConflictVerdict(BaseModel):
     classification: Literal["trivial", "semantic"]

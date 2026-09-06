@@ -155,8 +155,10 @@ def _build_report(scenarios: list[dict], results: dict) -> tuple[str, dict]:
         f"- **Feedback present on red verdicts:** {_pct(feedback_rate)}",
         f"- **Deterministic short-circuit correct:** {'yes' if shortcircuit_ok else 'NO'}",
         "",
-        ("Guidance thresholds (not yet enforced): verdict agreement >= 90%, criteria agreement "
-         ">= 85% before #17 hard-gating can be considered."),
+        ("#17 hard-gating is ON (wave 1.7): gate2 treats any not_met criterion as red. It was "
+         "unlocked when criteria agreement reached 100% — the 95% reliability bar the "
+         "report-first rollout waited on. If a future change drops agreement below 95%, "
+         "consider reverting gate2's override to report-first."),
         "",
         "## Per-scenario results",
         "",

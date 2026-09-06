@@ -92,7 +92,7 @@ def repo_context_summary(
     if excerpts:
         summary += "\n\nManifest excerpts:\n" + "\n\n".join(excerpts)
 
-    # Opt-in: the domain expert names concrete relevant_files — without the tree it invents
+    # Opt-in: the domain expert names concrete file paths — without the tree it invents
     # plausible paths (measured 71.6% hallucinated in the wave-1.6 expert eval). Routing keeps
     # the cheaper prompt: it classifies domains, it doesn't name files. The sample is
     # relevance-ranked against the issue when a query is given, with a top-level skeleton so

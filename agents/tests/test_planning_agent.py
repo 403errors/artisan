@@ -51,10 +51,10 @@ def stub_model(monkeypatch):
 
 
 _FRONTEND_OUTPUT = DomainExpertOutput(
-    domain="frontend", technical_summary="Change button color to blue.", relevant_files=["a.tsx"]
+    domain="frontend", technical_summary="Change button color to blue.", files_to_modify=["a.tsx"]
 )
 _BACKEND_OUTPUT = DomainExpertOutput(
-    domain="backend", technical_summary="Add export endpoint.", relevant_files=["b.py"]
+    domain="backend", technical_summary="Add export endpoint.", files_to_modify=["b.py"]
 )
 
 

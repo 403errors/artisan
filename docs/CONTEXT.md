@@ -474,9 +474,65 @@ prebuilt images for ALL SIX benchmarks (PolyBench on GHCR `:v1.1`, Multi-SWE-ben
 `mswebench/<org>_m_<repo>:pr-<n>` with `/home/<repo>` workdir) — no Dockerfile building needed.
 `bench_report.py` imports official-harness verdicts into `BENCH_REPORT.md`.
 
+### Milestone 19 — v2 wave 1.7: eval-driven hardening — precision split, #17 hard-gate flip, sibling-omission fixtures (2026-09-06)
+
+The wave that closes every gap the wave-1.6 evals exposed — no new scope, just score-push. All
+numbers live Gemini; final funnel in `agents/evals/PIPELINE_REPORT.md`.
+
+| Stage | Wave 1.6 | Wave 1.7 |
+|---|---|---|
+| Routing exact-set | 100% (25 goldens) | **100% (28 goldens — incl. 3 new boundary cases)** |
+| Expert file precision | 40.2% | **60.4%** (stretch target met); modify-recall 93.8%, union-guard 100%, hallucination 0% |
+| Verification criteria agreement | 88.9% | **100%** → #17 hard-gate FLIPPED |
+| E2E verified-correct | 87.5% (8 fixtures) | **100% (11 fixtures)**, false-green 0%, E2E routing 62.5% → 100% |
+
+**What landed:**
+
+- **Expert precision — schema split, not prompt luck.** `DomainExpertOutput.relevant_files` was
+  one flat list mixing patch targets with read-for-context files — precision was unscoreable.
+  Split into `files_to_modify` + `files_to_read` (only consumer: the planning prompt); the eval
+  scores the modify set with union-of-both-lists recall as an anti-gaming guard. Plus an explicit
+  budget in the instruction ("2–6 modify targets; >10 total = you're listing context"). A
+  "prefer modify when in doubt" tie-break was tried and REVERTED — it moved precision the wrong
+  way (59% → 55%) and introduced the split's only hallucinated path.
+- **#17 hard-gate flipped.** Two reliability fixes took criteria agreement 88.9% → 100%:
+  `CriterionResult` field reorder (evidence BEFORE status — structured output generates in field
+  order, so the model must quote grounding before classifying) and an explicit tie-break rule in
+  the verification instruction ("met requires AFFIRMATIVE evidence on the touched surface;
+  'couldn't possibly break it' is not_applicable"). With the 95% bar cleared, `gate2.py` now
+  treats any `not_met` criterion as red regardless of the holistic verdict, emits a
+  `criteria_hard_gate` event, and uses the criteria evidence as the retry feedback. Unit-tested:
+  not_met + holistic green → red → retry → PR.
+- **Sibling-omission class: caught live, then closed.** Three new E2E fixtures
+  (`security-xss-two-sinks`, `backend-two-endpoints-same-validation`,
+  `security-two-queries-same-injection`) each name ONE instance of a bug class while the held-out
+  oracle tests BOTH (validated locally: buggy → repro+oracle fail; full fix → all pass; partial
+  fix → oracle still fails). First run CAUGHT A REAL FALSE GREEN on the backend fixture — the
+  coder fixed only `create_order` and the verifier green-lit it, judging the refund sibling
+  out-of-scope. Root cause: the verification instruction's sibling clause didn't say siblings are
+  in scope. Fixed ("sibling fixes are ALWAYS in scope — the same defect class is the same fix,
+  never scope creep"); re-run: attempt 1 red → retry fixed both → verified-correct. The class is
+  now gated on 4 fixtures, and verification goldens still hold 100%/100% with the stronger
+  language.
+- **Routing boundary goldens +3 (25 → 28).** The wave-1.6 E2E routing misses were converted to
+  golden cases; two reproduced as genuine 0/3 misses — the rubric's "pagination is just backend"
+  example was over-broad (a query-window OFFSET bug IS database) and aggregation-semantics bugs
+  were unnamed (GROUP BY merging wrong rows IS database). Instruction fixed; routing back to 100%
+  exact-set, and E2E routing-in-context went 62.5% → 100% on the record run. The injection
+  fixture's label was also corrected to `security` (the rubric explicitly routes injection to
+  security) and renamed `security-two-queries-same-injection`.
+- **E2E harness speedup.** `ARTISAN_E2E_FIXTURES` filter + `ARTISAN_E2E_TAG` tagged sidecars +
+  `merge_e2e_shards.py`: the record run is 4 parallel process shards (minutes) instead of one
+  sequential pass, and filtered runs can never clobber the untagged record `pipeline_report.py`
+  aggregates. In-process concurrency is deliberately NOT used — scenarios monkeypatch shared
+  module-level clients.
+
+409 unit tests green across the three packages (agents 308, shared 41, sandbox 60).
+
 ## Next Milestone Target
 
 **v2 wave 1 (branch `v2`, `main` frozen):** #3 ✅ → #2 ✅ → **#7 per-repo build/test matrix** (last
-wave-1 item). Wave 1.5 (#12–#19) ✅ and wave 1.6 (#20–#21) ✅ complete as of 2026-09-05 — see
-`docs/miscellaneous/V2_SCOPE.md`. Queued follow-ups from eval data: expert file-tree grounding,
-`security-path-traversal` false-green investigation, first external bench run (manual).
+wave-1 item). Waves 1.5 (#12–#19), 1.6 (#20–#21), and 1.7 (eval-driven hardening) ✅ — see
+`docs/miscellaneous/V2_SCOPE.md`. Queued follow-ups from eval data: first external bench run
+(manual — the Phase 7 loop in `agents/evals/bench/README.md`); expert modify-recall sits at
+93.8% with the union guard at 100% (accepted — the planner sees both lists, so nothing is lost).
