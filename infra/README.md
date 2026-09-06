@@ -1,8 +1,6 @@
 # infra
 
-Deployment configuration and Infrastructure as Code for Artisan: Dockerfiles, CI/CD, and Terraform definitions / `gcloud` provisioning scripts.
-
-Populated in Sprint 7 — see [../docs/SPRINT.md](../docs/SPRINT.md#sprint-7--deployment--cicd).
+Deployment configuration and Infrastructure as Code for Artisan: Dockerfiles, CI/CD, and Terraform definitions / `gcloud` provisioning scripts. See [../docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) for the full runbook.
 
 ## Contents
 

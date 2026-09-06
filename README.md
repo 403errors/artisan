@@ -141,18 +141,15 @@ flowchart TD
 
 *Left: the dashboard at a glance. Right: drill into any ticket to see every gate decision.*
 
-## Live Demo & Hackathon Evaluation
+## Live Demo
 
-Artisan is fully deployed and operational in Google Cloud (`us-central1`). Hackathon judges and developers can evaluate the autonomous multi-agent pipeline live:
+Artisan is fully deployed and operational in Google Cloud (`us-central1`):
 
 - **Target Demo Repository (Public):** [https://github.com/403errors/artisan-demo](https://github.com/403errors/artisan-demo)
 - **Live Monitoring Dashboard:** [https://dashboard-x5vyqts7wa-uc.a.run.app](https://dashboard-x5vyqts7wa-uc.a.run.app)
 - **Live Jira Board:** [https://pieisnot22by7.atlassian.net/jira/software/projects/ART/boards/](https://pieisnot22by7.atlassian.net/jira/software/projects/ART/boards/)
 
-### Evaluator Access & Permissions:
-- **Dashboard Sign-In:** Authenticate with GitHub using an authorized evaluator email (`testing@devpost.com`, `cloudhackathons@google.com`) or any collaborator account on `403errors/artisan-demo`.
-- **Google Cloud Trace:** Granted `roles/cloudtrace.user` on project `artisan-multiagent-ai` for `group:testing@devpost.com` (`group:testing@challengepost.com`) and `group:cloudhackathons@google.com` to inspect distributed telemetry.
-- **Jira Board Access:** Accept the Atlassian invitation sent to `testing@devpost.com` / `cloudhackathons@google.com` to watch tickets transition across columns (*In Progress* → *Done*) in real time.
+Dashboard sign-in requires a GitHub account with collaborator access to `403errors/artisan-demo`.
 
 ### How to test live:
 1. Open a new issue on [403errors/artisan-demo](https://github.com/403errors/artisan-demo) (e.g. *"Add a contact us page"* or *"Fix footer padding"*).
@@ -237,16 +234,11 @@ All secrets live in Google Secret Manager, scoped per-secret to the service acco
 
 ## Docs
 
+- [CONTEXT.md](./docs/CONTEXT.md) — current state + benchmark results (read this first)
 - [PRD.md](./docs/PRD.md) — what & why
 - [SYSTEM_DESIGN.md](./docs/SYSTEM_DESIGN.md) — how it's built
 - [TECH_STACK.md](./docs/TECH_STACK.md) — exact versions
-- [SPRINT.md](./docs/SPRINT.md) — sprint plan
-- [MILESTONE.md](./docs/MILESTONE.md) — closed-sprint DoD archive
-- [CONTEXT.md](./docs/CONTEXT.md) — current state (read this first)
 - [DEPLOYMENT.md](./docs/DEPLOYMENT.md) — deployment & operations
-- [DEMO_SCRIPT.md](./docs/DEMO_SCRIPT.md) — demo recording runbook + pre-flight checklist
-- [JUDGING_SELF_CHECK.md](./docs/JUDGING_SELF_CHECK.md) — rubric self-check (submission evidence)
-- [SUBMISSION_SUMMARY.md](./docs/SUBMISSION_SUMMARY.md) — written project summary
 
 ## License
 
