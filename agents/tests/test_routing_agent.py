@@ -2,12 +2,15 @@
 multi-domain RoutingDecision, a single-domain issue a single-domain one. Stubs the underlying
 model — never calls live Gemini."""
 
+from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 
 import pytest
 from artisan_agents.agents import routing_agent as routing_agent_module
 from artisan_agents.agents.routing_agent import _build_prompt, run_routing
 from artisan_shared.models import RepoContext
+from google.adk.models.llm_response import LlmResponse
+from google.genai import types
 
 
 def _repo_context(*, manifests: dict[str, str], languages: dict[str, int] | None = None) -> RepoContext:
@@ -27,6 +30,28 @@ def stub_model(monkeypatch, fake_llm_cls):
         monkeypatch.setattr(
             routing_agent_module.routing_agent, "model", fake_llm_cls(response_text=response_json)
         )
+
+    return _stub
+
+
+@pytest.fixture
+def stub_model_sequence(monkeypatch, fake_llm_cls):
+    """A FakeLlm variant answering with a different canned JSON per call — self-consistency
+    tests need cross-sample disagreement, which the single-response FakeLlm can't produce."""
+
+    def _stub(response_jsons: list[str]) -> None:
+        queue = list(response_jsons)
+
+        class _SequenceLlm(fake_llm_cls):
+            async def generate_content_async(
+                self, llm_request, stream: bool = False
+            ) -> AsyncGenerator[LlmResponse, None]:
+                text = queue.pop(0) if queue else response_jsons[-1]
+                yield LlmResponse(
+                    content=types.Content(role="model", parts=[types.Part(text=text)])
+                )
+
+        monkeypatch.setattr(routing_agent_module.routing_agent, "model", _SequenceLlm())
 
     return _stub
 
@@ -140,3 +165,65 @@ def test_instruction_requires_rationale_and_confidence() -> None:
     assert "rationale" in instruction
     assert "confidence" in instruction
     assert '"low"' in instruction
+
+
+@pytest.mark.asyncio
+async def test_self_consistency_unanimous_derives_high(stub_model) -> None:
+    stub_model('{"domains": ["backend"], "parallel": false}')
+    decision = await run_routing(issue_title="t", issue_body="b", jira_key="ART-1")
+    assert decision.domains == ["backend"]
+    assert decision.derived_confidence == "high"
+
+
+@pytest.mark.asyncio
+async def test_self_consistency_majority_vote_wins_and_derives_medium(stub_model_sequence) -> None:
+    stub_model_sequence(
+        [
+            '{"domains": ["backend"], "parallel": false}',
+            '{"domains": ["frontend"], "parallel": false}',
+            '{"domains": ["backend"], "parallel": false}',
+        ]
+    )
+    decision = await run_routing(issue_title="t", issue_body="b", jira_key="ART-1")
+    assert decision.domains == ["backend"]
+    assert decision.derived_confidence == "medium"
+
+
+@pytest.mark.asyncio
+async def test_self_consistency_full_split_derives_low(stub_model_sequence) -> None:
+    stub_model_sequence(
+        [
+            '{"domains": ["backend"], "parallel": false}',
+            '{"domains": ["frontend"], "parallel": false}',
+            '{"domains": ["database"], "parallel": false}',
+        ]
+    )
+    decision = await run_routing(issue_title="t", issue_body="b", jira_key="ART-1")
+    # 1-1-1 split: no majority -> low, regardless of which rep the tie-break ships.
+    assert decision.derived_confidence == "low"
+
+
+@pytest.mark.asyncio
+async def test_self_consistency_fallback_synonyms_vote_together(stub_model_sequence) -> None:
+    # Off-registry synonym drift is the same fallback behavior — unanimous canonical vote — and
+    # the shipped decision keeps the raw label so the fallback lens gets a meaningful name.
+    stub_model_sequence(
+        [
+            '{"domains": ["blockchain"], "parallel": false}',
+            '{"domains": ["smart-contracts"], "parallel": false}',
+            '{"domains": ["blockchain"], "parallel": false}',
+        ]
+    )
+    decision = await run_routing(issue_title="t", issue_body="b", jira_key="ART-1")
+    assert decision.domains == ["blockchain"]
+    assert decision.derived_confidence == "high"
+
+
+@pytest.mark.asyncio
+async def test_self_consistency_disabled_is_single_shot(stub_model) -> None:
+    stub_model('{"domains": ["cli"], "parallel": false}')
+    decision = await run_routing(
+        issue_title="t", issue_body="b", jira_key="ART-1", self_consistency=1
+    )
+    assert decision.domains == ["cli"]
+    assert decision.derived_confidence is None

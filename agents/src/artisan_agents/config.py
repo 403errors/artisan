@@ -56,6 +56,11 @@ JIRA_USERNAME = os.environ.get("ARTISAN_JIRA_USERNAME", "pieisnot22by7@gmail.com
 JIRA_PROJECT_KEY = os.environ.get("ARTISAN_JIRA_PROJECT_KEY", "ART")
 # Gate 2: the execution-sandbox Cloud Run Job the orchestrator triggers per attempt.
 EXECUTION_SANDBOX_JOB_NAME = os.environ.get("ARTISAN_EXECUTION_SANDBOX_JOB_NAME", "execution-sandbox")
+# Gate 2 routing self-consistency: how many concurrent samples run_routing takes per decision;
+# the majority-vote agreement becomes RoutingDecision.derived_confidence (the self-reported
+# `confidence` is uncalibrated — see agents/evals/REPORT.md). Routing is a small classification
+# prompt at temperature 0, so 3x cost is trivial next to planning; set 1 to disable.
+ROUTING_SELF_CONSISTENCY = int(os.environ.get("ARTISAN_ROUTING_SELF_CONSISTENCY", "3"))
 
 # Secret Manager secret names (values fetched at call time, never inlined — SYSTEM_DESIGN.md §8).
 SECRET_GITHUB_WEBHOOK_SECRET = "github-webhook-secret"

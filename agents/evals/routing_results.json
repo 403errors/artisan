@@ -1,17 +1,33 @@
 {
-  "generated": "2026-09-05T20:35:09.821272+00:00",
-  "n_cases": 28,
+  "generated": "2026-09-06T09:00:16.019406+00:00",
+  "n_cases": 34,
   "n_reps": 3,
-  "mean_match": 1.0,
-  "stability": 0.9642857142857143,
-  "fallback_rate": 0.09375,
+  "mean_match": 0.9901960784313725,
+  "stability": 0.9705882352941176,
+  "fallback_rate": 0.07692307692307693,
+  "boundary_match": 0.9696969696969696,
+  "omission_rate": 0.0,
   "confidence_distribution": {
-    "high": 84
+    "high": 102
+  },
+  "derived_confidence_distribution": {
+    "high": 33,
+    "medium": 1
   },
   "calibration": {
     "high": {
-      "correct": 84,
-      "total": 84
+      "correct": 101,
+      "total": 102
+    }
+  },
+  "derived_calibration": {
+    "high": {
+      "correct": 33,
+      "total": 33
+    },
+    "medium": {
+      "correct": 1,
+      "total": 1
     }
   },
   "per_case": [
@@ -25,7 +41,15 @@
       ],
       "stable": true,
       "predicted_run1": "frontend",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "frontend",
+        "frontend",
+        "frontend"
+      ],
+      "confidence_run1": "high",
+      "consensus": "frontend",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "frontend-form-validation",
@@ -37,7 +61,15 @@
       ],
       "stable": true,
       "predicted_run1": "frontend",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "frontend",
+        "frontend",
+        "frontend"
+      ],
+      "confidence_run1": "high",
+      "consensus": "frontend",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "backend-csv-export",
@@ -49,7 +81,15 @@
       ],
       "stable": true,
       "predicted_run1": "backend",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "backend",
+        "backend",
+        "backend"
+      ],
+      "confidence_run1": "high",
+      "consensus": "backend",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "backend-rate-limit",
@@ -61,7 +101,15 @@
       ],
       "stable": true,
       "predicted_run1": "backend",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "backend",
+        "backend",
+        "backend"
+      ],
+      "confidence_run1": "high",
+      "consensus": "backend",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "infra-oom-deploy",
@@ -73,7 +121,15 @@
       ],
       "stable": true,
       "predicted_run1": "infra-devops",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "infra-devops",
+        "infra-devops",
+        "infra-devops"
+      ],
+      "confidence_run1": "high",
+      "consensus": "infra-devops",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "infra-flaky-ci",
@@ -85,7 +141,15 @@
       ],
       "stable": true,
       "predicted_run1": "infra-devops",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "infra-devops",
+        "infra-devops",
+        "infra-devops"
+      ],
+      "confidence_run1": "high",
+      "consensus": "infra-devops",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "mobile-rotation-crash",
@@ -97,7 +161,15 @@
       ],
       "stable": true,
       "predicted_run1": "mobile",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "mobile",
+        "mobile",
+        "mobile"
+      ],
+      "confidence_run1": "high",
+      "consensus": "mobile",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "mobile-offline-sync",
@@ -109,7 +181,15 @@
       ],
       "stable": true,
       "predicted_run1": "mobile",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "mobile",
+        "mobile",
+        "mobile"
+      ],
+      "confidence_run1": "high",
+      "consensus": "mobile",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "data-ml-accuracy-regression",
@@ -121,7 +201,15 @@
       ],
       "stable": true,
       "predicted_run1": "data-ml",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "data-ml",
+        "data-ml",
+        "data-ml"
+      ],
+      "confidence_run1": "high",
+      "consensus": "data-ml",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "data-ml-pipeline-idempotency",
@@ -133,7 +221,15 @@
       ],
       "stable": true,
       "predicted_run1": "data-ml",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "data-ml",
+        "data-ml",
+        "data-ml"
+      ],
+      "confidence_run1": "high",
+      "consensus": "data-ml",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "cli-exit-code",
@@ -145,7 +241,15 @@
       ],
       "stable": true,
       "predicted_run1": "cli",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "cli",
+        "cli",
+        "cli"
+      ],
+      "confidence_run1": "high",
+      "consensus": "cli",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "cli-config-precedence",
@@ -157,7 +261,15 @@
       ],
       "stable": true,
       "predicted_run1": "cli",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "cli",
+        "cli",
+        "cli"
+      ],
+      "confidence_run1": "high",
+      "consensus": "cli",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "embedded-watchdog-ota",
@@ -169,7 +281,15 @@
       ],
       "stable": true,
       "predicted_run1": "embedded",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "embedded",
+        "embedded",
+        "embedded"
+      ],
+      "confidence_run1": "high",
+      "consensus": "embedded",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "embedded-i2c-hang",
@@ -181,7 +301,15 @@
       ],
       "stable": true,
       "predicted_run1": "embedded",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "embedded",
+        "embedded",
+        "embedded"
+      ],
+      "confidence_run1": "high",
+      "consensus": "embedded",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "game-particle-framedrop",
@@ -193,7 +321,15 @@
       ],
       "stable": true,
       "predicted_run1": "game",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "game",
+        "game",
+        "game"
+      ],
+      "confidence_run1": "high",
+      "consensus": "game",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "game-input-lag",
@@ -205,7 +341,15 @@
       ],
       "stable": true,
       "predicted_run1": "game",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "game",
+        "game",
+        "game"
+      ],
+      "confidence_run1": "high",
+      "consensus": "game",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "security-xss-profile",
@@ -217,7 +361,15 @@
       ],
       "stable": true,
       "predicted_run1": "security",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "security",
+        "security",
+        "security"
+      ],
+      "confidence_run1": "high",
+      "consensus": "security",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "security-ssrf-webhook",
@@ -229,7 +381,15 @@
       ],
       "stable": true,
       "predicted_run1": "security",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "security",
+        "security",
+        "security"
+      ],
+      "confidence_run1": "high",
+      "consensus": "security",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "database-slow-orders-query",
@@ -241,7 +401,15 @@
       ],
       "stable": true,
       "predicted_run1": "backend+database",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "backend+database",
+        "backend+database",
+        "backend+database"
+      ],
+      "confidence_run1": "high",
+      "consensus": "backend+database",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "database-migration-lock",
@@ -253,7 +421,15 @@
       ],
       "stable": true,
       "predicted_run1": "database",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "database",
+        "database",
+        "database"
+      ],
+      "confidence_run1": "high",
+      "consensus": "database",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "multi-export-endpoint-and-button",
@@ -265,7 +441,15 @@
       ],
       "stable": true,
       "predicted_run1": "backend+frontend",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "backend+frontend",
+        "backend+frontend",
+        "backend+frontend"
+      ],
+      "confidence_run1": "high",
+      "consensus": "backend+frontend",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "multi-replica-and-migration",
@@ -277,7 +461,15 @@
       ],
       "stable": true,
       "predicted_run1": "database+infra-devops",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "database+infra-devops",
+        "database+infra-devops",
+        "database+infra-devops"
+      ],
+      "confidence_run1": "high",
+      "consensus": "database+infra-devops",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "fallback-cobol-jcl",
@@ -289,7 +481,15 @@
       ],
       "stable": true,
       "predicted_run1": "mainframe",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "mainframe",
+        "mainframe",
+        "mainframe"
+      ],
+      "confidence_run1": "high",
+      "consensus": "fallback",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "fallback-solidity-contract",
@@ -299,9 +499,17 @@
         true,
         true
       ],
-      "stable": false,
+      "stable": true,
       "predicted_run1": "smart-contracts",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "smart-contracts",
+        "smart-contracts",
+        "smart-contract"
+      ],
+      "confidence_run1": "high",
+      "consensus": "fallback",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "fallback-fortran-sim",
@@ -313,19 +521,35 @@
       ],
       "stable": true,
       "predicted_run1": "scientific-computing",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "scientific-computing",
+        "scientific-computing",
+        "scientific-computing"
+      ],
+      "confidence_run1": "high",
+      "consensus": "fallback",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "database-orders-pagination-skips",
       "expected": "database",
       "passes": [
         true,
-        true,
+        false,
         true
       ],
-      "stable": true,
+      "stable": false,
       "predicted_run1": "database",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "database",
+        "backend",
+        "database"
+      ],
+      "confidence_run1": "high",
+      "consensus": "database",
+      "consensus_passes": true,
+      "derived_confidence": "medium"
     },
     {
       "id": "multi-customer-totals-report",
@@ -337,7 +561,15 @@
       ],
       "stable": true,
       "predicted_run1": "backend+database",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "backend+database",
+        "backend+database",
+        "backend+database"
+      ],
+      "confidence_run1": "high",
+      "consensus": "backend+database",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     },
     {
       "id": "security-path-traversal-download",
@@ -349,7 +581,135 @@
       ],
       "stable": true,
       "predicted_run1": "security",
-      "confidence_run1": "high"
+      "predicted_reps": [
+        "security",
+        "security",
+        "security"
+      ],
+      "confidence_run1": "high",
+      "consensus": "security",
+      "consensus_passes": true,
+      "derived_confidence": "high"
+    },
+    {
+      "id": "boundary-sql-injection-search",
+      "expected": "security",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "security",
+      "predicted_reps": [
+        "security",
+        "security",
+        "security"
+      ],
+      "confidence_run1": "high",
+      "consensus": "security",
+      "consensus_passes": true,
+      "derived_confidence": "high"
+    },
+    {
+      "id": "boundary-n-plus-one-orders",
+      "expected": "backend+database",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "backend+database",
+      "predicted_reps": [
+        "backend+database",
+        "backend+database",
+        "backend+database"
+      ],
+      "confidence_run1": "high",
+      "consensus": "backend+database",
+      "consensus_passes": true,
+      "derived_confidence": "high"
+    },
+    {
+      "id": "boundary-oom-unbounded-cache",
+      "expected": "backend",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "backend",
+      "predicted_reps": [
+        "backend",
+        "backend",
+        "backend"
+      ],
+      "confidence_run1": "high",
+      "consensus": "backend",
+      "consensus_passes": true,
+      "derived_confidence": "high"
+    },
+    {
+      "id": "boundary-nan-imputation-serving",
+      "expected": "data-ml",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "data-ml",
+      "predicted_reps": [
+        "data-ml",
+        "data-ml",
+        "data-ml"
+      ],
+      "confidence_run1": "high",
+      "consensus": "data-ml",
+      "consensus_passes": true,
+      "derived_confidence": "high"
+    },
+    {
+      "id": "boundary-csv-formula-injection",
+      "expected": "security",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "security",
+      "predicted_reps": [
+        "security",
+        "security",
+        "security"
+      ],
+      "confidence_run1": "high",
+      "consensus": "security",
+      "consensus_passes": true,
+      "derived_confidence": "high"
+    },
+    {
+      "id": "boundary-mesh-timeout",
+      "expected": "infra-devops",
+      "passes": [
+        true,
+        true,
+        true
+      ],
+      "stable": true,
+      "predicted_run1": "infra-devops",
+      "predicted_reps": [
+        "infra-devops",
+        "infra-devops",
+        "infra-devops"
+      ],
+      "confidence_run1": "high",
+      "consensus": "infra-devops",
+      "consensus_passes": true,
+      "derived_confidence": "high"
     }
   ]
 }

@@ -2,14 +2,21 @@
 Decides which domain-expert persona(s) apply to a sufficiently-specified ticket, and whether they
 should be dispatched in parallel or sequentially."""
 
+import asyncio
+
 from artisan_shared.models import RepoContext, RoutingDecision
 from artisan_shared.prompt_safety import UNTRUSTED_CONTENT_NOTICE, wrap_untrusted
+from artisan_shared.routing_consensus import (
+    agreement_to_confidence,
+    canonical_domains,
+    consensus_vote,
+)
 from google.adk import Agent
 from google.genai import types
 
 from artisan_agents.agents._run_agent import run_structured
 from artisan_agents.agents.domain_expert_agent import PERSONA_DOMAINS
-from artisan_agents.config import GEMINI_MODEL_ID
+from artisan_agents.config import GEMINI_MODEL_ID, ROUTING_SELF_CONSISTENCY
 from artisan_agents.repo_context_summary import repo_context_summary
 
 APP_NAME = "artisan-routing"
@@ -108,11 +115,29 @@ async def run_routing(
     issue_body: str,
     jira_key: str,
     repo_context: RepoContext | None = None,
+    self_consistency: int = ROUTING_SELF_CONSISTENCY,
 ) -> RoutingDecision:
-    return await run_structured(
-        agent=routing_agent,
-        app_name=APP_NAME,
-        output_key="routing_decision",
-        output_model=RoutingDecision,
-        prompt=_build_prompt(issue_title, issue_body, jira_key, repo_context),
-    )
+    """Single-shot when self_consistency <= 1; otherwise takes N concurrent samples (temp is
+    pinned to 0, but temp-0 still drifts on boundary cases — the eval's solidity case proved it)
+    and majority-votes the canonical domain sets. The returned decision comes from a rep in the
+    winning cluster, so fallback cases keep their meaningful raw label (e.g. "mainframe") rather
+    than the canonical "fallback" token; `derived_confidence` records the agreement level."""
+    prompt = _build_prompt(issue_title, issue_body, jira_key, repo_context)
+
+    async def _once() -> RoutingDecision:
+        return await run_structured(
+            agent=routing_agent,
+            app_name=APP_NAME,
+            output_key="routing_decision",
+            output_model=RoutingDecision,
+            prompt=prompt,
+        )
+
+    if self_consistency <= 1:
+        return await _once()
+
+    reps = list(await asyncio.gather(*(_once() for _ in range(self_consistency))))
+    canonical_sets = [canonical_domains(r.domains, PERSONA_DOMAINS) for r in reps]
+    winner, agreement = consensus_vote(canonical_sets, PERSONA_DOMAINS)
+    decision = next(r for r, s in zip(reps, canonical_sets) if s == winner)
+    return decision.model_copy(update={"derived_confidence": agreement_to_confidence(agreement)})

@@ -72,13 +72,19 @@ class RoutingDecision(BaseModel):
     v2 wave 1.5 (#15): `rationale`/`confidence` make the decision auditable — *why* these domains
     and how sure the router was. Report-first: recorded and surfaced, never gated on (an
     abstain/escalate path on low confidence is deferred to wave 2's autonomy tiers). Defaults keep
-    pre-#15 producers (and test doubles) valid."""
+    pre-#15 producers (and test doubles) valid.
+
+    `derived_confidence` is the behavioral counterpart to the self-reported `confidence`:
+    run_routing's self-consistency vote sets it from cross-sample agreement (the evals showed the
+    self-reported field is uncalibrated — "high" on every rep, including stable misses). None when
+    self-consistency is disabled or the decision came from a single-shot producer/test double."""
 
     domains: list[str]
     parallel: bool
     subproject: str | None = None
     rationale: str = ""
     confidence: Literal["low", "medium", "high"] = "medium"
+    derived_confidence: Literal["low", "medium", "high"] | None = None
 
 
 class DomainExpertOutput(BaseModel):

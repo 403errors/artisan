@@ -290,7 +290,8 @@
       },
       "expected": [
         "security"
-      ]
+      ],
+      "boundary": true
     },
     {
       "id": "database-slow-orders-query",
@@ -308,7 +309,8 @@
       "expected": [
         "backend",
         "database"
-      ]
+      ],
+      "boundary": true
     },
     {
       "id": "database-migration-lock",
@@ -416,7 +418,8 @@
       },
       "expected": [
         "database"
-      ]
+      ],
+      "boundary": true
     },
     {
       "id": "multi-customer-totals-report",
@@ -434,7 +437,8 @@
       "expected": [
         "backend",
         "database"
-      ]
+      ],
+      "boundary": true
     },
     {
       "id": "security-path-traversal-download",
@@ -450,7 +454,113 @@
       },
       "expected": [
         "security"
-      ]
+      ],
+      "boundary": true
+    },
+    {
+      "id": "boundary-sql-injection-search",
+      "title": "Search endpoint allows SQL injection via the q parameter",
+      "body": "GET /search?q=' OR 1=1 -- dumps the whole users table. The view interpolates q straight into raw SQL. Switch to parameterized queries and add a regression test.",
+      "repo": {
+        "languages": {
+          ".py": 75
+        },
+        "manifests": {
+          "pyproject.toml": "[project]\ndependencies = [\"fastapi>=0.110\", \"sqlalchemy\"]"
+        }
+      },
+      "expected": [
+        "security"
+      ],
+      "boundary": true
+    },
+    {
+      "id": "boundary-n-plus-one-orders",
+      "title": "Orders API gets slower the bigger the page — one query per row",
+      "body": "GET /orders?per_page=50 issues 51 queries (pg_stat shows an N+1 on order_items). Eager-load the related rows and keep the endpoint paginated.",
+      "repo": {
+        "languages": {
+          ".py": 60,
+          ".sql": 15
+        },
+        "manifests": {
+          "requirements.txt": "django==5.0\npsycopg==3.2"
+        }
+      },
+      "expected": [
+        "backend",
+        "database"
+      ],
+      "boundary": true
+    },
+    {
+      "id": "boundary-oom-unbounded-cache",
+      "title": "Worker pods OOMKilled since the in-memory cache shipped",
+      "body": "Pods started getting OOMKilled right after the new response cache merged. The cache dict grows unboundedly — bound it with an LRU and a max size. (Please don't just bump the memory limit again.)",
+      "repo": {
+        "languages": {
+          ".py": 70,
+          ".yaml": 10
+        },
+        "manifests": {
+          "pyproject.toml": "[project]\ndependencies = [\"fastapi>=0.110\"]"
+        }
+      },
+      "expected": [
+        "backend"
+      ],
+      "boundary": true
+    },
+    {
+      "id": "boundary-nan-imputation-serving",
+      "title": "Prediction API 500s whenever the payload has missing features",
+      "body": "POST /predict throws on any request with NaNs. Training used an imputer, but the serving path never applies it — apply the same preprocessing pipeline at serve time so train and serve can't skew.",
+      "repo": {
+        "languages": {
+          ".py": 50,
+          ".ipynb": 8
+        },
+        "manifests": {
+          "requirements.txt": "scikit-learn==1.5.0\nfastapi==0.110.0\npandas==2.2.0"
+        }
+      },
+      "expected": [
+        "data-ml"
+      ],
+      "boundary": true
+    },
+    {
+      "id": "boundary-csv-formula-injection",
+      "title": "Exported CSV executes formulas when opened in Excel",
+      "body": "If a user's display name is '=HYPERLINK(...)' the exported CSV runs it on open. Prefix dangerous leading characters (=, +, -, @) with a quote when serializing export rows.",
+      "repo": {
+        "languages": {
+          ".py": 65
+        },
+        "manifests": {
+          "pyproject.toml": "[project]\ndependencies = [\"django>=5.0\"]"
+        }
+      },
+      "expected": [
+        "security"
+      ],
+      "boundary": true
+    },
+    {
+      "id": "boundary-mesh-timeout",
+      "title": "Long-running report requests die at exactly 15s since the mesh rollout",
+      "body": "Since the Istio sidecar rollout, /reports/generate calls that take >15s return 503. The sidecar's default route timeout is truncating them — raise the route timeout for that service.",
+      "repo": {
+        "languages": {
+          ".yaml": 30,
+          ".py": 50
+        },
+        "manifests": {}
+      },
+      "expected": [
+        "infra-devops"
+      ],
+      "boundary": true
     }
   ]
 }
