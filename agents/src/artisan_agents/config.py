@@ -4,14 +4,26 @@ so existing `artisan_agents.config` imports keep working."""
 
 import os
 
-# Explicit re-exports (PEP 484 `as` idiom) of the shared single source of truth.
-from artisan_shared.config import CLOUD_RUN_REGION as CLOUD_RUN_REGION
-from artisan_shared.config import EVENT_LOG_ENABLED as EVENT_LOG_ENABLED
-from artisan_shared.config import GCP_PROJECT_ID as GCP_PROJECT_ID
-from artisan_shared.config import GEMINI_MODEL_ID as GEMINI_MODEL_ID
-from artisan_shared.config import GITHUB_APP_ID as GITHUB_APP_ID
-from artisan_shared.config import GITHUB_INSTALLATION_ID as GITHUB_INSTALLATION_ID
-from artisan_shared.config import SECRET_GITHUB_APP_PRIVATE_KEY as SECRET_GITHUB_APP_PRIVATE_KEY
+# Re-exports of the shared single source of truth (kept in `__all__` so they're explicit).
+from artisan_shared.config import (
+    CLOUD_RUN_REGION,
+    EVENT_LOG_ENABLED,
+    GCP_PROJECT_ID,
+    GEMINI_MODEL_ID,
+    GITHUB_APP_ID,
+    GITHUB_INSTALLATION_ID,
+    SECRET_GITHUB_APP_PRIVATE_KEY,
+)
+
+__all__ = [
+    "CLOUD_RUN_REGION",
+    "EVENT_LOG_ENABLED",
+    "GCP_PROJECT_ID",
+    "GEMINI_MODEL_ID",
+    "GITHUB_APP_ID",
+    "GITHUB_INSTALLATION_ID",
+    "SECRET_GITHUB_APP_PRIVATE_KEY",
+]
 
 # Caps enforced in Firestore (SYSTEM_DESIGN.md §7), mirrored here for agent-side reference only.
 MAX_CLARIFICATION_ROUNDS = 3
