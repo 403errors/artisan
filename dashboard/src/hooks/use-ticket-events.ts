@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { useEventSource } from "@/hooks/use-event-source";
 import { normalizeEvent } from "@/lib/ticket-events";
 import type { TicketEvent } from "@/types/ticket-event";
 
@@ -23,59 +24,50 @@ function mergeEvent(prev: TicketEvent[], next: TicketEvent): TicketEvent[] {
 export function useTicketEvents(ticketId: string): { events: TicketEvent[]; unavailable: boolean } {
   const [events, setEvents] = useState<TicketEvent[]>([]);
   const [unavailable, setUnavailable] = useState(false);
+  const gotMessage = useRef(false);
 
+  // Reset per ticket — a prior ticket's delivered frame must not suppress this one's fallback.
+  // (Declared before useEventSource so it runs first; effects run in declaration order.)
   useEffect(() => {
-    let cancelled = false;
-    let es: EventSource | null = null;
-    let gotMessage = false;
-
-    function applyFrame(data: unknown) {
-      if (cancelled) return;
-      if (Array.isArray(data)) {
-        setEvents(sortByAt(data.map((raw, i) => normalizeEvent(raw, i))));
-      } else if (data && typeof data === "object") {
-        setEvents((prev) => mergeEvent(prev, normalizeEvent(data, prev.length)));
-      }
-    }
-
-    async function fallbackFetch() {
-      try {
-        const res = await fetch(`/api/tickets/${ticketId}/events`);
-        if (!res.ok) {
-          if (!cancelled) setUnavailable(true);
-          return;
-        }
-        applyFrame(await res.json());
-      } catch {
-        if (!cancelled) setUnavailable(true);
-      }
-    }
-
-    try {
-      es = new EventSource(`/api/tickets/${ticketId}/events/stream`);
-      es.onmessage = (event) => {
-        gotMessage = true;
-        try {
-          applyFrame(JSON.parse(event.data));
-        } catch {
-          // malformed frame — ignore rather than crash the feed
-        }
-      };
-      es.onerror = () => {
-        if (!gotMessage) {
-          es?.close();
-          void fallbackFetch();
-        }
-      };
-    } catch {
-      void fallbackFetch();
-    }
-
-    return () => {
-      cancelled = true;
-      es?.close();
-    };
+    gotMessage.current = false;
   }, [ticketId]);
+
+  function applyFrame(data: unknown) {
+    if (Array.isArray(data)) {
+      setEvents(sortByAt(data.map((raw, i) => normalizeEvent(raw, i))));
+    } else if (data && typeof data === "object") {
+      setEvents((prev) => mergeEvent(prev, normalizeEvent(data, prev.length)));
+    }
+  }
+
+  async function fallbackFetch() {
+    try {
+      const res = await fetch(`/api/tickets/${ticketId}/events`);
+      if (!res.ok) {
+        setUnavailable(true);
+        return;
+      }
+      applyFrame(await res.json());
+    } catch {
+      setUnavailable(true);
+    }
+  }
+
+  useEventSource(
+    `/api/tickets/${ticketId}/events/stream`,
+    (data) => {
+      gotMessage.current = true;
+      applyFrame(data);
+    },
+    (es) => {
+      // Only fall back when the stream never delivered — a mid-stream error is
+      // EventSource's own retry concern, not a missing-route signal.
+      if (!gotMessage.current) {
+        es?.close();
+        void fallbackFetch();
+      }
+    },
+  );
 
   return { events, unavailable };
 }

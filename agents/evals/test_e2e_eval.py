@@ -69,6 +69,7 @@ from artisan_execution_sandbox.coding_agent import run_coding_agent
 from artisan_shared.event_log import NoOpEventSink
 from artisan_shared.firestore_schema import TicketDoc
 from artisan_shared.models import ExecutionResult, RepoContext
+from report_common import emit_report, pct
 
 pytestmark = pytest.mark.eval
 
@@ -197,9 +198,8 @@ def _make_local_executor(scenario_dir: Path, scenario: dict, attempts: list[dict
                 summary = await run_coding_agent(
                     workdir=workdir, plan=plan, prior_feedback=feedback
                 )
-            except Exception as exc:
-                # Tool-level failures (e.g. a model-chosen shell command timing out) degrade to
-                # a failed attempt — the pipeline retries/escalates — not a harness crash.
+            except Exception as exc:  # noqa: BLE001 — deliberate: tool-level failures degrade
+                # to a failed attempt (the pipeline retries/escalates), not a harness crash.
                 attempts.append(
                     {"attempt": attempt, "changes": None, "visible_passed": False,
                      "heldout_passed": False, "summary": f"coding agent error: {exc}"[:300]}
@@ -359,9 +359,7 @@ async def test_e2e_gate2_on_seeded_bugs(monkeypatch) -> None:
     assert not failed, f"scenarios did not reach a terminal state: {failed}"
 
     report, sidecar = _build_report(results)
-    REPORT_PATH.write_text(report)
-    SIDECAR_PATH.write_text(json.dumps(sidecar, indent=2))
-    print(f"\n{report}")
+    emit_report(REPORT_PATH, SIDECAR_PATH, report, sidecar)
 
 
 def _build_report(results: list[dict]) -> tuple[str, dict]:
@@ -398,7 +396,7 @@ def _build_report(results: list[dict]) -> tuple[str, dict]:
         f"- **False-green rate (PR opened but oracle REJECTS the fix):** {false_green / n:.1%}",
         f"- **Escalation rate (pipeline gave up):** {escalated / n:.1%}",
         f"- **Routing exact-match:** {routing_correct / n:.1%}",
-        f"- **Verification-vs-oracle agreement (model-judged attempts):** {_pct(verification_agreement)}",
+        f"- **Verification-vs-oracle agreement (model-judged attempts):** {pct(verification_agreement, digits=1)}",
         f"- **Mean attempts per scenario:** {mean_attempts:.1f}",
         "",
         "## Per-scenario results",
@@ -433,7 +431,3 @@ def _build_report(results: list[dict]) -> tuple[str, dict]:
         "per_scenario": results,
     }
     return "\n".join(lines), sidecar
-
-
-def _pct(value: float | None) -> str:
-    return "—" if value is None else f"{value:.1%}"

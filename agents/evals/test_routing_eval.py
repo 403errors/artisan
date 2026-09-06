@@ -33,6 +33,7 @@ import pytest
 from artisan_agents.agents.domain_expert_agent import PERSONA_DOMAINS
 from artisan_agents.agents.routing_agent import run_routing
 from artisan_shared.models import RepoContext, RoutingDecision
+from report_common import emit_report, pct
 
 pytestmark = pytest.mark.eval
 
@@ -103,9 +104,7 @@ async def test_routing_golden_dataset() -> None:
         cid: [r for r in reps if r is not None] for cid, reps in results.items()
     }
     report, sidecar = _build_report(cases, typed_results)
-    REPORT_PATH.write_text(report)
-    SIDECAR_PATH.write_text(json.dumps(sidecar, indent=2))
-    print(f"\n{report}")
+    emit_report(REPORT_PATH, SIDECAR_PATH, report, sidecar)
 
 
 def _build_report(cases: list[dict], results: dict[str, list[RoutingDecision]]) -> tuple[str, dict]:
@@ -194,7 +193,7 @@ def _build_report(cases: list[dict], results: dict[str, list[RoutingDecision]]) 
         precision = tp[domain] / (tp[domain] + fp[domain]) if tp[domain] + fp[domain] else None
         recall = tp[domain] / (tp[domain] + fn[domain]) if tp[domain] + fn[domain] else None
         lines.append(
-            f"| {domain} | {_pct(precision)} | {_pct(recall)} | "
+            f"| {domain} | {pct(precision)} | {pct(recall)} | "
             f"{tp[domain]}/{fp[domain]}/{fn[domain]} |"
         )
     lines += [
@@ -223,7 +222,3 @@ def _build_report(cases: list[dict], results: dict[str, list[RoutingDecision]]) 
         "per_case": per_case,
     }
     return "\n".join(lines), sidecar
-
-
-def _pct(value: float | None) -> str:
-    return "—" if value is None else f"{value:.0%}"

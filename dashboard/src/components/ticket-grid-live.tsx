@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { TicketFilterBar } from "@/components/ticket-filter-bar";
 import { TicketGrid } from "@/components/ticket-grid";
+import { useEventSource } from "@/hooks/use-event-source";
 import { BUCKET_ORDER, bucketOf, type StatusBucket } from "@/lib/ticket-status";
 import type { TicketSummary } from "@/types/ticket";
 
@@ -37,14 +38,9 @@ export function TicketGridLive({
   const [tickets, setTickets] = useState(() => sortByUpdatedDesc(initial));
   const [selected, setSelected] = useState<StatusBucket[]>(initialBuckets);
 
-  useEffect(() => {
-    const es = new EventSource(streamUrl);
-    es.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (Array.isArray(data)) setTickets(sortByUpdatedDesc(data));
-    };
-    return () => es.close();
-  }, [streamUrl]);
+  useEventSource(streamUrl, (data) => {
+    if (Array.isArray(data)) setTickets(sortByUpdatedDesc(data));
+  });
 
   const counts = useMemo(() => {
     const result: Record<StatusBucket, number> = {

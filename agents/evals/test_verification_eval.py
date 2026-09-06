@@ -34,6 +34,7 @@ import pytest
 from artisan_agents.agents.domain_expert_agent import criteria_for_domains
 from artisan_agents.agents.verification_agent import run_verification
 from artisan_shared.models import ExecutionResult, Plan, VerificationVerdict
+from report_common import emit_report, pct
 
 pytestmark = pytest.mark.eval
 
@@ -90,9 +91,7 @@ async def test_verification_golden_scenarios() -> None:
     assert not failed, f"verification failed to produce a valid verdict for: {failed}"
 
     report, sidecar = _build_report(scenarios, results)
-    REPORT_PATH.write_text(report)
-    SIDECAR_PATH.write_text(json.dumps(sidecar, indent=2))
-    print(f"\n{report}")
+    emit_report(REPORT_PATH, SIDECAR_PATH, report, sidecar)
 
 
 def _build_report(scenarios: list[dict], results: dict) -> tuple[str, dict]:
@@ -150,9 +149,9 @@ def _build_report(scenarios: list[dict], results: dict) -> tuple[str, dict]:
         "",
         "## Headline metrics",
         "",
-        f"- **Verdict agreement with oracle (model-judged):** {_pct(verdict_accuracy)}",
-        f"- **Per-criterion status agreement (labeled subset):** {_pct(criteria_agreement)}",
-        f"- **Feedback present on red verdicts:** {_pct(feedback_rate)}",
+        f"- **Verdict agreement with oracle (model-judged):** {pct(verdict_accuracy, digits=1)}",
+        f"- **Per-criterion status agreement (labeled subset):** {pct(criteria_agreement, digits=1)}",
+        f"- **Feedback present on red verdicts:** {pct(feedback_rate, digits=1)}",
         f"- **Deterministic short-circuit correct:** {'yes' if shortcircuit_ok else 'NO'}",
         "",
         ("#17 hard-gating is ON (wave 1.7): gate2 treats any not_met criterion as red. It was "
@@ -191,7 +190,3 @@ def _build_report(scenarios: list[dict], results: dict) -> tuple[str, dict]:
         "per_scenario": per_scenario,
     }
     return "\n".join(lines), sidecar
-
-
-def _pct(value: float | None) -> str:
-    return "—" if value is None else f"{value:.1%}"

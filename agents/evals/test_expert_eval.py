@@ -28,7 +28,6 @@ DomainExpertOutput.
 import asyncio
 import json
 import os
-from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -39,7 +38,7 @@ from artisan_agents.config import GEMINI_MODEL_ID
 from artisan_shared.models import DomainExpertOutput, RepoContext
 from google.adk import Agent
 from pydantic import BaseModel
-
+from report_common import emit_report, pct
 from scoring import file_precision_recall
 
 pytestmark = pytest.mark.eval
@@ -140,9 +139,7 @@ async def test_expert_golden_dataset() -> None:
     assert not failed, f"domain expert failed to produce a valid output for: {failed}"
 
     report, sidecar = _build_report(cases, results)
-    REPORT_PATH.write_text(report)
-    SIDECAR_PATH.write_text(json.dumps(sidecar, indent=2))
-    print(f"\n{report}")
+    emit_report(REPORT_PATH, SIDECAR_PATH, report, sidecar)
 
 
 def _build_report(cases: list[dict], results: dict) -> tuple[str, dict]:
@@ -207,9 +204,9 @@ def _build_report(cases: list[dict], results: dict) -> tuple[str, dict]:
         "",
         (f"- **Files-to-modify recall (mean over reps):** {mean_recall:.1%} "
          "(guard — union of both lists: " + f"{mean_union_recall:.1%})"),
-        f"- **Files-to-modify precision (mean over reps):** {_pct(mean_precision)}",
+        f"- **Files-to-modify precision (mean over reps):** {pct(mean_precision)}",
         (f"- **Hallucinated paths:** {sum(hallucinations)} across {sum(total_files)} predicted "
-         f"paths ({_pct(sum(hallucinations) / max(sum(total_files), 1))})"),
+         f"paths ({pct(sum(hallucinations) / max(sum(total_files), 1))})"),
         "",
         "## Judge-scored summary quality (SOFT — reference-based LLM judge, not a headline)",
         "",
@@ -231,7 +228,7 @@ def _build_report(cases: list[dict], results: dict) -> tuple[str, dict]:
         d_precs = [r["precision"] for r in reps if r["precision"] is not None]
         d_prec = sum(d_precs) / len(d_precs) if d_precs else None
         d_hall = sum(len(r["hallucinated"]) for r in reps)
-        lines.append(f"| {domain} | {d_recall:.0%} | {_pct(d_prec)} | {d_hall} |")
+        lines.append(f"| {domain} | {d_recall:.0%} | {pct(d_prec)} | {d_hall} |")
     lines += [
         "",
         "## Per-case results",
@@ -241,7 +238,7 @@ def _build_report(cases: list[dict], results: dict) -> tuple[str, dict]:
     ]
     for p in per_case:
         rec = "/".join(f"{r['recall']:.0%}" for r in p["reps"])
-        prec = "/".join(_pct(r["precision"]) for r in p["reps"])
+        prec = "/".join(pct(r["precision"]) for r in p["reps"])
         hall = sum(len(r["hallucinated"]) for r in p["reps"])
         judge = "/".join(
             f"{sum(1 for k in judge_keys if r['judge'][k])}/3" if r["judge"] else "—"
@@ -262,7 +259,3 @@ def _build_report(cases: list[dict], results: dict) -> tuple[str, dict]:
         "per_case": per_case,
     }
     return "\n".join(lines), sidecar
-
-
-def _pct(value: float | None) -> str:
-    return "—" if value is None else f"{value:.0%}"

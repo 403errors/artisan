@@ -1,8 +1,17 @@
-"""Pinned config constants. Per TECH_STACK.md: model id is always pinned explicitly, never a "latest" alias."""
+"""Orchestrator-only config constants. Values shared with execution-sandbox (pinned model id,
+GCP/GitHub identifiers, event-log flag) live in `artisan_shared.config` and are re-exported here
+so existing `artisan_agents.config` imports keep working."""
 
 import os
 
-GEMINI_MODEL_ID = "gemini-3.8-flash"
+# Explicit re-exports (PEP 484 `as` idiom) of the shared single source of truth.
+from artisan_shared.config import CLOUD_RUN_REGION as CLOUD_RUN_REGION
+from artisan_shared.config import EVENT_LOG_ENABLED as EVENT_LOG_ENABLED
+from artisan_shared.config import GCP_PROJECT_ID as GCP_PROJECT_ID
+from artisan_shared.config import GEMINI_MODEL_ID as GEMINI_MODEL_ID
+from artisan_shared.config import GITHUB_APP_ID as GITHUB_APP_ID
+from artisan_shared.config import GITHUB_INSTALLATION_ID as GITHUB_INSTALLATION_ID
+from artisan_shared.config import SECRET_GITHUB_APP_PRIVATE_KEY as SECRET_GITHUB_APP_PRIVATE_KEY
 
 # Caps enforced in Firestore (SYSTEM_DESIGN.md §7), mirrored here for agent-side reference only.
 MAX_CLARIFICATION_ROUNDS = 3
@@ -25,9 +34,7 @@ MAX_DUPLICATE_FOLLOWUPS = 1
 DELIVERY_CLAIM_STALE_AFTER_SECONDS = 4200
 
 # Environment-driven settings — deploy-time identifiers, not secrets (those live in Secret
-# Manager, see gcp/secrets.py). Defaults match the identifiers already provisioned in Sprint 1
-# (docs/CONTEXT.md "External accounts & identifiers"), overridable via env for local/dev/test.
-GCP_PROJECT_ID = os.environ.get("ARTISAN_GCP_PROJECT_ID", "artisan-multiagent-ai")
+# Manager, see gcp/secrets.py). Overridable via env for local/dev/test.
 PUBSUB_TOPIC = os.environ.get("ARTISAN_PUBSUB_TOPIC", "artisan-github-events")
 PUBSUB_PUSH_AUDIENCE = os.environ.get("ARTISAN_PUBSUB_PUSH_AUDIENCE", "")
 # Direct Jira Cloud REST API access (see jira/client.py docstring for why this replaced
@@ -35,17 +42,9 @@ PUBSUB_PUSH_AUDIENCE = os.environ.get("ARTISAN_PUBSUB_PUSH_AUDIENCE", "")
 JIRA_URL = os.environ.get("ARTISAN_JIRA_URL", "https://pieisnot22by7.atlassian.net")
 JIRA_USERNAME = os.environ.get("ARTISAN_JIRA_USERNAME", "pieisnot22by7@gmail.com")
 JIRA_PROJECT_KEY = os.environ.get("ARTISAN_JIRA_PROJECT_KEY", "ART")
-GITHUB_APP_ID = os.environ.get("ARTISAN_GITHUB_APP_ID", "4744770")
-GITHUB_INSTALLATION_ID = os.environ.get("ARTISAN_GITHUB_INSTALLATION_ID", "157129507")
-# Gate 2 (Sprint 3): the execution-sandbox Cloud Run Job the orchestrator triggers per attempt.
-CLOUD_RUN_REGION = os.environ.get("ARTISAN_CLOUD_RUN_REGION", "us-central1")
+# Gate 2: the execution-sandbox Cloud Run Job the orchestrator triggers per attempt.
 EXECUTION_SANDBOX_JOB_NAME = os.environ.get("ARTISAN_EXECUTION_SANDBOX_JOB_NAME", "execution-sandbox")
 
-# Kill switch for the agent-execution event log (Sprint 6) — disableable without a redeploy since
-# an audit log going wrong should never require pulling the whole service.
-EVENT_LOG_ENABLED = os.environ.get("ARTISAN_EVENT_LOG_ENABLED", "true").lower() == "true"
-
 # Secret Manager secret names (values fetched at call time, never inlined — SYSTEM_DESIGN.md §8).
-SECRET_GITHUB_APP_PRIVATE_KEY = "github-app-private-key"
 SECRET_GITHUB_WEBHOOK_SECRET = "github-webhook-secret"
 SECRET_JIRA_API_TOKEN = "jira-api-token"

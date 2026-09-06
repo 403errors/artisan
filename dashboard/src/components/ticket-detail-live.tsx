@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { DecisionTrail } from "@/components/decision-trail";
 import { EscalationHistory } from "@/components/escalation-history";
@@ -9,6 +9,7 @@ import { TicketDetailHeader } from "@/components/ticket-detail-header";
 import { TicketFacts } from "@/components/ticket-facts";
 import { TicketLinksCard } from "@/components/ticket-links-card";
 import { TraceLinks } from "@/components/trace-links";
+import { useEventSource } from "@/hooks/use-event-source";
 import { useNow } from "@/hooks/use-now";
 import { isStalled } from "@/lib/ticket-status";
 import type { TicketDoc } from "@/types/ticket";
@@ -17,14 +18,9 @@ export function TicketDetailLive({ initial }: { initial: TicketDoc }) {
   const [ticket, setTicket] = useState(initial);
   const now = useNow();
 
-  useEffect(() => {
-    const es = new EventSource(`/api/tickets/${initial.id}/stream`);
-    es.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data) setTicket(data);
-    };
-    return () => es.close();
-  }, [initial.id]);
+  useEventSource(`/api/tickets/${initial.id}/stream`, (data) => {
+    if (data) setTicket(data as TicketDoc);
+  });
 
   const stalled = isStalled({ status: ticket.status, updatedAt: ticket.updatedAt }, now);
 
