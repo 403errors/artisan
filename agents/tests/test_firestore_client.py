@@ -19,6 +19,10 @@ from google.cloud import firestore
 
 REPO = "403errors/artisan-demo"
 
+# Real-Firestore integration tests: slow (network round-trips), write to the shared dev database,
+# and skip without ADC credentials — opt-in only, like the eval marker. Run with `-m integration`.
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture(autouse=True)
 def _fresh_firestore_client():

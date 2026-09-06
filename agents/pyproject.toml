@@ -46,10 +46,12 @@ dev = [
 [tool.pytest.ini_options]
 markers = [
     "eval: live-Gemini eval harness (agents/evals/) — excluded from default runs; run explicitly with `uv run --package artisan-agents pytest agents/evals -m eval`",
+    "integration: real-Firestore tests (test_firestore_client.py, test_firestore_schema.py) — excluded from default runs; run explicitly with `-m integration`",
 ]
-# Evals call live Gemini (non-deterministic, costs quota) — never in the default test run.
+# Evals call live Gemini (non-deterministic, costs quota); integration tests write to the real
+# dev Firestore (~90s of network round-trips) — neither belongs in the default test run.
 # A `-m` flag on the command line overrides this (CLI args win over addopts).
-addopts = "-m 'not eval'"
+addopts = "-m 'not eval and not integration'"
 # The E2E eval's fixture repos contain their own test suites (they're the *subject* of the eval,
 # copied and run by the harness) — never collect them as tests of this project. NOTE: overriding
 # norecursedirs replaces pytest's defaults, so the defaults are restated here — without `.*` the

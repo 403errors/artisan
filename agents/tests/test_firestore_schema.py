@@ -11,6 +11,10 @@ from google.cloud import firestore
 
 PROJECT_ID = "artisan-multiagent-ai"
 
+# Real-Firestore integration tests: slow (network round-trips), write to the shared dev database,
+# and skip without ADC credentials — opt-in only, like the eval marker. Run with `-m integration`.
+pytestmark = pytest.mark.integration
+
 
 def _client() -> firestore.Client:
     try:

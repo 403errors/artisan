@@ -18,5 +18,7 @@ extend-exclude = ["agents/evals/e2e_fixtures"]
 # like test_models.py clash outright). importlib mode + namespace packages derives each module's
 # name from its rootdir-relative path (agents.tests.test_*, artisan_shared.tests.test_*, ...),
 # so any combination of suites can run in one invocation.
-addopts = "--import-mode=importlib"
+# The `-m` filter mirrors agents/pyproject.toml so combined runs stay hermetic too (markers
+# filter fine without being registered in this config).
+addopts = "--import-mode=importlib -m 'not eval and not integration'"
 consider_namespace_packages = true
