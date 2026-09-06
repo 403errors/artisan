@@ -104,6 +104,11 @@ gcloud storage buckets add-iam-policy-binding gs://<your-bucket> \
 Then set `ARTISAN_DEP_CACHE_BUCKET=<your-bucket>` on the job. The cache is strictly best-effort —
 the job runs fine without it, just with cold dependency installs on every attempt.
 
+Current deployment: `gs://artisan-multiagent-ai-dep-cache` (us-central1, uniform bucket-level
+access, 30-day object lifecycle so stale lockfile entries self-clean), bound
+`roles/storage.objectUser` to the `execution-sandbox` SA, env var set on the job. Inert until an
+image containing `dep_cache.py` is deployed.
+
 ## Secrets
 
 None of this repo's code ever takes a raw secret as a literal. Everything
