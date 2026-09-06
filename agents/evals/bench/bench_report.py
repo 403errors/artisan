@@ -85,17 +85,21 @@ def build_report() -> str:
     lines = [
         "# Artisan external benchmark report",
         "",
-        f"Generated: {datetime.now(timezone.utc).isoformat()} — 50 frozen instances per "
-        "benchmark, Artisan pipeline (live Gemini) generating patches, correctness graded ONLY "
-        "by each benchmark's official harness (imported via --import-harness).",
+        (
+            f"Generated: {datetime.now(timezone.utc).isoformat()} — 50 frozen instances per "
+            "benchmark, Artisan pipeline (live Gemini) generating patches, correctness graded ONLY "
+            "by each benchmark's official harness (imported via --import-harness)."
+        ),
         "",
         "| Benchmark | Attempted | Resolved (official) | PR opened | Escalated | Runner errors | Mean attempts |",
         "|---|---|---|---|---|---|---|",
         *(_benchmark_row(key) for key in sorted(BENCHMARKS)),
         "",
-        "Resolved rate = official-harness FAIL_TO_PASS+PASS_TO_PASS verdicts on our "
-        "predictions.jsonl. PR-opened/escalated/attempts are Artisan-internal funnel metrics "
-        "from run_log.json (how the pipeline behaved), not correctness claims.",
+        (
+            "Resolved rate = official-harness FAIL_TO_PASS+PASS_TO_PASS verdicts on our "
+            "predictions.jsonl. PR-opened/escalated/attempts are Artisan-internal funnel metrics "
+            "from run_log.json (how the pipeline behaved), not correctness claims."
+        ),
         "",
     ]
     return "\n".join(lines)

@@ -34,7 +34,6 @@ import argparse
 import asyncio
 import json
 import os
-import platform
 import re
 import shlex
 import shutil
@@ -378,8 +377,8 @@ async def run_instance(benchmark: Benchmark, instance: dict, *, max_attempts: in
             checkout_repo(repo, instance["base_commit"], workdir)
             try:
                 summary = await run_coding_agent(workdir=workdir, plan=plan, prior_feedback=feedback)
-            except Exception as exc:
-                # A tool-level failure (e.g. the model's shell command timing out) must degrade
+            except Exception as exc:  # noqa: BLE001 — deliberate: a tool-level failure (e.g.
+                # the model's shell command timing out) must degrade
                 # to a failed ATTEMPT — retry/escalate — never crash the whole instance.
                 attempts.append({"attempt": attempt, "changes": None, "tests_passed": False,
                                  "patch": "", "summary": f"coding agent error: {exc}"[:300]})
@@ -493,7 +492,7 @@ async def main() -> None:
         print(f"[{n}/{len(todo)}] {iid}", flush=True)
         try:
             result = await run_instance(benchmark, instance, max_attempts=args.max_attempts)
-        except Exception as exc:  # one bad instance must not kill a 50-instance run
+        except Exception as exc:  # noqa: BLE001 — one bad instance must not kill a 50-instance run
             print(f"    FAILED: {exc}", flush=True)
             log[iid] = {"instance_id": iid, "terminal": "runner_error", "error": str(exc)[:500]}
             log_path.write_text(json.dumps(log, indent=2))

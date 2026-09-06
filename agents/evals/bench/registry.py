@@ -14,8 +14,8 @@ externally credible. See README.md for the exact commands.
 """
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 
 @dataclass(frozen=True)

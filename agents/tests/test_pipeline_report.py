@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "evals"))
 
-from pipeline_report import build_pipeline_report  # noqa: E402
+from pipeline_report import build_pipeline_report
 
 _ROUTING = {
     "n_cases": 25,

@@ -9,7 +9,12 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "evals"))
 
-from scoring import covers, file_precision_recall, grounded, normalize_path  # noqa: E402
+from scoring import (
+    covers,
+    file_precision_recall,
+    grounded,
+    normalize_path,
+)
 
 TREE = [
     "src/pages/settings.tsx",

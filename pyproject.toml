@@ -5,3 +5,8 @@ members = ["agents", "execution-sandbox", "packages/artisan_shared"]
 dev = [
     "ruff==0.16.5",
 ]
+
+[tool.ruff]
+# The E2E eval fixtures are deliberately-buggy subject repos the harness runs against — they are
+# not project code and must never be linted or auto-fixed (a "fix" would break the eval oracle).
+extend-exclude = ["agents/evals/e2e_fixtures"]

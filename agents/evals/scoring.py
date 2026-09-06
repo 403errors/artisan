@@ -45,9 +45,7 @@ def covers(prediction: str, label: str) -> bool:
     if lab.startswith(pred + "/"):
         return True
     # Prediction is a file under a labeled directory.
-    if pred.startswith(lab + "/"):
-        return True
-    return False
+    return pred.startswith(lab + "/")
 
 
 def grounded(prediction: str, file_tree: list[str]) -> bool:
