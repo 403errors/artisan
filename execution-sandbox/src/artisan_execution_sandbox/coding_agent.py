@@ -75,21 +75,32 @@ def _build_tools(workdir: Path):
     def read_file(path: str) -> str:
         """Reads a file's contents, relative to the repo checkout root."""
         _tick()
-        return (workdir / path).read_text()
+        try:
+            return (workdir / path).read_text()
+        except (OSError, UnicodeDecodeError) as exc:
+            # A bad path guess must cost the model one tool result, not the whole attempt —
+            # bench smoke: 5/12 instances escalated purely on unhandled tool exceptions.
+            return f"error: cannot read {path}: {exc}"
 
     def write_file(path: str, content: str) -> str:
         """Writes (creating or overwriting) a file's contents, relative to the repo checkout
         root. Creates parent directories as needed."""
         _tick()
-        target = workdir / path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content)
+        try:
+            target = workdir / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content)
+        except OSError as exc:
+            return f"error: cannot write {path}: {exc}"
         return f"wrote {path}"
 
-    def list_directory(path: str = ".") -> list[str]:
+    def list_directory(path: str = ".") -> list[str] | str:
         """Lists entries in a directory, relative to the repo checkout root."""
         _tick()
-        return sorted(p.name for p in (workdir / path).iterdir())
+        try:
+            return sorted(p.name for p in (workdir / path).iterdir())
+        except OSError as exc:
+            return f"error: cannot list {path}: {exc}"
 
     def run_shell_command(command: str) -> str:
         """Runs a shell command with cwd set to the repo checkout root — e.g. to run a linter or
@@ -112,10 +123,18 @@ def _build_tools(workdir: Path):
         elif argv[0] not in _ALLOWED_COMMANDS:
             return "error: command not permitted"
 
-        result = subprocess.run(
-            argv, shell=False, cwd=str(workdir), capture_output=True, text=True, timeout=120,
-            check=False,
-        )
+        try:
+            result = subprocess.run(
+                argv, shell=False, cwd=str(workdir), capture_output=True, text=True, timeout=120,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return (
+                "error: command timed out after 120s — retry with a narrower scope "
+                "(fewer paths, a targeted test selection, shallower history)"
+            )
+        except OSError as exc:
+            return f"error: could not run command: {exc}"
         return f"exit={result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
 
     def finish(summary: str) -> str:

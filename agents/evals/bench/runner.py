@@ -199,6 +199,13 @@ def infer_test_command(workdir: Path, test_files: list[str]) -> str:
     if (workdir / "pom.xml").exists():
         classes = sorted({Path(f).stem for f in test_files if f.endswith(".java")})
         return f"mvn test -q -Dtest={','.join(classes)}" if classes else "mvn test -q"
+    # Gradle (Lucene, most modern Java/Kotlin repos) — without this branch they fell through to
+    # the pytest default and the internal signal died with "python: command not found".
+    if any((workdir / m).exists() for m in ("gradlew", "build.gradle", "build.gradle.kts")):
+        gradle = "./gradlew" if (workdir / "gradlew").exists() else "gradle"
+        classes = sorted({Path(f).stem for f in test_files if f.endswith((".java", ".kt"))})
+        tests = " ".join(f"--tests {c}" for c in classes)
+        return f"{gradle} test -q {tests}".strip()
     package_json = workdir / "package.json"
     if package_json.exists():
         try:

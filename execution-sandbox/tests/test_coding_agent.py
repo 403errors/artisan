@@ -217,6 +217,65 @@ async def test_malformed_shell_quoting_does_not_crash_the_tool(tmp_path) -> None
     assert "error" in result
 
 
+# --- Tool errors must surface as error STRINGS, not exceptions (bench smoke: unhandled tool
+# exceptions burned whole attempts and escalated 5/12 instances) ---
+
+
+@pytest.mark.asyncio
+async def test_read_file_missing_path_returns_error_not_exception(tmp_path) -> None:
+    from artisan_execution_sandbox.coding_agent import _build_tools
+
+    tools, _finished = _build_tools(tmp_path)
+    read_file = next(t for t in tools if t.__name__ == "read_file")
+
+    result = read_file("no/such/file.py")
+    assert result.startswith("error:")
+
+
+@pytest.mark.asyncio
+async def test_write_file_beneath_a_regular_file_returns_error_not_exception(tmp_path) -> None:
+    from artisan_execution_sandbox.coding_agent import _build_tools
+
+    (tmp_path / "blocker").write_text("x")
+    tools, _finished = _build_tools(tmp_path)
+    write_file = next(t for t in tools if t.__name__ == "write_file")
+
+    result = write_file("blocker/child.py", "content")
+    assert result.startswith("error:")
+
+
+@pytest.mark.asyncio
+async def test_list_directory_missing_path_returns_error_not_exception(tmp_path) -> None:
+    from artisan_execution_sandbox.coding_agent import _build_tools
+
+    tools, _finished = _build_tools(tmp_path)
+    list_directory = next(t for t in tools if t.__name__ == "list_directory")
+
+    result = list_directory("no/such/dir")
+    assert isinstance(result, str) and result.startswith("error:")
+
+
+@pytest.mark.asyncio
+async def test_shell_timeout_returns_error_instead_of_killing_the_attempt(
+    tmp_path, monkeypatch
+) -> None:
+    import subprocess
+
+    from artisan_execution_sandbox import coding_agent as coding_agent_module
+    from artisan_execution_sandbox.coding_agent import _build_tools
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=["pytest"], timeout=120)
+
+    monkeypatch.setattr(coding_agent_module.subprocess, "run", fake_run)
+
+    tools, _finished = _build_tools(tmp_path)
+    run_shell_command = next(t for t in tools if t.__name__ == "run_shell_command")
+
+    result = run_shell_command("pytest -x")
+    assert "timed out" in result
+
+
 class _RecordingSink(NoOpEventSink):
     """Records emit/patch calls by index, so tests can assert a tool call's result got patched
     onto the SAME event doc as its call, not appended as a separate one."""

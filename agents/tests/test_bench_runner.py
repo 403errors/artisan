@@ -96,6 +96,20 @@ def test_infer_rust_and_java(tmp_path):
     assert cmd == "mvn test -q -Dtest=BarTest"
 
 
+def test_infer_gradle_scopes_to_test_classes(tmp_path):
+    (tmp_path / "gradlew").write_text("#!/bin/sh\n")
+    (tmp_path / "build.gradle").write_text("// x")
+    cmd = infer_test_command(
+        tmp_path, ["src/test/java/com/foo/BarTest.java", "src/test/kotlin/com/foo/BazTest.kt"]
+    )
+    assert cmd == "./gradlew test -q --tests BarTest --tests BazTest"
+
+    (tmp_path / "gradlew").unlink()
+    cmd = infer_test_command(tmp_path, ["src/test/java/com/foo/BarTest.java"])
+    assert cmd == "gradle test -q --tests BarTest"
+    assert infer_test_command(tmp_path, []) == "gradle test -q"
+
+
 def test_infer_js_reads_the_test_script_runner(tmp_path):
     (tmp_path / "package.json").write_text(
         json.dumps({"scripts": {"test": "vitest run"}})
