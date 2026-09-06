@@ -1,5 +1,5 @@
 """Tests for main.py's run_attempt (Phase 3.4): the clone/code/test/push sequence and its failure
-paths, all faked (git_ops, coding_agent, test_runner, github_auth) — this is about the sequencing
+paths, all faked (git_ops, coding_agent, check_runner, github_auth) — this is about the sequencing
 and failure handling, not any one integration. The real end-to-end job run against a live repo is
 a live-only verification (see docs/CONTEXT.md)."""
 
@@ -50,7 +50,7 @@ async def test_happy_path_returns_passed_result(monkeypatch) -> None:
     monkeypatch.setattr(main_module.git_ops, "commit_all", lambda *a, **k: None)
     push_calls = []
     monkeypatch.setattr(main_module.git_ops, "push", lambda *a, **k: push_calls.append((a, k)))
-    monkeypatch.setattr(main_module.test_runner, "run_tests", lambda repo_dir: (True, "ok"))
+    monkeypatch.setattr(main_module.check_runner, "run_tests", lambda *a, **k: (True, "ok"))
 
     async def fake_run_coding_agent(**kwargs):
         return "did the thing"
@@ -109,7 +109,7 @@ async def test_push_failure_returns_failed_result_without_raising(monkeypatch) -
     monkeypatch.setattr(main_module.git_ops, "stage_all_and_diff_stat", lambda repo_dir: "1 file changed")
     monkeypatch.setattr(main_module.git_ops, "has_staged_changes", lambda repo_dir: True)
     monkeypatch.setattr(main_module.git_ops, "commit_all", lambda *a, **k: None)
-    monkeypatch.setattr(main_module.test_runner, "run_tests", lambda repo_dir: (True, "ok"))
+    monkeypatch.setattr(main_module.check_runner, "run_tests", lambda *a, **k: (True, "ok"))
 
     def fake_push(*a, **k):
         raise GitCommandError("push failed: permission denied")
@@ -193,7 +193,7 @@ async def test_conflict_resolution_success_pushes_and_reports_tests_passed(monke
     monkeypatch.setattr(main_module.git_ops, "stage_all_and_diff_stat", lambda repo_dir: "1 file changed")
     monkeypatch.setattr(main_module.git_ops, "has_staged_changes", lambda repo_dir: True)
     monkeypatch.setattr(main_module.git_ops, "commit_all", lambda *a, **k: None)
-    monkeypatch.setattr(main_module.test_runner, "run_tests", lambda repo_dir: (True, "ok"))
+    monkeypatch.setattr(main_module.check_runner, "run_tests", lambda *a, **k: (True, "ok"))
     push_calls = []
     monkeypatch.setattr(main_module.git_ops, "push", lambda *a, **k: push_calls.append((a, k)))
 
@@ -222,7 +222,7 @@ async def test_conflict_resolution_forced_test_failure_does_not_push_and_reports
     monkeypatch.setattr(main_module.git_ops, "stage_all_and_diff_stat", lambda repo_dir: "1 file changed")
     monkeypatch.setattr(main_module.git_ops, "has_staged_changes", lambda repo_dir: True)
     monkeypatch.setattr(main_module.git_ops, "commit_all", lambda *a, **k: None)
-    monkeypatch.setattr(main_module.test_runner, "run_tests", lambda repo_dir: (False, "FAILED"))
+    monkeypatch.setattr(main_module.check_runner, "run_tests", lambda *a, **k: (False, "FAILED"))
     push_calls = []
     monkeypatch.setattr(main_module.git_ops, "push", lambda *a, **k: push_calls.append((a, k)))
 
@@ -245,7 +245,7 @@ async def test_conflict_resolution_clean_merge_needs_no_agent_and_still_tests(mo
     monkeypatch.setattr(main_module.git_ops, "stage_all_and_diff_stat", lambda repo_dir: "1 file changed")
     monkeypatch.setattr(main_module.git_ops, "has_staged_changes", lambda repo_dir: True)
     monkeypatch.setattr(main_module.git_ops, "commit_all", lambda *a, **k: None)
-    monkeypatch.setattr(main_module.test_runner, "run_tests", lambda repo_dir: (True, "ok"))
+    monkeypatch.setattr(main_module.check_runner, "run_tests", lambda *a, **k: (True, "ok"))
     monkeypatch.setattr(main_module.git_ops, "push", lambda *a, **k: None)
 
     result = await main_module.run_conflict_resolution(
@@ -283,7 +283,7 @@ async def test_run_attempt_constructs_a_sink_and_passes_it_to_the_coding_agent_w
     monkeypatch.setattr(main_module.git_ops, "has_staged_changes", lambda repo_dir: True)
     monkeypatch.setattr(main_module.git_ops, "commit_all", lambda *a, **k: None)
     monkeypatch.setattr(main_module.git_ops, "push", lambda *a, **k: None)
-    monkeypatch.setattr(main_module.test_runner, "run_tests", lambda repo_dir: (True, "ok"))
+    monkeypatch.setattr(main_module.check_runner, "run_tests", lambda *a, **k: (True, "ok"))
 
     sentinel_sink = object()
     new_event_sink_calls = []
@@ -318,7 +318,7 @@ async def test_run_attempt_passes_no_sink_when_issue_number_is_omitted(monkeypat
     monkeypatch.setattr(main_module.git_ops, "has_staged_changes", lambda repo_dir: True)
     monkeypatch.setattr(main_module.git_ops, "commit_all", lambda *a, **k: None)
     monkeypatch.setattr(main_module.git_ops, "push", lambda *a, **k: None)
-    monkeypatch.setattr(main_module.test_runner, "run_tests", lambda repo_dir: (True, "ok"))
+    monkeypatch.setattr(main_module.check_runner, "run_tests", lambda *a, **k: (True, "ok"))
 
     def fail_if_called(*a, **k):
         raise AssertionError("must not construct a real event sink when issue_number is omitted")
@@ -345,7 +345,7 @@ def _stub_happy_path_up_to_push(monkeypatch, *, push_calls: list) -> None:
     monkeypatch.setattr(main_module.git_ops, "has_staged_changes", lambda repo_dir: True)
     monkeypatch.setattr(main_module.git_ops, "commit_all", lambda *a, **k: None)
     monkeypatch.setattr(main_module.git_ops, "push", lambda *a, **k: push_calls.append((a, k)))
-    monkeypatch.setattr(main_module.test_runner, "run_tests", lambda repo_dir: (True, "ok"))
+    monkeypatch.setattr(main_module.check_runner, "run_tests", lambda *a, **k: (True, "ok"))
 
     async def fake_run_coding_agent(**kwargs):
         return "did the thing"
@@ -419,7 +419,7 @@ def _stub_conflict_resolution_happy_path(monkeypatch, *, push_calls: list) -> No
     monkeypatch.setattr(main_module.git_ops, "stage_all_and_diff_stat", lambda repo_dir: "1 file changed")
     monkeypatch.setattr(main_module.git_ops, "has_staged_changes", lambda repo_dir: True)
     monkeypatch.setattr(main_module.git_ops, "commit_all", lambda *a, **k: None)
-    monkeypatch.setattr(main_module.test_runner, "run_tests", lambda repo_dir: (True, "ok"))
+    monkeypatch.setattr(main_module.check_runner, "run_tests", lambda *a, **k: (True, "ok"))
     monkeypatch.setattr(main_module.git_ops, "push", lambda *a, **k: push_calls.append((a, k)))
 
     async def fake_run_conflict_resolution_agent(**kwargs):
@@ -485,3 +485,113 @@ async def test_run_conflict_resolution_appends_non_blocking_findings_and_still_p
     assert result.tests_passed is True
     assert "New dependencies detected" in result.diff_summary
     assert "Static analysis notes (non-blocking)" in result.diff_summary
+
+
+# --------------------------------------------------------------------------- exec-env generalization
+# (A1/A3): the resolved per-repo config drives install/build/test, and the dep cache
+# short-circuits install on a repo-local hit.
+
+
+def _config(install=None, build=None, test="npm test"):
+    from artisan_execution_sandbox.repo_config import RepoConfig
+
+    return RepoConfig(install, build, test, "detected")
+
+
+@pytest.mark.asyncio
+async def test_install_failure_returns_failed_result_before_the_coding_agent(monkeypatch) -> None:
+    monkeypatch.setattr(main_module.git_ops, "clone", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.git_ops, "create_branch", lambda *a, **k: None)
+    monkeypatch.setattr(
+        main_module.repo_config, "resolve", lambda workdir: _config(install="npm ci")
+    )
+    monkeypatch.setattr(
+        main_module.check_runner, "run_install", lambda *a, **k: (False, "npm ci: ERESOLVE")
+    )
+
+    async def fail_agent(**kwargs):
+        raise AssertionError("coding agent must not run when dependency install failed")
+
+    monkeypatch.setattr(main_module, "run_coding_agent", fail_agent)
+
+    result = await main_module.run_attempt(
+        repo="acme/demo", branch="artisan/x-1", plan=_PLAN, prior_feedback=None
+    )
+
+    assert result.tests_passed is False
+    assert result.build_passed is False
+    assert "dependency install failed" in result.diff_summary
+    assert "ERESOLVE" in result.diff_summary
+
+
+@pytest.mark.asyncio
+async def test_build_failure_short_circuits_tests_and_push_but_still_saves_the_cache(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(main_module.git_ops, "clone", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.git_ops, "create_branch", lambda *a, **k: None)
+    monkeypatch.setattr(
+        main_module.repo_config, "resolve", lambda workdir: _config(build="npm run build")
+    )
+    monkeypatch.setattr(main_module.git_ops, "stage_all_and_diff_stat", lambda repo_dir: "1 file changed")
+    monkeypatch.setattr(main_module.git_ops, "has_staged_changes", lambda repo_dir: True)
+    monkeypatch.setattr(
+        main_module.check_runner, "run_build", lambda *a, **k: (False, "tsc: compile error")
+    )
+
+    def fail_tests(*a, **k):
+        raise AssertionError("tests must not run when the build already failed")
+
+    monkeypatch.setattr(main_module.check_runner, "run_tests", fail_tests)
+    push_calls = []
+    monkeypatch.setattr(main_module.git_ops, "push", lambda *a, **k: push_calls.append((a, k)))
+    save_calls = []
+    monkeypatch.setattr(main_module.dep_cache, "save", lambda *a, **k: save_calls.append((a, k)))
+
+    async def fake_run_coding_agent(**kwargs):
+        return "did the thing"
+
+    monkeypatch.setattr(main_module, "run_coding_agent", fake_run_coding_agent)
+
+    result = await main_module.run_attempt(
+        repo="acme/demo", branch="artisan/x-1", plan=_PLAN, prior_feedback=None
+    )
+
+    assert result.tests_passed is False
+    assert result.build_passed is False
+    assert "build failed" in result.diff_summary
+    assert "compile error" in result.diff_summary
+    assert push_calls == []
+    # The finally-save runs even on failure paths, so a retry gets a warm install.
+    assert len(save_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_dep_cache_hit_skips_the_install_step(monkeypatch) -> None:
+    monkeypatch.setattr(main_module.git_ops, "clone", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.git_ops, "create_branch", lambda *a, **k: None)
+    monkeypatch.setattr(
+        main_module.repo_config, "resolve", lambda workdir: _config(install="npm ci")
+    )
+    monkeypatch.setattr(main_module.dep_cache, "restore", lambda *a, **k: ["node_modules"])
+    monkeypatch.setattr(main_module.git_ops, "stage_all_and_diff_stat", lambda repo_dir: "1 file changed")
+    monkeypatch.setattr(main_module.git_ops, "has_staged_changes", lambda repo_dir: True)
+    monkeypatch.setattr(main_module.git_ops, "commit_all", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.git_ops, "push", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.check_runner, "run_tests", lambda *a, **k: (True, "ok"))
+
+    def fail_install(*a, **k):
+        raise AssertionError("install must be skipped on a repo-local cache hit")
+
+    monkeypatch.setattr(main_module.check_runner, "run_install", fail_install)
+
+    async def fake_run_coding_agent(**kwargs):
+        return "did the thing"
+
+    monkeypatch.setattr(main_module, "run_coding_agent", fake_run_coding_agent)
+
+    result = await main_module.run_attempt(
+        repo="acme/demo", branch="artisan/x-1", plan=_PLAN, prior_feedback=None
+    )
+
+    assert result.tests_passed is True

@@ -223,3 +223,70 @@ async def test_short_circuit_has_empty_criteria_results() -> None:
     )
     assert verdict.green is False
     assert verdict.criteria_results == []
+
+
+# --- Build-gate short-circuit (v2 exec-env generalization) ---
+
+
+@pytest.mark.asyncio
+async def test_failed_build_short_circuits_to_not_green_without_calling_model(
+    monkeypatch, fake_llm_cls
+) -> None:
+    """A failed build/dependency setup can never be verified green either — checked BEFORE the
+    tests_passed gate, since a change that doesn't compile never reached a meaningful test run."""
+    calls = []
+
+    class _ExplodingLlm(fake_llm_cls):
+        async def generate_content_async(self, *args, **kwargs):
+            calls.append(1)
+            raise AssertionError("model must not be called when build_passed is False")
+            yield  # pragma: no cover - unreachable, keeps this an async generator
+
+    monkeypatch.setattr(verification_agent_module.verification_agent, "model", _ExplodingLlm())
+
+    result = ExecutionResult(
+        branch="artisan/ART-1", diff_summary="x", tests_passed=False, build_passed=False,
+        logs_uri="gs://logs/1",
+    )
+    verdict = await run_verification(
+        plan=_PLAN, execution_result=result, issue_title="Title", issue_body="Body"
+    )
+    assert verdict.green is False
+    assert verdict.feedback is not None
+    assert "build" in verdict.feedback.lower()
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_build_short_circuit_still_emits_an_agent_completed_event() -> None:
+    sink = _RecordingSink()
+    event_context.set_sink(sink)
+
+    result = ExecutionResult(
+        branch="artisan/ART-1", diff_summary="x", tests_passed=False, build_passed=False,
+        logs_uri="gs://logs/1",
+    )
+    await run_verification(plan=_PLAN, execution_result=result, issue_title="Title", issue_body="Body")
+
+    assert len(sink.events) == 1
+    assert sink.events[0]["type"] == "agent_completed"
+    assert "build" in sink.events[0]["summary"]
+
+
+def test_prompt_omits_build_section_when_no_build_step_ran() -> None:
+    """build_passed=None means the repo's config has no build step — the prompt stays identical
+    to what no-build repos produced before this field existed."""
+    from artisan_agents.agents.verification_agent import _build_prompt
+
+    result = ExecutionResult(branch="b", diff_summary="d", tests_passed=True, logs_uri="gs://x")
+    assert result.build_passed is None  # schema default — older producers stay valid
+    assert "Build step passed" not in _build_prompt(_PLAN, result, "T", "B")
+
+
+def test_prompt_includes_build_status_when_a_build_step_ran() -> None:
+    from artisan_agents.agents.verification_agent import _build_prompt
+
+    result = ExecutionResult(
+        branch="b", diff_summary="d", tests_passed=True, logs_uri="gs://x", build_passed=True
+    )
+    assert "Build step passed: True" in _build_prompt(_PLAN, result, "T", "B")

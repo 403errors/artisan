@@ -51,7 +51,22 @@ CODING_INSTRUCTION = CODING_INSTRUCTION + "\n\n" + UNTRUSTED_CONTENT_NOTICE
 #: of forbidden git subcommands with an explicit allowlist of permitted top-level commands, since
 #: issue text flows issue -> Plan -> this agent's prompt -> a tool with shell-command access, and a
 #: blocklist can always be defeated (aliasing, quoting tricks, etc.) in a way an allowlist can't.
-_ALLOWED_COMMANDS = {"npm", "pnpm", "python", "python3", "pytest", "node", "yarn"}
+#: One entry per toolchain binary in the polyglot image (v2 exec-env generalization). Scope note:
+#: the allowlist blocks git-push/exfil primitives (curl, ssh, git push) — it does NOT and cannot
+#: prevent build-script RCE, since `npm test`/`pytest`/`mvn test` already execute arbitrary repo
+#: code. The container is the real security boundary (docs/SYSTEM_DESIGN.md §8).
+_ALLOWED_COMMANDS = {
+    # JS/TS
+    "npm", "npx", "node", "pnpm", "yarn", "tsc",
+    # Python
+    "python", "python3", "pytest", "pip", "pip3", "uv",
+    # Go / Rust
+    "go", "cargo",
+    # JVM
+    "mvn", "gradle",
+    # generic build
+    "make",
+}
 _ALLOWED_GIT_SUBCOMMANDS = {"status", "diff", "add", "log", "show", "checkout"}
 
 
@@ -104,10 +119,11 @@ def _build_tools(workdir: Path):
 
     def run_shell_command(command: str) -> str:
         """Runs a shell command with cwd set to the repo checkout root — e.g. to run a linter or
-        a quick syntax check. Only an allowlisted set of commands is permitted (npm/pnpm/python/
-        python3/pytest/node/yarn, plus a narrow set of read-only/staging git subcommands); git
-        commit/push/remote and any other command are not permitted here and happen outside your
-        control after you finish."""
+        a quick syntax check. Only an allowlisted set of build/test toolchain commands is
+        permitted (node/python/go/rust/jvm ecosystems: npm/npx/node/pnpm/yarn/tsc, python/pytest/
+        pip/uv, go/cargo, mvn/gradle, make — plus a narrow set of read-only/staging git
+        subcommands); git commit/push/remote and any other command are not permitted here and
+        happen outside your control after you finish."""
         _tick()
         try:
             argv = shlex.split(command)

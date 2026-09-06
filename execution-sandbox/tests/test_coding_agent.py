@@ -196,6 +196,47 @@ async def test_git_status_is_allowed(tmp_path, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_polyglot_toolchain_commands_pass_the_allowlist(tmp_path, monkeypatch) -> None:
+    """Every toolchain binary in the polyglot image (v2 exec-env generalization) must pass the
+    allowlist — the allowlist blocks exfil/git-mutation primitives, not build tools."""
+    from artisan_execution_sandbox import coding_agent as coding_agent_module
+    from artisan_execution_sandbox.coding_agent import _build_tools
+
+    ran = []
+
+    class _FakeCompleted:
+        returncode = 0
+        stdout = "ok\n"
+        stderr = ""
+
+    def fake_run(argv, shell, cwd, capture_output, text, timeout, check):
+        ran.append(argv)
+        return _FakeCompleted()
+
+    monkeypatch.setattr(coding_agent_module.subprocess, "run", fake_run)
+
+    tools, _finished = _build_tools(tmp_path)
+    run_shell_command = next(t for t in tools if t.__name__ == "run_shell_command")
+
+    commands = (
+        "go test ./...",
+        "cargo build",
+        "mvn -q test",
+        "gradle test",
+        "make all",
+        "uv pip install --system -e .",
+        "pip install -r requirements.txt",
+        "tsc --noEmit",
+        "npx tsc --version",
+    )
+    for command in commands:
+        result = run_shell_command(command)
+        assert "not permitted" not in result, command
+
+    assert len(ran) == len(commands)
+
+
+@pytest.mark.asyncio
 async def test_arbitrary_disallowed_command_is_rejected(tmp_path) -> None:
     from artisan_execution_sandbox.coding_agent import _build_tools
 

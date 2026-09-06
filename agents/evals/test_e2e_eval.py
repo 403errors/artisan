@@ -23,7 +23,13 @@ Headline metric: **verified-correct rate** — share of scenarios that opened a 
 attempt passes the held-out oracle. Its evil twin, **false-green rate** — PRs opened on fixes
 the oracle rejects — is the number verification exists to keep at zero.
 
-Excluded from default runs (`-m 'not eval'`). Run explicitly:
+Excluded from default runs (`-m 'not eval'`). Run explicitly via the wrapper (sets the env
+vars, preflights ADC auth, confirms before spending live API quota):
+
+    agents/evals/run_e2e.sh                # full run
+    agents/evals/run_e2e.sh -l             # list fixtures; -f/-t/-r for fixture/tag/reps
+
+or bare:
 
     GOOGLE_GENAI_USE_VERTEXAI=TRUE GOOGLE_CLOUD_PROJECT=artisan-multiagent-ai \
     GOOGLE_CLOUD_LOCATION=global \
@@ -184,7 +190,8 @@ def _make_local_executor(scenario_dir: Path, scenario: dict, attempts: list[dict
     and records the result; the oracle never influences the pipeline's own signals."""
 
     async def local_trigger_execution(
-        *, repo: str, issue_number: int, branch: str, plan, attempt: int, feedback: str | None
+        *, repo: str, issue_number: int, branch: str, plan, attempt: int, feedback: str | None,
+        tool_call_cap: int | None = None,  # gate2 passes it; the local executor doesn't enforce caps
     ) -> ExecutionResult:
         with tempfile.TemporaryDirectory(prefix="artisan-e2e-") as tmp:
             workdir = Path(tmp) / "repo"

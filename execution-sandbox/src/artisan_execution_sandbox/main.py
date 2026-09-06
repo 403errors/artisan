@@ -2,8 +2,10 @@
 selects behavior, defaulting to `execute` (Gate 2 back-compat, no env-var change for existing
 callers):
 - `execute`: reads GITHUB_REPO/ISSUE_NUMBER/BRANCH_NAME/PLAN_JSON/PRIOR_FEEDBACK, clones the repo,
-  runs the bounded coding agent against the Plan, runs the configured test command, commits +
-  pushes, and writes the resulting ExecutionResult back to Firestore.
+  resolves the repo's install/build/test commands (repo_config.py: `.artisan.toml` > manifest
+  detection > ARTISAN_DEMO_REPO_TEST_COMMAND), installs deps, runs the bounded coding agent
+  against the Plan, gates on the build step before running the test suite, commits + pushes, and
+  writes the resulting ExecutionResult back to Firestore.
 - `detect_conflict` (Gate 3): reads GITHUB_REPO/ISSUE_NUMBER/BASE_BRANCH/HEAD_BRANCH/HEAD_SHA,
   attempts a real trial merge, and writes a ConflictDetectionResult.
 - `resolve_conflict` (Gate 3): reads GITHUB_REPO/ISSUE_NUMBER/BASE_BRANCH/HEAD_BRANCH, re-does its
@@ -25,10 +27,12 @@ from artisan_shared.models import ConflictDetectionResult, ExecutionResult, Plan
 from artisan_shared.ticket_ids import ticket_doc_id
 
 from artisan_execution_sandbox import (
+    check_runner,
+    dep_cache,
     firestore_write,
     git_ops,
+    repo_config,
     security_scan,
-    test_runner,
 )
 from artisan_execution_sandbox.coding_agent import (
     run_coding_agent,
@@ -140,66 +144,138 @@ async def run_attempt(
                 logs_uri=_logs_uri(),
             )
 
-        print("[artisan-execution-sandbox] running coding agent...")
-        summary = await run_coding_agent(
-            workdir=workdir, plan=plan, prior_feedback=prior_feedback, sink=sink
+        config = repo_config.resolve(workdir)
+        if config.note:
+            print(f"[artisan-execution-sandbox] repo config note: {config.note}")
+        print(
+            f"[artisan-execution-sandbox] repo config ({config.source}): "
+            f"install={config.install_cmd!r} build={config.build_cmd!r} test={config.test_cmd!r}"
         )
 
-        diff_summary = git_ops.stage_all_and_diff_stat(str(workdir))
-        if not git_ops.has_staged_changes(str(workdir)):
+        # Dependency cache: a restored repo-local dep dir (node_modules/.venv) is final install
+        # state keyed by lockfile hash, so install can be skipped outright; restored toolchain
+        # caches under $HOME merely make the install run warm. Best-effort — cache errors never
+        # fail the attempt.
+        restored = await asyncio.to_thread(dep_cache.restore, workdir, repo)
+        saved_dep_key: str | None = dep_cache.current_key(workdir) if restored else None
+
+        # Install BEFORE the coding agent so its own allowlisted shell checks (targeted pytest,
+        # tsc, a linter) run against a working environment, not a bare checkout.
+        if config.install_cmd:
+            if restored:
+                print(
+                    f"[artisan-execution-sandbox] dep cache restored {restored} — "
+                    "skipping install"
+                )
+            else:
+                print("[artisan-execution-sandbox] installing dependencies...")
+                install_ok, install_output = check_runner.run_install(config.install_cmd, str(workdir))
+                print(install_output)
+                if not install_ok:
+                    return ExecutionResult(
+                        branch=branch,
+                        diff_summary=(
+                            f"dependency install failed ({config.source} config: "
+                            f"{config.install_cmd!r}):\n{_tail(install_output)}"
+                        ),
+                        tests_passed=False,
+                        build_passed=False,
+                        logs_uri=_logs_uri(),
+                    )
+                saved_dep_key = await asyncio.to_thread(dep_cache.save, workdir, repo)
+
+        # The finally-save caches any deps the AGENT added (a lockfile change produces a new key)
+        # on every exit path — a retry after a failed build/test/push still gets a warm install.
+        try:
+            print("[artisan-execution-sandbox] running coding agent...")
+            summary = await run_coding_agent(
+                workdir=workdir, plan=plan, prior_feedback=prior_feedback, sink=sink
+            )
+
+            diff_summary = git_ops.stage_all_and_diff_stat(str(workdir))
+            if not git_ops.has_staged_changes(str(workdir)):
+                return ExecutionResult(
+                    branch=branch,
+                    diff_summary=f"coding agent made no changes. Summary: {summary}",
+                    tests_passed=False,
+                    logs_uri=_logs_uri(),
+                )
+
+            # Build gate (compile/typecheck) is distinct from the test suite: a change that
+            # doesn't compile must never reach verification as a mere test outcome. None when
+            # the repo's resolved config has no build step — "not applicable", never a failure.
+            build_passed: bool | None = None
+            if config.build_cmd:
+                print("[artisan-execution-sandbox] running build...")
+                build_passed, build_output = check_runner.run_build(config.build_cmd, str(workdir))
+                print(build_output)
+                if not build_passed:
+                    return ExecutionResult(
+                        branch=branch,
+                        diff_summary=(
+                            f"{diff_summary}\n\nbuild failed ({config.build_cmd!r}):\n"
+                            f"{_tail(build_output)}"
+                        ),
+                        tests_passed=False,
+                        build_passed=False,
+                        logs_uri=_logs_uri(),
+                    )
+
+            print("[artisan-execution-sandbox] running tests...")
+            tests_passed, test_output = check_runner.run_tests(config.test_cmd, str(workdir))
+            print(test_output)
+
+            git_ops.commit_all(str(workdir), f"Artisan: {summary}"[:200])
+
+            print("[artisan-execution-sandbox] running security scans...")
+            secrets_clean, secrets_findings = security_scan.scan_secrets(str(workdir))
+            if not secrets_clean:
+                return ExecutionResult(
+                    branch=branch, diff_summary=diff_summary, tests_passed=False,
+                    logs_uri=f"security scan blocked: secret detected — {secrets_findings}",
+                )
+
+            static_ok, static_findings = security_scan.scan_static(str(workdir))
+            if not static_ok:
+                return ExecutionResult(
+                    branch=branch, diff_summary=diff_summary, tests_passed=False,
+                    logs_uri=f"security scan blocked: static analysis finding — {static_findings}",
+                )
+
+            new_deps = security_scan.scan_new_dependencies(str(workdir))
+            if new_deps:
+                diff_summary += "\n\n⚠️ New dependencies detected:\n" + "\n".join(
+                    f"- {d}" for d in new_deps
+                )
+            if static_findings:
+                diff_summary += "\n\nStatic analysis notes (non-blocking):\n" + static_findings
+
+            print("[artisan-execution-sandbox] pushing...")
+            try:
+                git_ops.push(str(workdir), branch, token=token, repo=repo)
+            except git_ops.GitCommandError as exc:
+                return ExecutionResult(
+                    branch=branch, diff_summary=diff_summary, tests_passed=False,
+                    logs_uri=f"push failed: {exc}",
+                )
+
             return ExecutionResult(
                 branch=branch,
-                diff_summary=f"coding agent made no changes. Summary: {summary}",
-                tests_passed=False,
+                diff_summary=f"{summary}\n\n{diff_summary}",
+                tests_passed=tests_passed,
+                build_passed=build_passed,
                 logs_uri=_logs_uri(),
+                diff_patch=git_ops.staged_diff(str(workdir)),
+                changed_file_contents=git_ops.staged_file_contents(str(workdir)),
             )
+        finally:
+            await asyncio.to_thread(dep_cache.save, workdir, repo, skip_key=saved_dep_key)
 
-        print("[artisan-execution-sandbox] running tests...")
-        tests_passed, test_output = test_runner.run_tests(str(workdir))
-        print(test_output)
 
-        git_ops.commit_all(str(workdir), f"Artisan: {summary}"[:200])
-
-        print("[artisan-execution-sandbox] running security scans...")
-        secrets_clean, secrets_findings = security_scan.scan_secrets(str(workdir))
-        if not secrets_clean:
-            return ExecutionResult(
-                branch=branch, diff_summary=diff_summary, tests_passed=False,
-                logs_uri=f"security scan blocked: secret detected — {secrets_findings}",
-            )
-
-        static_ok, static_findings = security_scan.scan_static(str(workdir))
-        if not static_ok:
-            return ExecutionResult(
-                branch=branch, diff_summary=diff_summary, tests_passed=False,
-                logs_uri=f"security scan blocked: static analysis finding — {static_findings}",
-            )
-
-        new_deps = security_scan.scan_new_dependencies(str(workdir))
-        if new_deps:
-            diff_summary += "\n\n⚠️ New dependencies detected:\n" + "\n".join(
-                f"- {d}" for d in new_deps
-            )
-        if static_findings:
-            diff_summary += "\n\nStatic analysis notes (non-blocking):\n" + static_findings
-
-        print("[artisan-execution-sandbox] pushing...")
-        try:
-            git_ops.push(str(workdir), branch, token=token, repo=repo)
-        except git_ops.GitCommandError as exc:
-            return ExecutionResult(
-                branch=branch, diff_summary=diff_summary, tests_passed=False,
-                logs_uri=f"push failed: {exc}",
-            )
-
-        return ExecutionResult(
-            branch=branch,
-            diff_summary=f"{summary}\n\n{diff_summary}",
-            tests_passed=tests_passed,
-            logs_uri=_logs_uri(),
-            diff_patch=git_ops.staged_diff(str(workdir)),
-            changed_file_contents=git_ops.staged_file_contents(str(workdir)),
-        )
+def _tail(output: str, limit: int = 2000) -> str:
+    """Bounded tail of a failed step's output for the ExecutionResult's diff_summary — enough
+    signal for the retry's feedback and the dashboard, without unbounded logs in Firestore."""
+    return output if len(output) <= limit else "…" + output[-limit:]
 
 
 async def run_conflict_detection(
@@ -280,73 +356,132 @@ async def run_conflict_resolution(
                 logs_uri=_logs_uri(),
             )
 
-        if merged_clean:
-            summary = "merge applied cleanly, nothing to resolve"
-        else:
-            conflicted_files = git_ops.list_conflicted_files(str(workdir))
-            markers = git_ops.read_conflict_markers(str(workdir), conflicted_files)
-            summary = await run_conflict_resolution_agent(
-                workdir=workdir, conflicted_files=conflicted_files, conflict_markers=markers, sink=sink
-            )
-
-        diff_summary = git_ops.stage_all_and_diff_stat(str(workdir))
-        if not git_ops.has_staged_changes(str(workdir)):
-            return ExecutionResult(
-                branch=head_branch, diff_summary=f"no changes after resolution. {summary}",
-                tests_passed=False, logs_uri=_logs_uri(),
-            )
-
-        print("[artisan-execution-sandbox] running tests...")
-        tests_passed, test_output = test_runner.run_tests(str(workdir))
-        print(test_output)
-
-        git_ops.commit_all(str(workdir), f"Artisan: resolve merge conflict — {summary}"[:200])
-
-        if not tests_passed:
-            # Phase 4.3's literal DoD: full suite must pass BEFORE push — never push a failing
-            # resolution, unlike Gate 2's run_attempt which always pushes and lets Verification
-            # decide.
-            return ExecutionResult(
-                branch=head_branch, diff_summary=diff_summary, tests_passed=False,
-                logs_uri=_logs_uri(),
-            )
-
-        print("[artisan-execution-sandbox] running security scans...")
-        secrets_clean, secrets_findings = security_scan.scan_secrets(str(workdir))
-        if not secrets_clean:
-            return ExecutionResult(
-                branch=head_branch, diff_summary=diff_summary, tests_passed=False,
-                logs_uri=f"security scan blocked: secret detected — {secrets_findings}",
-            )
-
-        static_ok, static_findings = security_scan.scan_static(str(workdir))
-        if not static_ok:
-            return ExecutionResult(
-                branch=head_branch, diff_summary=diff_summary, tests_passed=False,
-                logs_uri=f"security scan blocked: static analysis finding — {static_findings}",
-            )
-
-        new_deps = security_scan.scan_new_dependencies(str(workdir))
-        if new_deps:
-            diff_summary += "\n\n⚠️ New dependencies detected:\n" + "\n".join(
-                f"- {d}" for d in new_deps
-            )
-        if static_findings:
-            diff_summary += "\n\nStatic analysis notes (non-blocking):\n" + static_findings
-
+        # Config resolves on both paths so `config` is always defined below; deps are installed
+        # only on the conflicted path — a clean merge early-returns without running the agent or
+        # the suite, so a cold install there would be pure waste. Cache semantics identical to
+        # run_attempt: restore before install (a repo-local restore skips it), finally-save on
+        # every exit path.
+        config = repo_config.resolve(workdir)
+        saved_dep_key: str | None = None
         try:
-            git_ops.push(str(workdir), head_branch, token=token, repo=repo)
-        except git_ops.GitCommandError as exc:
-            return ExecutionResult(
-                branch=head_branch, diff_summary=diff_summary, tests_passed=False,
-                logs_uri=f"push failed: {exc}",
-            )
+            if merged_clean:
+                summary = "merge applied cleanly, nothing to resolve"
+            else:
+                restored = await asyncio.to_thread(dep_cache.restore, workdir, repo)
+                if restored:
+                    saved_dep_key = dep_cache.current_key(workdir)
+                if config.install_cmd:
+                    if restored:
+                        print(
+                            f"[artisan-execution-sandbox] dep cache restored {restored} — "
+                            "skipping install"
+                        )
+                    else:
+                        print("[artisan-execution-sandbox] installing dependencies...")
+                        install_ok, install_output = check_runner.run_install(
+                            config.install_cmd, str(workdir)
+                        )
+                        print(install_output)
+                        if not install_ok:
+                            return ExecutionResult(
+                                branch=head_branch,
+                                diff_summary=(
+                                    f"dependency install failed ({config.source} config: "
+                                    f"{config.install_cmd!r}):\n{_tail(install_output)}"
+                                ),
+                                tests_passed=False,
+                                build_passed=False,
+                                logs_uri=_logs_uri(),
+                            )
+                        saved_dep_key = await asyncio.to_thread(dep_cache.save, workdir, repo)
+                conflicted_files = git_ops.list_conflicted_files(str(workdir))
+                markers = git_ops.read_conflict_markers(str(workdir), conflicted_files)
+                summary = await run_conflict_resolution_agent(
+                    workdir=workdir, conflicted_files=conflicted_files, conflict_markers=markers, sink=sink
+                )
 
-        return ExecutionResult(
-            branch=head_branch,
-            diff_summary=f"{summary}\n\n{diff_summary}",
-            tests_passed=True,
-            logs_uri=_logs_uri(),
-            diff_patch=git_ops.staged_diff(str(workdir)),
-            changed_file_contents=git_ops.staged_file_contents(str(workdir)),
-        )
+            diff_summary = git_ops.stage_all_and_diff_stat(str(workdir))
+            if not git_ops.has_staged_changes(str(workdir)):
+                return ExecutionResult(
+                    branch=head_branch, diff_summary=f"no changes after resolution. {summary}",
+                    tests_passed=False, logs_uri=_logs_uri(),
+                )
+
+            # Reached only when the agent resolved a real conflict and left staged changes (a
+            # clean merge early-returned above) — build gate semantics identical to run_attempt's.
+            build_passed: bool | None = None
+            if config.build_cmd:
+                print("[artisan-execution-sandbox] running build...")
+                build_passed, build_output = check_runner.run_build(config.build_cmd, str(workdir))
+                print(build_output)
+                if not build_passed:
+                    return ExecutionResult(
+                        branch=head_branch,
+                        diff_summary=(
+                            f"{diff_summary}\n\nbuild failed ({config.build_cmd!r}):\n"
+                            f"{_tail(build_output)}"
+                        ),
+                        tests_passed=False,
+                        build_passed=False,
+                        logs_uri=_logs_uri(),
+                    )
+
+            print("[artisan-execution-sandbox] running tests...")
+            tests_passed, test_output = check_runner.run_tests(config.test_cmd, str(workdir))
+            print(test_output)
+
+            git_ops.commit_all(str(workdir), f"Artisan: resolve merge conflict — {summary}"[:200])
+
+            if not tests_passed:
+                # Phase 4.3's literal DoD: full suite must pass BEFORE push — never push a failing
+                # resolution, unlike Gate 2's run_attempt which always pushes and lets Verification
+                # decide.
+                return ExecutionResult(
+                    branch=head_branch, diff_summary=diff_summary, tests_passed=False,
+                    logs_uri=_logs_uri(),
+                )
+
+            print("[artisan-execution-sandbox] running security scans...")
+            secrets_clean, secrets_findings = security_scan.scan_secrets(str(workdir))
+            if not secrets_clean:
+                return ExecutionResult(
+                    branch=head_branch, diff_summary=diff_summary, tests_passed=False,
+                    logs_uri=f"security scan blocked: secret detected — {secrets_findings}",
+                )
+
+            static_ok, static_findings = security_scan.scan_static(str(workdir))
+            if not static_ok:
+                return ExecutionResult(
+                    branch=head_branch, diff_summary=diff_summary, tests_passed=False,
+                    logs_uri=f"security scan blocked: static analysis finding — {static_findings}",
+                )
+
+            new_deps = security_scan.scan_new_dependencies(str(workdir))
+            if new_deps:
+                diff_summary += "\n\n⚠️ New dependencies detected:\n" + "\n".join(
+                    f"- {d}" for d in new_deps
+                )
+            if static_findings:
+                diff_summary += "\n\nStatic analysis notes (non-blocking):\n" + static_findings
+
+            try:
+                git_ops.push(str(workdir), head_branch, token=token, repo=repo)
+            except git_ops.GitCommandError as exc:
+                return ExecutionResult(
+                    branch=head_branch, diff_summary=diff_summary, tests_passed=False,
+                    logs_uri=f"push failed: {exc}",
+                )
+
+            return ExecutionResult(
+                branch=head_branch,
+                diff_summary=f"{summary}\n\n{diff_summary}",
+                tests_passed=True,
+                build_passed=build_passed,
+                logs_uri=_logs_uri(),
+                diff_patch=git_ops.staged_diff(str(workdir)),
+                changed_file_contents=git_ops.staged_file_contents(str(workdir)),
+            )
+        finally:
+            # No-op on the clean-merge path (no dep dirs exist — save archives nothing) and on
+            # unchanged lockfiles (skip_key), so this costs nothing when there was no install.
+            await asyncio.to_thread(dep_cache.save, workdir, repo, skip_key=saved_dep_key)

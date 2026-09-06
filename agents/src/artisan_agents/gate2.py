@@ -27,7 +27,7 @@ from artisan_agents.agents.domain_expert_agent import (
 from artisan_agents.agents.planning_agent import run_planning
 from artisan_agents.agents.routing_agent import run_routing
 from artisan_agents.agents.verification_agent import run_verification
-from artisan_agents.config import MAX_EXECUTION_RETRIES
+from artisan_agents.config import CODING_AGENT_TOOL_CALL_CAP, MAX_EXECUTION_RETRIES
 from artisan_agents.gcp import cloud_run_jobs, firestore_client
 from artisan_agents.gcp.firestore_client import RetryCapExceeded
 from artisan_agents.github import client as github_client
@@ -62,6 +62,9 @@ async def start_gate2(
     # whose default branch is `master`/`develop`/etc. would otherwise get PRs targeted at the
     # wrong (or non-existent) branch.
     base_branch = await github_client.get_default_branch(repo)
+    # One cap for the whole run: repo size doesn't change between attempts, and a per-attempt
+    # recomputation would make the event trail harder to read.
+    tool_call_cap = _tool_call_cap(repo_context)
 
     await firestore_client.update_ticket(repo, issue_number, current_step="routing")
     decision = await run_routing(
@@ -120,7 +123,7 @@ async def start_gate2(
         )
         execution_result = await cloud_run_jobs.trigger_execution(
             repo=repo, issue_number=issue_number, branch=branch, plan=plan, attempt=attempt,
-            feedback=feedback,
+            feedback=feedback, tool_call_cap=tool_call_cap,
         )
         await firestore_client.update_ticket(
             repo, issue_number, last_execution_result=execution_result.model_dump(mode="json")
@@ -171,6 +174,21 @@ async def start_gate2(
             ):
                 pass
             return
+
+
+def _tool_call_cap(repo_context: RepoContext | None) -> int:
+    """Repo-size-tiered coding-agent tool-call cap (v2 exec-env generalization). The v1 default
+    (40) was tuned on demo repos — the SWE-bench harness escalated a real-scale instance at that
+    cap and runs at 80 (agents/evals/bench/README.md), so larger repos get a larger exploration
+    budget. ARTISAN_CODING_AGENT_TOOL_CALL_CAP overrides the tiers for every ticket when set."""
+    if CODING_AGENT_TOOL_CALL_CAP is not None:
+        return CODING_AGENT_TOOL_CALL_CAP
+    file_count = len(repo_context.file_tree) if repo_context is not None else 0
+    if file_count < 500:
+        return 40
+    if file_count < 5000:
+        return 80
+    return 120
 
 
 async def _run_domain_experts(

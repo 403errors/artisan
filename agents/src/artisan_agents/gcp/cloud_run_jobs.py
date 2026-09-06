@@ -54,7 +54,7 @@ def _job_path() -> str:
 
 def _build_request(
     *, ticket_id: str, repo: str, issue_number: int, branch: str, plan: Plan, attempt: int,
-    feedback: str | None,
+    feedback: str | None, tool_call_cap: int | None,
 ) -> run_v2.RunJobRequest:
     env = [
         run_v2.EnvVar(name="TICKET_ID", value=ticket_id),
@@ -65,6 +65,13 @@ def _build_request(
         run_v2.EnvVar(name="PLAN_JSON", value=plan.model_dump_json()),
         run_v2.EnvVar(name="PRIOR_FEEDBACK", value=feedback or ""),
     ]
+    if tool_call_cap is not None:
+        # The sandbox reads ARTISAN_MAX_CODING_AGENT_TOOL_CALLS at import (its config.py) — the
+        # orchestrator's repo-size-tiered cap thus wins over the job template's env, and an
+        # absent cap (None) leaves the sandbox's own default untouched (back-compat).
+        env.append(
+            run_v2.EnvVar(name="ARTISAN_MAX_CODING_AGENT_TOOL_CALLS", value=str(tool_call_cap))
+        )
     overrides = run_v2.RunJobRequest.Overrides(
         container_overrides=[run_v2.RunJobRequest.Overrides.ContainerOverride(env=env)]
     )
@@ -72,17 +79,22 @@ def _build_request(
 
 
 async def trigger_execution(
-    *, repo: str, issue_number: int, branch: str, plan: Plan, attempt: int, feedback: str | None
+    *, repo: str, issue_number: int, branch: str, plan: Plan, attempt: int, feedback: str | None,
+    tool_call_cap: int | None = None,
 ) -> ExecutionResult:
     """Runs the execution-sandbox Cloud Run Job for one attempt, blocking until it completes, then
     reads the `ExecutionResult` the job itself wrote to Firestore."""
     ticket_id = firestore_client.ticket_doc_id(repo, issue_number)
     request = _build_request(
         ticket_id=ticket_id, repo=repo, issue_number=issue_number, branch=branch, plan=plan,
-        attempt=attempt, feedback=feedback,
+        attempt=attempt, feedback=feedback, tool_call_cap=tool_call_cap,
     )
     await current_sink().emit(
-        type="job_started", summary=f"execution-sandbox: attempt {attempt} on {branch}"
+        type="job_started",
+        summary=(
+            f"execution-sandbox: attempt {attempt} on {branch}"
+            + (f" (tool-call cap {tool_call_cap})" if tool_call_cap is not None else "")
+        ),
     )
     operation = await _jobs_client().run_job(request=request)
     execution = await operation.result()

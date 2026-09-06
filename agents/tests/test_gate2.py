@@ -22,6 +22,7 @@ from artisan_shared.models import (
     DomainExpertOutput,
     ExecutionResult,
     Plan,
+    RepoContext,
     RoutingDecision,
     VerificationVerdict,
 )
@@ -134,6 +135,7 @@ class _Gate2Harness:
         self.jira_labels: list[tuple] = []
         self.execution_calls: list[int] = []
         self.branches: list[str] = []
+        self.tool_call_caps: list[int | None] = []
         self.planning_feedbacks: list[str | None] = []
         self.verification_calls: list[dict] = []
         self.domain_events: list[str] = []
@@ -217,6 +219,7 @@ class _Gate2Harness:
         async def fake_trigger_execution(**kwargs):
             self.execution_calls.append(kwargs["attempt"])
             self.branches.append(kwargs["branch"])
+            self.tool_call_caps.append(kwargs.get("tool_call_cap"))
             if self.execute is not None:
                 return self.execute(kwargs)
             return ExecutionResult(
@@ -513,3 +516,56 @@ async def test_escalate_is_skipped_when_ticket_deleted(harness) -> None:
     assert harness.store.doc.status == "done"  # not resurrected to escalated
     assert harness.jira_comments == []
     assert harness.github_comments == []
+
+
+def _repo_context_of_size(file_count: int) -> RepoContext:
+    return RepoContext(
+        repo=REPO,
+        head_sha="x",
+        file_tree=[f"f{i}.py" for i in range(file_count)],
+        manifests={},
+        languages={},
+        convention_docs={},
+        fetched_at=datetime.now(timezone.utc),
+    )
+
+
+@pytest.mark.asyncio
+async def test_tool_call_cap_tiers_by_repo_size(harness, monkeypatch) -> None:
+    """v2 exec-env: the coding agent's tool-call cap scales with repo size (bench evidence:
+    real-scale repos escalated at the demo-tuned 40). The autouse fixture stubs repo_context to
+    None; each iteration re-stubs it with a known file count."""
+    for file_count, expected_cap in ((100, 40), (1000, 80), (6000, 120)):
+        context = _repo_context_of_size(file_count)
+
+        async def fake_get_repo_context(repo: str, _context=context) -> RepoContext:
+            return _context
+
+        monkeypatch.setattr(gate2.repo_context_module, "get_repo_context", fake_get_repo_context)
+
+        await gate2.start_gate2(REPO, ISSUE_NUMBER, JIRA_KEY, issue_title="T", issue_body="B")
+
+        assert harness.tool_call_caps[-1] == expected_cap
+
+
+@pytest.mark.asyncio
+async def test_tool_call_cap_defaults_to_the_smallest_tier_without_repo_context(harness) -> None:
+    """The autouse fixture's None repo_context (fetch failed) must not break the tiering — a
+    missing context means a small/unknown repo, i.e. the v1 default cap."""
+    await gate2.start_gate2(REPO, ISSUE_NUMBER, JIRA_KEY, issue_title="T", issue_body="B")
+
+    assert harness.tool_call_caps == [40]
+
+
+@pytest.mark.asyncio
+async def test_tool_call_cap_env_override_wins_over_the_tiers(harness, monkeypatch) -> None:
+    monkeypatch.setattr(gate2, "CODING_AGENT_TOOL_CALL_CAP", 55)
+
+    async def fake_get_repo_context(repo: str) -> RepoContext:
+        return _repo_context_of_size(6000)
+
+    monkeypatch.setattr(gate2.repo_context_module, "get_repo_context", fake_get_repo_context)
+
+    await gate2.start_gate2(REPO, ISSUE_NUMBER, JIRA_KEY, issue_title="T", issue_body="B")
+
+    assert harness.tool_call_caps == [55]

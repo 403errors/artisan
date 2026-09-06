@@ -378,7 +378,12 @@ async def run_instance(benchmark: Benchmark, instance: dict, *, max_attempts: in
     preset_cmd = internal_test_command(benchmark, instance)
     test_files = patch_test_files(instance["test_patch"])
 
-    async def executor(*, repo, issue_number, branch, plan, attempt, feedback) -> ExecutionResult:
+    async def executor(*, repo, issue_number, branch, plan, attempt, feedback,
+                       tool_call_cap=None) -> ExecutionResult:
+        # tool_call_cap: gate2 passes its repo-size-tiered cap; the bench sets its own
+        # ARTISAN_MAX_CODING_AGENT_TOOL_CALLS (80) process-wide, so the kwarg is accepted and
+        # recorded but not re-applied here.
+        _ = tool_call_cap
         with tempfile.TemporaryDirectory(prefix="artisan-bench-") as tmp:
             workdir = Path(tmp) / "repo"
             checkout_repo(repo, instance["base_commit"], workdir)

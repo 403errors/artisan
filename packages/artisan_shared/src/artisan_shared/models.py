@@ -133,6 +133,14 @@ class ExecutionResult(BaseModel):
     # write_user_file next to the fixed read_user_file) never appears in it. The verifier needs
     # to see what the change DIDN'T touch. Producers cap per-file and total size.
     changed_file_contents: dict[str, str] = {}
+    # Separate build signal (v2 exec-env generalization): the per-repo build step
+    # (compile/typecheck, e.g. `npm run build`/`go build`/`cargo build`) is a distinct gate from
+    # the test suite — a change that doesn't even compile must never reach verification as a
+    # test outcome. None = no build step ran (the repo's resolved config has no build command —
+    # "not applicable", never a failure); False = dependency install or the build step failed.
+    # Verification short-circuits red on False exactly like tests_passed=False. Optional so
+    # Firestore docs written by older producers stay valid.
+    build_passed: bool | None = None
 
 
 class CriterionResult(BaseModel):

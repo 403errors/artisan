@@ -6,7 +6,7 @@ Purpose: a single, always-current snapshot of what actually exists in this codeb
 
 **Stage: v1 shipped (all 3 gates live + dashboard + CI/CD); v2 in progress on branch `v2` (`main` frozen).** v2 waves 1, 1.5, 1.6, 1.7 are done code-side: model bumped to `gemini-3.8-flash`, 10-lens domain-expert registry, routing/verification hardening, full-funnel eval harness + external bench adapter, eval-driven hardening (expert precision split, verification criteria hard-gate, sibling-omission fixtures). **The v2 changes are not yet deployed** — they take effect on the next `orchestrator`/`execution-sandbox` deploy from `v2`.
 
-Roadmap and wave scope live in `docs/miscellaneous/V2_SCOPE.md` (local-only, gitignored). Next up: **#7 per-repo build/test matrix** (last wave-1 item), then the first external bench run (manual — see `agents/evals/bench/README.md`).
+Roadmap and wave scope live in `docs/miscellaneous/V2_SCOPE.md` (local-only, gitignored). **#7 per-repo build/test matrix is done code-side** (2026-09-06): `.artisan.toml`/manifest-detected install/build/test commands, one polyglot toolchain image, GCS dependency cache, repo-size-tiered tool-call cap, `build_passed` gate in verification. Next up: the first external bench run (manual — see `agents/evals/bench/README.md`).
 
 ## Benchmarks
 
@@ -20,12 +20,12 @@ Latest full-funnel eval run (live Gemini, **2026-09-06**, wave 1.7 record run; p
 | End-to-end | verified-correct rate (11 seeded-bug fixtures) | **100.0%** — false-green 0.0% |
 | External bench | SWE-bench Verified/Multilingual/Pro/Live, Multi-SWE-bench, SWE-PolyBench | adapter ready, 50 frozen instances each — **no official run yet** |
 
-Unit tests (2026-09-06): **409 Python** (agents 308, artisan_shared 41, execution-sandbox 60) + **110 dashboard** (Vitest), all green in CI.
+Unit tests (2026-09-06): **487 Python** (agents 327, artisan_shared 61, execution-sandbox 99) + **110 dashboard** (Vitest), all green in CI.
 
 ## What Exists Right Now
 
 - `agents/` (uv, Python 3.13) — the orchestrator. FastAPI (`app.py`: `POST /webhooks/github` with HMAC verify, `POST /pubsub/push` with OIDC verify + claim-based idempotency); Gate 1 intake + duplicate check (`dispatch.py`); Gate 2 plan→execute→verify→PR with retry cap (`gate2.py`); Gate 3 merge-conflict triage (`gate3.py`); manual actions + completion (`manual_actions.py`, `completion.py`); five reasoning ADK agents under `agents/agents/` sharing `_run_agent.py`; Jira direct REST (`jira/client.py`); GitHub App auth (`github/`); Firestore (`gcp/firestore_client.py`); OTel → Cloud Trace (`tracing.py`, `force_flush` per gate span). Deployed on Cloud Run as `orchestrator`.
-- `execution-sandbox/` (uv, Python 3.13) — Cloud Run Job, `JOB_MODE`-branched (`execute` / `detect_conflict` / `resolve_conflict`). Bounded ADK coding agent with custom function tools (fail-closed shell allowlist), subprocess `git_ops.py`, `test_runner.py`, pre-push `security_scan.py` (gitleaks hard-block, semgrep ERROR-gate, both fail-open on missing binary). Shared auth/secrets come from `artisan_shared`.
+- `execution-sandbox/` (uv, Python 3.13) — Cloud Run Job, `JOB_MODE`-branched (`execute` / `detect_conflict` / `resolve_conflict`). Bounded ADK coding agent with custom function tools (fail-closed shell allowlist spanning the node/python/go/rust/jvm toolchains), subprocess `git_ops.py`, per-repo command resolution `repo_config.py` (`.artisan.toml` > manifest detection > env fallback) executed by `check_runner.py` (install → build gate → tests), lockfile-keyed GCS dependency cache `dep_cache.py` (best-effort, off when `ARTISAN_DEP_CACHE_BUCKET` is unset), pre-push `security_scan.py` (gitleaks hard-block, semgrep ERROR-gate, both fail-open on missing binary). One polyglot toolchain image (Node/Python/Go/Rust/JVM, ~3-4 GB). Shared auth/secrets come from `artisan_shared`.
 - `packages/artisan_shared/` — typed inter-agent models, `TicketDoc` Firestore schema, deterministic ticket/PR-pointer id scheme, `prompt_safety` (untrusted-content wrapping), GitHub App auth + Secret Manager helpers.
 - `dashboard/` — Next.js 15 + Auth.js v5: ticket grid, gate-by-gate drill-in, `/escalations`, SSE live updates, manual actions (retry/escalate/mark-done) published onto the same Pub/Sub topic as real webhooks. Deployed on Cloud Run as `dashboard`.
 - `infra/` — full Terraform topology (`infra/terraform/`) + one-command bootstrap (`infra/scripts/setup-gcp-infra.sh`); CI (`.github/workflows/ci.yml`) and WIF-based deploy (`.github/workflows/deploy.yml`) for all three services.
@@ -40,7 +40,7 @@ Unit tests (2026-09-06): **409 Python** (agents 308, artisan_shared 41, executio
 - **Secrets (Secret Manager, per-secret IAM):** `jira-api-token`, `github-webhook-secret`, `github-app-private-key` (→ `orchestrator@`); `dashboard-oauth-client-id`/`dashboard-oauth-client-secret`/`dashboard-auth-secret` (→ `dashboard@`).
 - **Jira:** site `pieisnot22by7.atlassian.net`, project `ART` (team-managed Kanban; only `Backlog`/`Selected for Development`/`In Progress`/`Done` — no PR-shaped status, so Gate 2 communicates PR-open via comment; Firestore `TicketDoc.status` is the real source of truth).
 - **GitHub:** App `artisan-bot-403errors` (App ID `4744770`, installation `157129507` on `403errors`); demo repo `403errors/artisan-demo`; source repo `403errors/artisan`. Dashboard sign-in = separate OAuth App; access requires collaborator permission on the target repo.
-- **Key constants:** retry cap `N=3` (mirrors clarification-round cap); `DELIVERY_CLAIM_STALE_AFTER_SECONDS=4200` (must exceed the 3600s request timeout); `MAX_TRIVIAL_CONFLICT_ATTEMPTS=1` (claimed with `>`, not `>=`); `MAX_CODING_AGENT_TOOL_CALLS=40`.
+- **Key constants:** retry cap `N=3` (mirrors clarification-round cap); `DELIVERY_CLAIM_STALE_AFTER_SECONDS=4200` (must exceed the 3600s request timeout); `MAX_TRIVIAL_CONFLICT_ATTEMPTS=1` (claimed with `>`, not `>=`); coding-agent tool-call cap tiered by repo size — <500 files → 40, <5k → 80, else 120 (`ARTISAN_CODING_AGENT_TOOL_CALL_CAP` on the orchestrator overrides; passed per-attempt as `ARTISAN_MAX_CODING_AGENT_TOOL_CALLS`).
 - **Images:** built via Cloud Build into the `cloud-run-source-deploy` Artifact Registry repo (no local Docker daemon in the dev environment).
 
 ## Open Decisions / Risks

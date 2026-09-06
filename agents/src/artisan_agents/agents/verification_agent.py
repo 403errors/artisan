@@ -70,6 +70,10 @@ def _build_prompt(
         f"Plan steps: {plan.steps}\n\n"
         f"Execution diff summary:\n{execution_result.diff_summary}"
     )
+    # Deterministic build signal, when the repo's config has a build step (None = no build step —
+    # omitted entirely so no-build repos keep the same prompt shape as before this field existed).
+    if execution_result.build_passed is not None:
+        prompt += f"\n\nBuild step passed: {execution_result.build_passed}"
     # The bounded real patch is the primary evidence when present — diff content is
     # repo-sourced but still wrapped: a malicious change is injection surface like any other.
     if execution_result.diff_patch:
@@ -99,6 +103,26 @@ async def run_verification(
     issue_body: str,
     review_criteria: list[str] | None = None,
 ) -> VerificationVerdict:
+    if execution_result.build_passed is False:
+        # A failed build/dependency setup can never be verified green either — same fail-closed
+        # shape as the tests_passed short-circuit below, checked first: a change that doesn't
+        # compile never got as far as a meaningful test run.
+        verdict = VerificationVerdict(
+            green=False,
+            feedback=(
+                "The build/dependency setup failed on this attempt. "
+                f"Logs: {execution_result.logs_uri}"
+            ),
+        )
+        # This path never calls run_structured, so it needs its own agent_completed emit — a
+        # skipped-but-recorded verification, not an invisible gap in the trail.
+        await current_sink().child(actor="verification_agent").emit(
+            type="agent_completed",
+            summary="verification_agent skipped — build already failed",
+            detail=verdict.model_dump_json(),
+        )
+        return verdict
+
     if not execution_result.tests_passed:
         # A red test run can never be verified green regardless of what the model says — never
         # spend a Gemini call asking it to second-guess a fact already known from the test run.

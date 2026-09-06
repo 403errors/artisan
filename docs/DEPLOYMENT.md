@@ -75,12 +75,34 @@ Beyond the Sprint 1 defaults it shares with `agents/` (`ARTISAN_GCP_PROJECT_ID`,
 | Var | Purpose | Default |
 |---|---|---|
 | `ARTISAN_CLOUD_RUN_REGION` | Used to build a Cloud Logging link for this execution's `ExecutionResult.logs_uri` | `us-central1` |
-| `ARTISAN_DEMO_REPO_TEST_COMMAND` | The single test command run against the checkout — v1 is scoped to one fixed demo repo ([PRD.md §5](./PRD.md#5-non-goals--out-of-scope-v1)), so a hardcoded command is legitimate rather than generic multi-language test detection | `npm test` |
+| `ARTISAN_DEMO_REPO_TEST_COMMAND` | Last-resort test command, used only when the checkout has neither an `.artisan.toml` nor a detectable manifest (`repo_config.py` resolves per-repo install/build/test commands; v1's single hardcoded command was legitimate when scoped to one fixed demo repo — [PRD.md §5](./PRD.md#5-non-goals--out-of-scope-v1)) | `npm test` |
+| `ARTISAN_DEP_CACHE_BUCKET` | GCS bucket for the dependency cache (`dep_cache.py`): tarred dependency dirs keyed by lockfile hash, shared across attempts and tickets on the same repo. Empty disables the cache entirely | _(empty — disabled)_ |
+| `ARTISAN_MAX_CODING_AGENT_TOOL_CALLS` | Coding-agent tool-call cap when the orchestrator doesn't pass one per-execution (it normally does — repo-size-tiered, see below) | `40` |
+
+The sandbox image is a single polyglot toolchain image (Node LTS + pnpm/yarn, Python + uv, Go,
+Rust, Temurin JDK 21 + Maven + Gradle — all version-pinned in the Dockerfile, ~3-4 GB): any repo's
+resolved commands run without the orchestrator knowing the ecosystem in advance. Expect a slightly
+slower cold start than the v1 slim image; the dependency cache (above) is what keeps per-attempt
+latency down on real repos.
 
 At runtime (as a Cloud Run Job execution, not a long-running service), the orchestrator's
 `gcp/cloud_run_jobs.py::trigger_execution` sets `GITHUB_REPO`, `ISSUE_NUMBER`, `BRANCH_NAME`,
-`ATTEMPT_NUMBER`, `PLAN_JSON`, and `PRIOR_FEEDBACK` as per-execution env var overrides — these
-aren't meant to be set by hand except for a manual smoke-test trigger.
+`ATTEMPT_NUMBER`, `PLAN_JSON`, `PRIOR_FEEDBACK`, and `ARTISAN_MAX_CODING_AGENT_TOOL_CALLS` (the
+repo-size-tiered cap: <500 files → 40, <5k → 80, else 120; `ARTISAN_CODING_AGENT_TOOL_CALL_CAP` on
+the orchestrator overrides the tiers) as per-execution env var overrides — these aren't meant to be
+set by hand except for a manual smoke-test trigger.
+
+### Dependency cache bucket (optional but recommended)
+
+```bash
+gcloud storage buckets create gs://<your-bucket> --location=us-central1
+gcloud storage buckets add-iam-policy-binding gs://<your-bucket> \
+  --member=serviceAccount:execution-sandbox@<project-id>.iam.gserviceaccount.com \
+  --role=roles/storage.objectUser
+```
+
+Then set `ARTISAN_DEP_CACHE_BUCKET=<your-bucket>` on the job. The cache is strictly best-effort —
+the job runs fine without it, just with cold dependency installs on every attempt.
 
 ## Secrets
 
@@ -119,9 +141,11 @@ Sprint 7 adds IaC.
 
 ## Deploying the execution sandbox (`execution-sandbox/`)
 
-Gate 2's per-attempt Cloud Run Job — clones the repo, runs a bounded ADK coding agent against the
-orchestrator's `Plan`, runs the test suite, pushes a branch, and writes the result back to
-Firestore. See [SYSTEM_DESIGN.md §4](./SYSTEM_DESIGN.md#4-data-flow--gate-2-plan--execute--verify--pr).
+Gate 2's per-attempt Cloud Run Job — clones the repo, resolves its install/build/test commands
+(`.artisan.toml` or manifest auto-detection), runs a bounded ADK coding agent against the
+orchestrator's `Plan`, gates on the build step, runs the test suite, pushes a branch, and writes
+the result back to Firestore. See
+[SYSTEM_DESIGN.md §4](./SYSTEM_DESIGN.md#4-data-flow--gate-2-plan--execute--verify--pr).
 
 Needs two IAM grants beyond Sprint 1's `execution-sandbox@` (`datastore.user`): `secretAccessor`
 on the `github-app-private-key` secret, since this job mints its own GitHub App installation token
@@ -129,8 +153,9 @@ rather than being handed one by the orchestrator; and `aiplatform.user`, for the
 Gemini calls (see [SYSTEM_DESIGN.md §8](./SYSTEM_DESIGN.md#8-auth--security)).
 
 Same repo-root build-context requirement as `agents/` above. Deploy as a Cloud Run Job with
-`--task-timeout=1800` and `ARTISAN_DEMO_REPO_TEST_COMMAND` set (see [CONTEXT.md](./CONTEXT.md)
-Milestone 5):
+`--task-timeout=1800` (see [CONTEXT.md](./CONTEXT.md) Milestone 5). No test-command env var is
+needed for repos with a detectable manifest or an `.artisan.toml` — set
+`ARTISAN_DEMO_REPO_TEST_COMMAND` only as the fallback for repos that have neither:
 
 ```bash
 # from the repo root

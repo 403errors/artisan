@@ -52,7 +52,7 @@ A lightweight web app scoped to one GitHub repo and its linked Jira board.
 ## 5. Non-Goals / Out of Scope (v1)
 
 - Not a general-purpose chatbot or IDE assistant — it has no synchronous, conversational interface.
-- Not multi-repo or multi-board — v1 is scoped to exactly one GitHub repo and its linked Jira board.
+- Not multi-repo or multi-board — v1 is scoped to exactly one GitHub repo and its linked Jira board. (The execution sandbox is ecosystem-generic — per-repo `.artisan.toml` or manifest-detected install/build/test commands, one polyglot toolchain image — but Artisan still serves one configured repo deployment, not arbitrary multi-tenancy.)
 - Never moves a ticket to *Done* on its own — merge by a human is the only trigger for that transition.
 - Never force-pushes, merges its own PRs, or resolves a semantic merge conflict by guessing.
 - No dependency on an external coding agent (Claude Code, Cursor, etc.) in the resolution loop — all reasoning and execution stays on the mandated stack.

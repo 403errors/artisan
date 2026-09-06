@@ -32,6 +32,12 @@ __all__ = [
 # records it in run_log, so bench-vs-production behavior differences stay visible.
 MAX_CODING_AGENT_TOOL_CALLS = int(os.environ.get("ARTISAN_MAX_CODING_AGENT_TOOL_CALLS", "40"))
 
-# v1 is scoped to exactly one fixed demo repo (docs/PRD.md §5), so a single configured test
-# command is legitimate rather than building generic multi-language test detection.
+# Last-resort test command, used only when repo_config.resolve finds neither an `.artisan.toml`
+# nor a detectable manifest (v1 was scoped to one fixed demo repo — docs/PRD.md §5 — so a single
+# configured command was legitimate; arbitrary repos should rely on detection or the config file).
 DEMO_REPO_TEST_COMMAND = os.environ.get("ARTISAN_DEMO_REPO_TEST_COMMAND", "npm test")
+
+# GCS bucket for the dependency cache (dep_cache.py): tarred dependency dirs keyed by lockfile
+# hash, shared across attempts and tickets on the same repo. Empty disables the cache entirely
+# (local dev, tests). The job's service account needs object read/write on this bucket.
+DEP_CACHE_BUCKET = os.environ.get("ARTISAN_DEP_CACHE_BUCKET", "")

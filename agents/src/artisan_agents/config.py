@@ -61,6 +61,15 @@ EXECUTION_SANDBOX_JOB_NAME = os.environ.get("ARTISAN_EXECUTION_SANDBOX_JOB_NAME"
 # `confidence` is uncalibrated — see agents/evals/REPORT.md). Routing is a small classification
 # prompt at temperature 0, so 3x cost is trivial next to planning; set 1 to disable.
 ROUTING_SELF_CONSISTENCY = int(os.environ.get("ARTISAN_ROUTING_SELF_CONSISTENCY", "3"))
+# Gate 2 coding-agent tool-call cap override (v2 exec-env generalization). Unset: gate2.py tiers
+# the cap by repo size (<500 files -> 40, <5k -> 80, else 120 — bench evidence: real-scale repos
+# escalated at the demo-tuned 40, see agents/evals/bench/README.md). Set: the override wins for
+# every ticket. Passed to the sandbox as ARTISAN_MAX_CODING_AGENT_TOOL_CALLS per attempt.
+CODING_AGENT_TOOL_CALL_CAP = (
+    int(os.environ["ARTISAN_CODING_AGENT_TOOL_CALL_CAP"])
+    if os.environ.get("ARTISAN_CODING_AGENT_TOOL_CALL_CAP")
+    else None
+)
 
 # Secret Manager secret names (values fetched at call time, never inlined — SYSTEM_DESIGN.md §8).
 SECRET_GITHUB_WEBHOOK_SECRET = "github-webhook-secret"

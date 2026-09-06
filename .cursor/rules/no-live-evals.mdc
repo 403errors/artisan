@@ -1,0 +1,28 @@
+---
+description: Never run live-API evals (E2E, stage evals, bench) without explicit user instruction
+alwaysApply: true
+---
+
+# Live evals are user-triggered only
+
+The eval suites under `agents/evals/` make **live Gemini/Vertex API calls** — they cost real
+quota and take minutes. The agent must NEVER run them on its own initiative, even to
+"validate" its own changes.
+
+**Forbidden without an explicit, same-session user instruction:**
+
+- `agents/evals/run_e2e.sh` (any mode except `-l`/`--list`/`--help`)
+- `pytest -m eval` — covers `test_e2e_eval.py`, `test_routing_eval.py`,
+  `test_expert_eval.py`, `test_verification_eval.py`
+- `agents/evals/bench/runner.py` (any benchmark, any `--limit`)
+- Any other command that calls a live model API
+
+**Allowed and encouraged instead:**
+
+- Hermetic unit tests (default `pytest`, marker-guarded `-m 'not eval'`) — run freely
+- Local docker builds and toolchain smoke tests — run freely
+- *Suggesting* an eval run when it would be useful ("recommend running the E2E now —
+  `agents/evals/run_e2e.sh`") and letting the user decide
+
+If a task seems to call for an eval run, stop and ask. "Validation" in a plan or todo means
+unit tests and local builds unless the user says otherwise.
