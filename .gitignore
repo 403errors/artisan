@@ -21,6 +21,15 @@ dashboard/test-results/
 # OS
 .DS_Store
 
+# Tooling caches / local artifacts
+.pytest_cache/
+.ruff_cache/
+.codex-artifacts/
+
+# Workspace members use the root uv.lock only
+agents/uv.lock
+execution-sandbox/uv.lock
+
 docs/miscellaneous
 .claude
 

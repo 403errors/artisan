@@ -45,21 +45,10 @@ export default function SignInPage() {
             </button>
           </form>
 
-          {/* Evaluator Access Notice */}
+          {/* Access Notice */}
           <div className="rounded-lg border border-border/60 bg-muted/40 p-3 text-xs text-muted-foreground flex flex-col gap-1.5">
-            <span className="font-semibold text-foreground">Hackathon Evaluators & Judges:</span>
-            <p>
-              Sign in with a GitHub account linked to one of the authorized evaluator emails:
-            </p>
-            <ul className="list-disc pl-4 font-mono text-[11px] text-foreground space-y-0.5">
-              <li>testing@devpost.com</li>
-              <li>cloudhackathons@google.com</li>
-            </ul>
             <p className="text-[11px]">
-              Or sign in with any GitHub account added as a collaborator on the repository.
-            </p>
-            <p className="text-[11px] border-t border-border/50 pt-1.5 text-foreground/80">
-              💡 <span className="font-medium text-foreground">Jira Live Board:</span> Please accept the Jira invitation sent to your email to view the live Kanban board and watch tickets transition across columns in real time.
+              Sign in with any GitHub account added as a collaborator on the repository.
             </p>
           </div>
         </div>
