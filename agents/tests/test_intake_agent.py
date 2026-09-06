@@ -1,8 +1,6 @@
-"""Unit tests for the Intake Agent's branching (Phase 2.3 DoD, WS1's three-way verdict). Stubs the
-underlying model with a minimal fake `BaseLlm` so these never call the live Gemini API — only an
-explicitly-marked integration test should do that."""
-
-from collections.abc import AsyncGenerator
+"""Unit tests for the Intake Agent's branching (the three-way verdict). Stubs the underlying
+model with the shared fake `BaseLlm` (conftest's `fake_llm_cls`) so these never call the live
+Gemini API — only an explicitly-marked integration test should do that."""
 
 import pytest
 from artisan_agents.agents import intake_agent as intake_agent_module
@@ -11,27 +9,12 @@ from artisan_agents.agents.intake_agent import (
     _build_prompt,
     run_intake,
 )
-from google.adk.models.base_llm import BaseLlm
-from google.adk.models.llm_response import LlmResponse
-from google.genai import types
-
-
-class _FakeLlm(BaseLlm):
-    model: str = "fake"
-    response_text: str = ""
-
-    async def generate_content_async(
-        self, llm_request, stream: bool = False
-    ) -> AsyncGenerator[LlmResponse, None]:
-        yield LlmResponse(
-            content=types.Content(role="model", parts=[types.Part(text=self.response_text)])
-        )
 
 
 @pytest.fixture
-def stub_model(monkeypatch):
+def stub_model(monkeypatch, fake_llm_cls):
     def _stub(response_json: str) -> None:
-        monkeypatch.setattr(intake_agent_module.intake_agent, "model", _FakeLlm(response_text=response_json))
+        monkeypatch.setattr(intake_agent_module.intake_agent, "model", fake_llm_cls(response_text=response_json))
 
     return _stub
 

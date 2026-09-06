@@ -10,14 +10,12 @@ from artisan_agents.agents import conflict_agent as conflict_agent_module
 from artisan_agents.agents.conflict_agent import run_conflict_classification
 from artisan_shared.models import ConflictDetectionResult
 
-from tests.conftest import FakeLlm
-
 
 @pytest.fixture
-def stub_model(monkeypatch):
+def stub_model(monkeypatch, fake_llm_cls):
     def _stub(response_json: str) -> None:
         monkeypatch.setattr(
-            conflict_agent_module.conflict_agent, "model", FakeLlm(response_text=response_json)
+            conflict_agent_module.conflict_agent, "model", fake_llm_cls(response_text=response_json)
         )
 
     return _stub

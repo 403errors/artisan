@@ -10,8 +10,6 @@ from artisan_shared.event_log import NoOpEventSink
 from google.adk import Agent
 from pydantic import BaseModel
 
-from tests.conftest import FakeLlm
-
 
 class _Verdict(BaseModel):
     ok: bool
@@ -35,9 +33,9 @@ class _RecordingSink(NoOpEventSink):
 
 
 @pytest.mark.asyncio
-async def test_run_structured_emits_invoked_then_completed_on_a_child_sink_named_for_the_agent() -> (
-    None
-):
+async def test_run_structured_emits_invoked_then_completed_on_a_child_sink_named_for_the_agent(
+    fake_llm_cls,
+) -> None:
     parent_sink = _RecordingSink()
     event_context.set_sink(parent_sink)
 
@@ -48,7 +46,7 @@ async def test_run_structured_emits_invoked_then_completed_on_a_child_sink_named
         output_schema=_Verdict,
         output_key="verdict",
     )
-    agent.model = FakeLlm(response_text='{"ok": true}')
+    agent.model = fake_llm_cls(response_text='{"ok": true}')
 
     result = await run_structured(
         agent=agent, app_name="test-app", output_key="verdict", output_model=_Verdict, prompt="go"

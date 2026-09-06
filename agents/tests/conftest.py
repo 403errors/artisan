@@ -69,3 +69,12 @@ class FakeLlm(BaseLlm):
         yield LlmResponse(
             content=types.Content(role="model", parts=[types.Part(text=self.response_text)])
         )
+
+
+@pytest.fixture
+def fake_llm_cls() -> type[FakeLlm]:
+    """Access to FakeLlm as a fixture rather than via `from tests.conftest import ...` — fixture
+    resolution works under any pytest import mode, while importing the `tests` package by name
+    breaks once multi-package runs give each suite a unique package name (see the root
+    pyproject's consider_namespace_packages)."""
+    return FakeLlm

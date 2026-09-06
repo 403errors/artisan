@@ -14,14 +14,12 @@ from artisan_agents.agents.duplicate_agent import (
 )
 from artisan_shared.models import DuplicateSearchHit
 
-from tests.conftest import FakeLlm
-
 
 @pytest.fixture
-def stub_model(monkeypatch):
+def stub_model(monkeypatch, fake_llm_cls):
     def _stub(response_json: str) -> None:
         monkeypatch.setattr(
-            duplicate_agent_module.duplicate_agent, "model", FakeLlm(response_text=response_json)
+            duplicate_agent_module.duplicate_agent, "model", fake_llm_cls(response_text=response_json)
         )
 
     return _stub

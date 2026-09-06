@@ -9,16 +9,16 @@ from artisan_agents.agents.verification_agent import run_verification
 from artisan_shared.event_log import NoOpEventSink
 from artisan_shared.models import ExecutionResult, Plan
 
-from tests.conftest import FakeLlm
-
 _PLAN = Plan(steps=["do the thing"], touched_files=["a.py"], test_cases=["t1"], doc_updates=["d1"])
 
 
 @pytest.mark.asyncio
-async def test_failed_tests_short_circuits_to_not_green_without_calling_model(monkeypatch) -> None:
+async def test_failed_tests_short_circuits_to_not_green_without_calling_model(
+    monkeypatch, fake_llm_cls
+) -> None:
     calls = []
 
-    class _ExplodingLlm(FakeLlm):
+    class _ExplodingLlm(fake_llm_cls):
         async def generate_content_async(self, *args, **kwargs):
             calls.append(1)
             raise AssertionError("model must not be called when tests_passed is False")
@@ -67,11 +67,11 @@ async def test_short_circuit_still_emits_an_agent_completed_event() -> None:
 
 
 @pytest.mark.asyncio
-async def test_passed_tests_and_matching_diff_is_verified_green(monkeypatch) -> None:
+async def test_passed_tests_and_matching_diff_is_verified_green(monkeypatch, fake_llm_cls) -> None:
     monkeypatch.setattr(
         verification_agent_module.verification_agent,
         "model",
-        FakeLlm(response_text='{"green": true}'),
+        fake_llm_cls(response_text='{"green": true}'),
     )
     result = ExecutionResult(
         branch="artisan/ART-1", diff_summary="changed button color to blue", tests_passed=True,
@@ -84,11 +84,11 @@ async def test_passed_tests_and_matching_diff_is_verified_green(monkeypatch) -> 
 
 
 @pytest.mark.asyncio
-async def test_passed_tests_but_mismatched_diff_is_not_green(monkeypatch) -> None:
+async def test_passed_tests_but_mismatched_diff_is_not_green(monkeypatch, fake_llm_cls) -> None:
     monkeypatch.setattr(
         verification_agent_module.verification_agent,
         "model",
-        FakeLlm(response_text='{"green": false, "feedback": "diff does not address the issue"}'),
+        fake_llm_cls(response_text='{"green": false, "feedback": "diff does not address the issue"}'),
     )
     result = ExecutionResult(
         branch="artisan/ART-1", diff_summary="unrelated refactor", tests_passed=True,
@@ -101,7 +101,7 @@ async def test_passed_tests_but_mismatched_diff_is_not_green(monkeypatch) -> Non
     assert verdict.feedback
 
 
-# --- v2 wave 1.5 (#17): criteria-aware verification (report-first) ---
+# --- Criteria-aware verification (report-first) ---
 
 
 def test_prompt_includes_review_criteria_section_when_given() -> None:
@@ -131,7 +131,7 @@ def test_prompt_wraps_issue_fields_as_untrusted() -> None:
     assert UNTRUSTED_CONTENT_NOTICE in verification_agent_module.VERIFICATION_INSTRUCTION
 
 
-# --- v2 wave 1.6 (#12): diff-grounded verification ---
+# --- Diff-grounded verification ---
 
 
 def test_prompt_includes_wrapped_actual_diff_when_present() -> None:
@@ -155,7 +155,7 @@ def test_prompt_omits_actual_diff_section_when_empty() -> None:
 
 
 def test_instruction_requires_judging_sibling_paths_for_same_bug_class() -> None:
-    # The false green that motivated #12: a fix covering only the issue's named instance.
+    # The motivating false green: a fix covering only the issue's named instance.
     assert "sibling code paths" in verification_agent_module.VERIFICATION_INSTRUCTION
 
 
@@ -187,11 +187,11 @@ def test_instruction_requires_one_criterion_result_per_criterion() -> None:
 
 
 @pytest.mark.asyncio
-async def test_criteria_results_parse_through(monkeypatch) -> None:
+async def test_criteria_results_parse_through(monkeypatch, fake_llm_cls) -> None:
     monkeypatch.setattr(
         verification_agent_module.verification_agent,
         "model",
-        FakeLlm(
+        fake_llm_cls(
             response_text=(
                 '{"green": true, "criteria_results": ['
                 '{"criterion": "[backend] Writes are idempotent.", "status": "met", '

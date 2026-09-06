@@ -12,8 +12,6 @@ from artisan_agents.agents.duplicate_confirm_agent import (
 )
 from artisan_shared.models import DuplicateCandidate
 
-from tests.conftest import FakeLlm
-
 
 def _candidates() -> list[DuplicateCandidate]:
     return [
@@ -28,10 +26,10 @@ def _candidates() -> list[DuplicateCandidate]:
 
 
 @pytest.fixture
-def stub_model(monkeypatch):
+def stub_model(monkeypatch, fake_llm_cls):
     def _stub(response_json: str) -> None:
         monkeypatch.setattr(
-            dca_module.duplicate_confirm_agent, "model", FakeLlm(response_text=response_json)
+            dca_module.duplicate_confirm_agent, "model", fake_llm_cls(response_text=response_json)
         )
 
     return _stub

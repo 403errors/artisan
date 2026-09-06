@@ -12,8 +12,6 @@ from artisan_agents.agents.domain_expert_agent import _build_prompt, run_domain_
 from artisan_shared.event_log import NoOpEventSink
 from artisan_shared.models import RepoContext
 
-from tests.conftest import FakeLlm
-
 
 class _RecordingSink(NoOpEventSink):
     def __init__(self) -> None:
@@ -30,12 +28,12 @@ class _RecordingSink(NoOpEventSink):
 
 
 @pytest.fixture
-def stub_model(monkeypatch):
+def stub_model(monkeypatch, fake_llm_cls):
     def _stub(response_json: str) -> None:
         monkeypatch.setattr(
             domain_expert_agent_module.domain_expert_agent,
             "model",
-            FakeLlm(response_text=response_json),
+            fake_llm_cls(response_text=response_json),
         )
 
     return _stub

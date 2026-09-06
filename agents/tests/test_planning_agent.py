@@ -16,8 +16,6 @@ from artisan_agents.agents.planning_agent import (
 from artisan_shared.models import DomainExpertOutput, RepoContext
 from google.genai import types
 
-from tests.conftest import FakeLlm
-
 
 def _repo_context(*, manifests: dict[str, str], file_tree: list[str] | None = None) -> RepoContext:
     return RepoContext(
@@ -31,12 +29,12 @@ def _repo_context(*, manifests: dict[str, str], file_tree: list[str] | None = No
 
 
 @pytest.fixture
-def stub_model(monkeypatch):
+def stub_model(monkeypatch, fake_llm_cls):
     def _stub(*response_jsons: str) -> None:
         # Supports a single response, or two responses to simulate the post-hoc retry path
         # (first call returns something hollow, second call returns the amended plan).
         responses = iter(response_jsons)
-        llm = FakeLlm(response_text=response_jsons[0])
+        llm = fake_llm_cls(response_text=response_jsons[0])
 
         original = planning_agent_module.run_structured
 

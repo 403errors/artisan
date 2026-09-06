@@ -1,6 +1,6 @@
-"""Unit tests for the routing agent's branching (Phase 3.1 DoD): a multi-domain issue should
-produce a multi-domain RoutingDecision, a single-domain issue a single-domain one. Stubs the
-underlying model — never calls live Gemini."""
+"""Unit tests for the routing agent's branching: a multi-domain issue should produce a
+multi-domain RoutingDecision, a single-domain issue a single-domain one. Stubs the underlying
+model — never calls live Gemini."""
 
 from datetime import datetime, timezone
 
@@ -8,8 +8,6 @@ import pytest
 from artisan_agents.agents import routing_agent as routing_agent_module
 from artisan_agents.agents.routing_agent import _build_prompt, run_routing
 from artisan_shared.models import RepoContext
-
-from tests.conftest import FakeLlm
 
 
 def _repo_context(*, manifests: dict[str, str], languages: dict[str, int] | None = None) -> RepoContext:
@@ -24,10 +22,10 @@ def _repo_context(*, manifests: dict[str, str], languages: dict[str, int] | None
 
 
 @pytest.fixture
-def stub_model(monkeypatch):
+def stub_model(monkeypatch, fake_llm_cls):
     def _stub(response_json: str) -> None:
         monkeypatch.setattr(
-            routing_agent_module.routing_agent, "model", FakeLlm(response_text=response_json)
+            routing_agent_module.routing_agent, "model", fake_llm_cls(response_text=response_json)
         )
 
     return _stub

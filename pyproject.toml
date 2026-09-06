@@ -10,3 +10,13 @@ dev = [
 # The E2E eval fixtures are deliberately-buggy subject repos the harness runs against — they are
 # not project code and must never be linted or auto-fixed (a "fix" would break the eval oracle).
 extend-exclude = ["agents/evals/e2e_fixtures"]
+
+[tool.pytest.ini_options]
+# Applies to multi-package runs from the repo root (per-package runs use each package's own
+# config). All three packages name their test directory `tests/`, which collides under pytest's
+# default prepend import mode (every module imports as `tests.test_*`, and duplicate basenames
+# like test_models.py clash outright). importlib mode + namespace packages derives each module's
+# name from its rootdir-relative path (agents.tests.test_*, artisan_shared.tests.test_*, ...),
+# so any combination of suites can run in one invocation.
+addopts = "--import-mode=importlib"
+consider_namespace_packages = true
