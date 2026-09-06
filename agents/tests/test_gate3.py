@@ -162,8 +162,7 @@ async def test_untracked_pr_no_ops_without_triggering_any_job(fake_store, monkey
 async def test_pull_request_opened_retries_pr_lookup_before_giving_up(fake_store, monkeypatch) -> None:
     """gate2._open_pr_and_sync can only write the pr_index pointer after GitHub assigns the PR
     number, so an `opened` webhook can race ahead of that write. A bounded retry absorbs it
-    instead of silently no-op-ing Gate 3's first check (MILESTONE.md Sprint 4 close-out gap,
-    closed Sprint 6)."""
+    instead of silently no-op-ing Gate 3's first check."""
     lookups = [None, None, fake_store.ticket]
     calls = []
 

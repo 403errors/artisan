@@ -68,13 +68,13 @@ class ClarificationCapExceeded(Exception):
 
 
 class RetryCapExceeded(Exception):
-    """Raised when a ticket has already hit MAX_EXECUTION_RETRIES (Gate 2, MILESTONE.md Phase 3.5) —
+    """Raised when a ticket has already hit MAX_EXECUTION_RETRIES (Gate 2) —
     the caller must stop retrying the plan/execute/verify loop and escalate instead."""
 
 
 class TrivialConflictCapExceeded(Exception):
     """Raised when a ticket has already used its one allowed trivial-conflict-resolution attempt
-    (Gate 3, MILESTONE.md Phase 4.3, MAX_TRIVIAL_CONFLICT_ATTEMPTS=1) — the caller must escalate
+    (Gate 3) — the caller must escalate
     instead of attempting a second resolution."""
 
 
@@ -210,7 +210,7 @@ async def _increment_clarification_round_txn(
     at_cap = new_count >= MAX_CLARIFICATION_ROUNDS
     updates: dict = {"clarification_rounds": new_count, "updated_at": _now().isoformat()}
     if at_cap:
-        # Per MILESTONE.md Phase 2.4: the round that *reaches* the cap (the 3rd) is the one that
+        # the round that *reaches* the cap (the 3rd) is the one that
         # flips the ticket to manual_pickup — there is no 4th attempt to wait for.
         updates["status"] = "manual_pickup"
     transaction.update(doc_ref, updates)
@@ -244,7 +244,7 @@ async def _increment_retry_round_txn(
     at_cap = new_count >= MAX_EXECUTION_RETRIES
     updates: dict = {"retry_count": new_count, "updated_at": _now().isoformat()}
     if at_cap:
-        # Per MILESTONE.md Phase 3.5: the retry that *reaches* the cap is the one that flips the
+        # the retry that *reaches* the cap is the one that flips the
         # ticket to escalated — there is no (N+1)th attempt to wait for.
         updates["status"] = "escalated"
     transaction.update(doc_ref, updates)
@@ -252,7 +252,7 @@ async def _increment_retry_round_txn(
 
 
 async def increment_retry_round(repo: str, issue_number: int) -> int:
-    """Transactionally increments `retry_count` (Gate 2, MILESTONE.md Phase 3.5). If this increment
+    """Transactionally increments `retry_count` (Gate 2). If this increment
     reaches MAX_EXECUTION_RETRIES, also flags the ticket `escalated` in the same transaction and
     raises RetryCapExceeded — atomically, mirroring increment_clarification_round's cap shape."""
     doc_ref = _client().collection("tickets").document(ticket_doc_id(repo, issue_number))
@@ -289,7 +289,7 @@ async def _increment_trivial_conflict_attempt_txn(
 
 async def increment_trivial_conflict_attempt(repo: str, issue_number: int) -> int:
     """Transactionally claims this ticket's one allowed trivial-conflict-resolution attempt (Gate
-    3, MILESTONE.md Phase 4.3) BEFORE the attempt runs. Raises TrivialConflictCapExceeded, atomically
+    3) BEFORE the attempt runs. Raises TrivialConflictCapExceeded, atomically
     flipping the ticket to `escalated` in the same transaction, if the cap was already used."""
     doc_ref = _client().collection("tickets").document(ticket_doc_id(repo, issue_number))
     transaction = _client().transaction()
@@ -315,8 +315,8 @@ async def _claim_semantic_conflict_escalation_txn(
 
 
 async def claim_semantic_conflict_escalation(repo: str, issue_number: int) -> bool:
-    """Transactionally claims this ticket's one-and-only semantic-conflict escalation (Gate 3,
-    MILESTONE.md Sprint 4 close-out gap, closed Sprint 6). Returns True the first time (caller
+    """Transactionally claims this ticket's one-and-only semantic-conflict escalation (Gate 3).
+    Returns True the first time (caller
     should post the GitHub/Jira escalation comments), False on every subsequent call for the same
     ticket (caller must skip — a repeat `opened`/`synchronize` delivery must not re-post
     duplicate maintainer-facing comments)."""
@@ -326,7 +326,7 @@ async def claim_semantic_conflict_escalation(repo: str, issue_number: int) -> bo
 
 
 async def write_pr_pointer(repo: str, pr_number: int, issue_number: int) -> None:
-    """Writes `pr_index/{repo}__{pr_number} -> {ticket_doc_id}` (Gate 3, MILESTONE.md Phase 4.1) —
+    """Writes `pr_index/{repo}__{pr_number} -> {ticket_doc_id}` (Gate 3) —
     called once, when a PR is opened (gate2.py's `_open_pr_and_sync`), so a later `pull_request`
     webhook resolves straight to the owning ticket without a Firestore query."""
     await _client().collection("pr_index").document(pr_pointer_doc_id(repo, pr_number)).set(

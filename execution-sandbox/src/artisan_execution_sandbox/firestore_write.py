@@ -48,14 +48,14 @@ async def write_execution_result(repo: str, issue_number: int, result: Execution
 async def write_conflict_detection_result(
     repo: str, issue_number: int, result: ConflictDetectionResult
 ) -> None:
-    """Gate 3, MILESTONE.md Phase 4.1/4.2."""
+    """Gate 3's detection result."""
     await _update(repo, issue_number, "last_conflict_detection", result)
 
 
 async def write_conflict_resolution_result(
     repo: str, issue_number: int, result: ExecutionResult
 ) -> None:
-    """Gate 3, MILESTONE.md Phase 4.3 — kept in a field distinct from `last_execution_result` (Gate
-    2's field) even though the type is identical, so the Sprint 5 dashboard's decision trail can
+    """Gate 3's resolution result — kept in a field distinct from `last_execution_result` (Gate
+    2's field) even though the type is identical, so the dashboard's decision trail can
     tell the two histories apart."""
     await _update(repo, issue_number, "last_conflict_resolution", result)

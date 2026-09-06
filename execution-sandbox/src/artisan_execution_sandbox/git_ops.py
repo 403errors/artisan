@@ -81,7 +81,7 @@ def stage_all_and_diff_stat(repo_dir: str) -> str:
 
 
 def staged_diff(repo_dir: str, *, max_chars: int = 12_000) -> str:
-    """Bounded full text of the staged diff (v2 wave 1.6 #12) — the evidence verification
+    """Bounded full text of the staged diff — the evidence verification
     reasons over. Call AFTER stage_all_and_diff_stat (which does the `add -A`). Truncation keeps
     the verification prompt bounded on large changes; the note makes a truncated diff visible as
     such rather than looking complete."""
@@ -145,7 +145,7 @@ def fetch(repo_dir: str, branch_name: str, *, redact: str | None = None) -> None
 
 def merge(repo_dir: str, branch_name: str) -> tuple[bool, str]:
     """Attempts `git merge --no-commit --no-ff origin/<branch_name>` into whatever's currently
-    checked out (Gate 3, MILESTONE.md Phase 4.1/4.3). A real conflict is expected OUTPUT here, not a
+    checked out (Gate 3). A real conflict is expected OUTPUT here, not a
     subprocess failure — unlike every other wrapper in this module, a nonzero exit does not
     automatically raise. It's distinguished from a genuine git-level error (e.g. an unknown ref) by
     checking whether `list_conflicted_files` actually reports conflicted files; only a genuine

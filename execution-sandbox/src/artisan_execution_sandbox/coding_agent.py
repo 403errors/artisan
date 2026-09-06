@@ -1,4 +1,4 @@
-"""Gate 2's coding step (MILESTONE.md Phase 3.4): a bounded ADK agent with file/shell tools that
+"""Gate 2's coding step: a bounded ADK agent with file/shell tools that
 carries out a Plan's steps against a cloned repo checkout. Per docs/PRD.md §5's non-goal, this is
 Artisan's own Gemini/ADK-driven coding capability — never a shelled-out external coding CLI.
 
@@ -12,7 +12,7 @@ custom tools are used here instead.
 This agent does not use `output_schema`/`output_key` like the reasoning-only agents (routing,
 domain-expert, planning, verification) — its real output is the diff it leaves on disk, captured
 afterward via `git diff --stat` into `ExecutionResult.diff_summary`, not a single structured
-verdict. That's a deliberate exception to "typed I/O only" (SPRINT.md cross-cutting rule 2), which
+verdict. That's a deliberate exception to the "typed I/O only" rule, which
 targets *inter-agent* exchange, not a tool-use side-effect loop like this one."""
 
 import shlex
@@ -265,7 +265,7 @@ async def run_coding_agent(
 
 
 CONFLICT_RESOLUTION_INSTRUCTION = """You are Artisan's coding agent, resolving a real git merge \
-conflict inside a cloned checkout (Gate 3, MILESTONE.md Phase 4.3 — this attempt was already \
+conflict inside a cloned checkout (Gate 3 — this attempt was already \
 classified "trivial" by the Conflict Agent, so a sensible reconciliation is expected to exist). \
 You will be given the conflicted file paths and their literal contents, including the \
 <<<<<<</=======/>>>>>>> conflict markers. Use `read_file`, `write_file`, `list_directory`, and \
@@ -291,7 +291,7 @@ async def run_conflict_resolution_agent(
     model: str | object = GEMINI_MODEL_ID,
     sink: EventSink | None = None,
 ) -> str:
-    """Gate 3's conflict-resolution coding step (MILESTONE.md Phase 4.3) — reuses the exact same
+    """Gate 3's conflict-resolution coding step — reuses the exact same
     bounded tool set/cap as `run_coding_agent`, with a conflict-specific instruction/prompt instead
     of a `Plan`'s steps."""
     return await _run_bounded_agent(

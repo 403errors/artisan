@@ -81,7 +81,7 @@ class TicketDoc(BaseModel):
     # Claimed transactionally before the first semantic-conflict escalation ever posts GitHub/Jira
     # comments (Sprint 6) — unlike trivial_conflict_attempts there's no legitimate "retry" concept
     # here, so this is a one-shot boolean, not a counter: every independent opened/synchronize
-    # delivery classified `semantic` re-escalates from scratch without it (MILESTONE.md Sprint 4).
+    # delivery classified `semantic` re-escalates from scratch without it.
     semantic_conflict_escalated: bool = False
     last_conflict_detection: ConflictDetectionResult | None = None
     # Kept distinct from last_execution_result (same underlying type) so Gate 2's execution

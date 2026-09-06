@@ -1,4 +1,4 @@
-"""Gate 2's Planning Agent (SYSTEM_DESIGN.md §4 step 2, MILESTONE.md Phase 3.3). Consumes one or more
+"""Gate 2's Planning Agent (SYSTEM_DESIGN.md §4 step 2). Consumes one or more
 `DomainExpertOutput`s (plus, on a retry, the prior attempt's verification feedback) and emits a
 `Plan`."""
 
@@ -38,7 +38,7 @@ or fully superseded, identify it explicitly — real file path, symbol name, and
 — and add it to `removed_code`. A later coding stage will delete it as part of this same change. \
 Leave `removed_code` empty when nothing is actually superseded; don't invent removals to fill it.
 
-Bug-class completeness (wave 1.7): when the issue names ONE instance of a defect class (one \
+Bug-class completeness: when the issue names ONE instance of a defect class (one \
 endpoint, one function, one query with a bug its siblings likely share), enumerate every sibling \
 instance visible in the repo context or domain-expert summaries explicitly as its own step — a \
 plan that fixes only the named instance is a partial fix, and verification rejects partial \
@@ -46,15 +46,12 @@ fixes."""
 
 PLANNING_INSTRUCTION = PLANNING_INSTRUCTION + "\n\n" + UNTRUSTED_CONTENT_NOTICE
 
-# Sprint 7 WS5: the Planning Agent is the only stage in the pipeline given a high thinking budget
-# — it's the step that turns loose domain-expert summaries into a concrete, groundable plan
-# (touched files, removed code, test/doc coverage), which benefits from deliberate reasoning far
-# more than routing/domain-expert/verification's comparatively narrow judgment calls. The installed
-# google-genai==2.20.0 `ThinkingConfig` exposes both a numeric `thinking_budget` (token count) and
-# a `thinking_level` enum (MINIMAL/LOW/MEDIUM/HIGH) for Gemini 3-family models — `GEMINI_MODEL_ID`
-# ("gemini-3.8-flash") is one, so we use the coarser, forward-compatible `thinking_level="HIGH"`
-# (the top tier the installed API defines) rather than guessing a numeric budget that may not match
-# this model's actual allowed range.
+# The Planning Agent is the only stage given a high thinking budget — it turns loose
+# domain-expert summaries into a concrete, groundable plan (touched files, removed code,
+# test/doc coverage), which benefits from deliberate reasoning far more than the other stages'
+# narrow judgment calls. `thinking_level="HIGH"` (an enum) is used instead of a numeric
+# `thinking_budget` so the config stays valid across Gemini 3-family models without guessing a
+# token ceiling.
 _PLANNING_GENERATE_CONTENT_CONFIG = types.GenerateContentConfig(
     thinking_config=types.ThinkingConfig(thinking_level="HIGH"),
 )
@@ -76,8 +73,8 @@ _RETRY_NUDGE = (
 
 def _repo_context_summary(repo_context: RepoContext, query: str = "") -> str:
     # Cap the file tree sample so the prompt stays bounded on large repos, while still giving the
-    # model enough real paths to ground `touched_files`/`removed_code` in. Wave 1.6: ranked by
-    # relevance to the issue (alphabetical first-200 covers ~2% of a SWE-bench-scale repo).
+    # model enough real paths to ground `touched_files`/`removed_code` in. Ranked by relevance to
+    # the issue (alphabetical first-200 covers ~2% of a SWE-bench-scale repo).
     file_sample = ranked_file_sample(repo_context.file_tree, query)
     files_str = "\n".join(f"- {f}" for f in file_sample) or "(none given)"
     truncated_note = (

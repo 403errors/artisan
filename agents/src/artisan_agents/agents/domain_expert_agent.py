@@ -1,17 +1,15 @@
-"""Gate 2's Domain-Expert Agent (SYSTEM_DESIGN.md §4 step 1-2, MILESTONE.md Phase 3.2). A single
-parameterized `Agent` instance shared across all personas — the persona is injected into the
-prompt, not the schema/instruction, since every persona shares identical output shape and
-reasoning task (summarize + list relevant files through one lens). This keeps every domain the
-routing agent names (WS4's domain generalization) a true extensible entry in `_PERSONA_LENSES`
-(a prompt-content change, not a new agent registration) per the "extensible, not exhaustive"
-scope note in docs/SPRINT.md's risk register — `_DEFAULT_LENS` is the generic fallback for a
-domain that hasn't earned a bespoke entry yet.
+"""Gate 2's Domain-Expert Agent (SYSTEM_DESIGN.md §4 step 1-2). A single parameterized `Agent`
+instance shared across all personas — the persona is injected into the prompt, not the
+schema/instruction, since every persona shares identical output shape and reasoning task
+(summarize + list relevant files through one lens). This keeps every domain the routing agent
+names a true extensible entry in `_PERSONA_LENSES` (a prompt-content change, not a new agent
+registration) — `_DEFAULT_LENS` is the generic fallback for a domain that hasn't earned a
+bespoke entry yet.
 
-v2 wave 1 (#2): lenses are structured `PersonaLens` specs — a `focus` plus concrete
-`review_criteria` — rather than one-line labels, so a correctly-routed non-web repo (mobile,
-data/ML, CLI, embedded, game, security, database) gets planned with genuine expert depth. A
-structural test guards the "real review criteria, not a label" contract, so a shallow entry
-can't pass CI."""
+Lenses are structured `PersonaLens` specs — a `focus` plus concrete `review_criteria` — rather
+than one-line labels, so a correctly-routed non-web repo (mobile, data/ML, CLI, embedded, game,
+security, database) gets planned with genuine expert depth. A structural test guards the "real
+review criteria, not a label" contract, so a shallow entry can't pass CI."""
 
 import json
 from dataclasses import dataclass
@@ -215,7 +213,7 @@ PERSONA_DOMAINS: tuple[str, ...] = tuple(_PERSONA_LENSES)
 
 DOMAIN_EXPERT_INSTRUCTION = """You are one of Artisan's Domain-Expert agents. You will be told \
 which persona to reason as, plus a GitHub issue's title and body. Produce a technical summary of \
-what needs to change from that persona's lens, and TWO file lists (wave 1.7):
+what needs to change from that persona's lens, and TWO file lists:
 
 - `files_to_modify`: your best estimate of the patch's surface — the files the change will \
 actually touch. This is the list a human reviewer scrutinizes, so keep it tight: typically \
@@ -256,7 +254,7 @@ def _render_lens(domain: str) -> str:
 
 def criteria_for_domains(domains: list[str]) -> list[str]:
     """Flat, domain-prefixed list of the review criteria for the bespoke lenses among `domains`
-    (v2 wave 1.5 #17) — the verification agent judges the executed change against each. Domains
+    — the verification agent judges the executed change against each. Domains
     served by the generic fallback lens contribute nothing: there are no bespoke criteria to
     verify for them."""
     criteria: list[str] = []
@@ -274,7 +272,7 @@ _MAX_CONVENTIONS_SECTION_CHARS = 12000
 
 
 def _conventions_section(repo_context: RepoContext) -> str:
-    """The repo's own conventions, wrapped as untrusted (v2 wave 1.5 #18) — appended only for
+    """The repo's own conventions, wrapped as untrusted — appended only for
     bespoke lenses, whose review criteria are judged against these rules rather than generic
     practice alone."""
     docs = repo_context.convention_docs
@@ -305,8 +303,8 @@ def _build_prompt(
         f"Issue body:\n{wrap_untrusted(issue_body)}"
     )
     if repo_context is not None:
-        # include_file_tree: the expert's file lists must name REAL paths — without
-        # the tree it hallucinated 71.6% of them in the wave-1.6 eval. query=issue text ranks the
+        # include_file_tree: the expert's file lists must name REAL paths — without the tree the
+        # model hallucinates most paths (71.6% measured in evals). query=issue text ranks the
         # sample by relevance, so big repos surface the right neighborhood instead of the
         # alphabetical first 200.
         prompt += repo_context_summary(
@@ -324,9 +322,9 @@ async def run_domain_expert(
     issue_body: str,
     repo_context: RepoContext | None = None,
 ) -> DomainExpertOutput:
-    # v2 wave 1.5 (#14): record which lens actually served this dispatch — the fallback rate is
-    # the health signal for the whole bespoke-lens investment, and it's only computable if every
-    # dispatch logs which side of the registry it hit.
+    # Record which lens actually served this dispatch — the fallback rate is the health signal
+    # for the whole bespoke-lens investment, and it's only computable if every dispatch logs
+    # which side of the registry it hit.
     lens_kind = "bespoke" if _lens_for(domain) is not None else "fallback"
     await event_context.current_sink().child(actor="domain_expert_agent").emit(
         type="domain_lens_used",

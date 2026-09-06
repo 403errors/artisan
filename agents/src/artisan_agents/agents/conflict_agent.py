@@ -1,4 +1,4 @@
-"""Gate 3's conflict classification (SYSTEM_DESIGN.md §5 step 2, MILESTONE.md Phase 4.2). Classifies
+"""Gate 3's conflict classification (SYSTEM_DESIGN.md §5 step 2). Classifies
 a real trial-merge conflict (from `cloud_run_jobs.trigger_conflict_detection`) as `trivial`
 (non-overlapping/mechanically reconcilable, safe to auto-resolve) or `semantic` (both sides changed
 the same logic differently — never guess, escalate with a structured comparison instead)."""

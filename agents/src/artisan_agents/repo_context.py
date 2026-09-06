@@ -26,7 +26,7 @@ KNOWN_MANIFESTS = (
     "Cargo.toml",
     "composer.json",
 )
-# v2 wave 1.5 (#18): convention docs ground the domain-expert lenses in the repo's own rules.
+# Convention docs ground the domain-expert lenses in the repo's own rules.
 # Fixed known-locations fetch (not retrieval/RAG — out of scope for v2): these basenames anywhere
 # in the tree, plus anything under the conventional ADR directory.
 KNOWN_CONVENTION_BASENAMES = (

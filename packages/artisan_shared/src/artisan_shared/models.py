@@ -59,7 +59,7 @@ class DuplicateConfirmVerdict(BaseModel):
 
 
 class RoutingDecision(BaseModel):
-    """Gate 2's orchestrator-routing output (MILESTONE.md Phase 3.1). `parallel` is explicit rather
+    """Gate 2's orchestrator-routing output. `parallel` is explicit rather
     than inferred from `len(domains) > 1` — the routing decision is a real judgment call (e.g. two
     domains touching the same files may still warrant sequential dispatch).
 
@@ -158,7 +158,7 @@ class ConflictVerdict(BaseModel):
 
 
 class ConflictDetectionResult(BaseModel):
-    """Gate 3's detection-job output (MILESTONE.md Phase 4.1/4.2) — a real trial merge's outcome, not
+    """Gate 3's detection-job output — a real trial merge's outcome, not
     GitHub's async `mergeable_state` (frequently stale/null right when a webhook fires). `head_sha`
     is the freshness key `cloud_run_jobs.trigger_conflict_detection` matches on, since this result
     isn't attempt-numbered like `ExecutionResult` (which matches on `branch` instead)."""

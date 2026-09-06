@@ -1,8 +1,8 @@
 """Shared boilerplate for running a stateless ADK `Agent` once and reading back its structured
 output. Factored out because `intake_agent.py`'s five-step shape (fresh session -> build message ->
 drain runner -> re-fetch session -> validate output_key into a Pydantic model) is repeated
-identically by every Gate 2 reasoning agent (routing, domain-expert, planning, verification, per
-MILESTONE.md Phase 3.1-3.3/3.5). Every call is a fresh, isolated session — Firestore, not agent
+identically by every Gate 2 reasoning agent (routing, domain-expert, planning, verification).
+Every call is a fresh, isolated session — Firestore, not agent
 memory, is the state authority (SYSTEM_DESIGN.md §7)."""
 
 import uuid

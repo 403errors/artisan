@@ -3,7 +3,7 @@ resolution (4.3) or semantic escalation (4.4), tracing every decision (4.5). Mir
 style (module-level firestore_client/jira_client/github_client imports, monkeypatched directly in
 tests). Unlike Gate 2's bounded plan/execute/verify loop, Gate 3 makes exactly one classification
 decision and, on the trivial path, exactly one resolution attempt — no retry loop by design
-(MILESTONE.md Phase 4.3: capped at exactly 1 attempt, failure escalates immediately).
+(capped at exactly 1 attempt, failure escalates immediately).
 
 Entered from dispatch.py's `pull_request` branch. A `pull_request` event with no matching
 `pr_index` pointer is simply not Artisan's concern and is a no-op — Gate 3 never operates on repo
@@ -26,7 +26,7 @@ from artisan_agents.jira import client as jira_client
 # gate2._open_pr_and_sync necessarily writes the pr_index pointer *after* GitHub assigns the PR
 # number (it can't be written before the PR exists) — so a `pull_request.opened` webhook can
 # reach here before that write lands. A short bounded retry absorbs that race instead of silently
-# no-op-ing Gate 3's very first check (MILESTONE.md Sprint 4 close-out note; SPRINT.md Sprint 6).
+# no-op-ing Gate 3's very first check.
 _MAX_PR_LOOKUP_RETRIES = 3
 _PR_LOOKUP_RETRY_DELAY_SECONDS = 1.0
 

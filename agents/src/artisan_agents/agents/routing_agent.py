@@ -1,4 +1,4 @@
-"""Gate 2's orchestrator-routing decision (SYSTEM_DESIGN.md §4 step 1, MILESTONE.md Phase 3.1).
+"""Gate 2's orchestrator-routing decision (SYSTEM_DESIGN.md §4 step 1).
 Decides which domain-expert persona(s) apply to a sufficiently-specified ticket, and whether they
 should be dispatched in parallel or sequentially."""
 
@@ -43,8 +43,7 @@ irrelevant review criteria, which is worse than the honest generic fallback.
 
 Most issues need exactly one domain. Only select more than one when the issue clearly spans \
 multiple layers (e.g. a new API endpoint plus the UI that calls it). Label by the nature of the \
-FIX, not the location of the symptom (v2 wave 1.6 — both directions of failure measured; wave \
-1.7 added the query-semantics boundary cases below): a vulnerability report (SSRF, path \
+FIX, not the location of the symptom: a vulnerability report (SSRF, path \
 traversal, injection, XSS) is "security" — the fix is a security control, even though the \
 vulnerable code sits in a backend or frontend module; a slow-query or missing-index report \
 includes "database" alongside the endpoint's layer; and a query-SEMANTICS bug — wrong \
@@ -72,9 +71,8 @@ on the ticket for human review."""
 
 ROUTING_INSTRUCTION = ROUTING_INSTRUCTION + "\n\n" + UNTRUSTED_CONTENT_NOTICE
 
-# v2 wave 1.5 (#13): pin temperature=0 — routing is a classification-style decision, and
-# low-temperature sampling keeps it reproducible across identical inputs (cross-run stability is
-# measured for real by the eval harness in agents/evals/, not assumed from this pin).
+# Routing is a classification-style decision: temperature=0 keeps it reproducible across
+# identical inputs (cross-run stability is measured by the eval harness in agents/evals/).
 _ROUTING_GENERATE_CONTENT_CONFIG = types.GenerateContentConfig(temperature=0)
 
 routing_agent = Agent(
@@ -94,8 +92,7 @@ def _build_prompt(
     repo_context: RepoContext | None = None,
 ) -> str:
     # Issue title/body are attacker-controllable (anyone can open a GitHub issue) — wrap them the
-    # same way intake/domain-expert/planning prompts do (Sprint 7 WS2); routing was the one
-    # reasoning prompt missed by that hardening pass (v2 wave 1.5 #12).
+    # same way intake/domain-expert/planning prompts do.
     prompt = (
         f"Jira key: {jira_key}\n\nIssue title: {wrap_untrusted(issue_title)}\n\n"
         f"Issue body:\n{wrap_untrusted(issue_body)}"

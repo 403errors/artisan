@@ -1,4 +1,4 @@
-"""Shared repo-context summary for the routing and domain-expert prompts (v2 wave 1.5 #16).
+"""Shared repo-context summary for the routing and domain-expert prompts.
 
 Both agents previously inlined an identical private `_repo_context_summary` that surfaced only
 manifest *paths* and a language histogram — even though `RepoContext.manifests` already caches
@@ -44,7 +44,7 @@ def _tokens(text: str) -> set[str]:
 def ranked_file_sample(
     paths: list[str], query: str, budget: int = _MAX_FILE_TREE_SAMPLE
 ) -> list[str]:
-    """Relevance-ranked file-tree sample (v2 wave 1.6): an alphabetical first-N of a 10k-file
+    """Relevance-ranked file-tree sample: an alphabetical first-N of a 10k-file
     repo covers ~2% of it — useless grounding on SWE-bench-scale repos. Rank paths by token
     overlap between the issue text and path segments; ties keep the tree's original (sorted)
     order so output stays deterministic. With an empty query, degenerates to the first-N cut."""
@@ -93,7 +93,7 @@ def repo_context_summary(
         summary += "\n\nManifest excerpts:\n" + "\n\n".join(excerpts)
 
     # Opt-in: the domain expert names concrete file paths — without the tree it invents
-    # plausible paths (measured 71.6% hallucinated in the wave-1.6 expert eval). Routing keeps
+    # plausible paths (71.6% hallucinated, measured in evals). Routing keeps
     # the cheaper prompt: it classifies domains, it doesn't name files. The sample is
     # relevance-ranked against the issue when a query is given, with a top-level skeleton so
     # global structure survives even when the ranked sample is narrow.

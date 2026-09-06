@@ -1,4 +1,4 @@
-"""Gate 2's Verification Agent (SYSTEM_DESIGN.md §4 step 4, MILESTONE.md Phase 3.5). Compares an
+"""Gate 2's Verification Agent (SYSTEM_DESIGN.md §4 step 4). Compares an
 `ExecutionResult` against the `Plan` and original issue, and emits a `VerificationVerdict`."""
 
 from artisan_shared.models import ExecutionResult, Plan, VerificationVerdict
@@ -20,21 +20,19 @@ green=false and give specific, actionable feedback describing what's missing or 
 a planning agent could act on for a revised attempt.
 
 When an "Actual diff" section is present, ground your judgment in the CODE, not the executor's \
-self-description (v2 wave 1.6 #12 — a summary can claim more than the patch does). In particular: \
+self-description — a summary can claim more than the patch does. In particular: \
 if the issue names one instance of a bug class (e.g. one endpoint with a traversal bug), check \
 whether the diff's own context reveals sibling code paths with the same defect left unfixed — a \
 fix that covers only the named instance is a partial fix, and partial fixes are red. Sibling \
-fixes are ALWAYS in scope (wave 1.7 — measured: the verifier green-lit a partial fix because \
-the issue framed only the order endpoint while the refund endpoint kept the same missing \
-validation): a sibling that shares the defect's shape — same parameter/contract pattern, same \
-missing check — is the same fix, never scope creep, even when the issue's wording covers only \
-the named instance. What IS out of scope is unrelated extra work, not the same defect class.
+fixes are ALWAYS in scope: a sibling that shares the defect's shape — same parameter/contract \
+pattern, same missing check — is the same fix, never scope creep, even when the issue's wording \
+covers only the named instance. What IS out of scope is unrelated extra work, not the same \
+defect class.
 
 When a "Review criteria" section is present, you must also judge the executed change against \
-each listed criterion (v2 wave 1.5 #17): emit exactly one `criteria_results` entry per \
+each listed criterion: emit exactly one `criteria_results` entry per \
 criterion, in order, each with concrete `evidence` naming what in the diff grounds your \
-judgment. Decide the status FROM the evidence (wave 1.7 — write the evidence first, then \
-classify):
+judgment. Decide the status FROM the evidence — write the evidence first, then classify:
 
 - "met" requires AFFIRMATIVE evidence in the diff that the criterion holds for the surface \
 the change actually touches (e.g. the diff shows the new endpoint behind the existing auth \
@@ -45,7 +43,7 @@ one-line copy fix does not satisfy a responsive-layout criterion, it makes it no
 - "not_met" when the change engages the criterion's area and falls short.
 
 Your overall `green` verdict remains a holistic judgment of plan-match and issue-resolution — \
-but be aware (wave 1.7): any criterion you mark "not_met" forces the attempt red regardless of \
+but be aware: any criterion you mark "not_met" forces the attempt red regardless of \
 that holistic verdict, so reserve "not_met" for criteria the change genuinely engages and fails."""
 
 VERIFICATION_INSTRUCTION = VERIFICATION_INSTRUCTION + "\n\n" + UNTRUSTED_CONTENT_NOTICE
@@ -66,18 +64,17 @@ def _build_prompt(
     issue_body: str,
     review_criteria: list[str] | None = None,
 ) -> str:
-    # Issue title/body are attacker-controllable — wrap them like every other reasoning prompt
-    # (this one was missed alongside routing's; fixed with #17's prompt edit).
+    # Issue title/body are attacker-controllable — wrap them like every other reasoning prompt.
     prompt = (
         f"Issue title: {wrap_untrusted(issue_title)}\n\nIssue body:\n{wrap_untrusted(issue_body)}\n\n"
         f"Plan steps: {plan.steps}\n\n"
         f"Execution diff summary:\n{execution_result.diff_summary}"
     )
-    # #12: the bounded real patch is the primary evidence when present — diff content is
+    # The bounded real patch is the primary evidence when present — diff content is
     # repo-sourced but still wrapped: a malicious change is injection surface like any other.
     if execution_result.diff_patch:
         prompt += f"\n\nActual diff (bounded):\n{wrap_untrusted(execution_result.diff_patch)}"
-    # #12 follow-up: full content of changed files — the only way to see UNCHANGED sibling code
+    # Full content of changed files — the only way to see UNCHANGED sibling code
     # with the same bug class (a diff shows hunks, not the functions nobody touched).
     if execution_result.changed_file_contents:
         rendered = "\n\n".join(
@@ -104,8 +101,7 @@ async def run_verification(
 ) -> VerificationVerdict:
     if not execution_result.tests_passed:
         # A red test run can never be verified green regardless of what the model says — never
-        # spend a Gemini call asking it to second-guess a fact already known from the test run
-        # (MILESTONE.md Phase 3.5: "Not green, or green-but-tests-failed" are both failure paths).
+        # spend a Gemini call asking it to second-guess a fact already known from the test run.
         verdict = VerificationVerdict(
             green=False,
             feedback=f"The full test suite failed on this attempt. Logs: {execution_result.logs_uri}",

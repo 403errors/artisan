@@ -147,7 +147,7 @@ async def close_issue_as_duplicate(repo: str, issue_number: int, duplicate_of: i
 async def open_pull_request(
     repo: str, *, head: str, base: str, title: str, body: str
 ) -> tuple[int, str]:
-    """Opens a PR via the App's installation token (Gate 2, MILESTONE.md Phase 3.6). Returns
+    """Opens a PR via the App's installation token (Gate 2). Returns
     (pr_number, pr_html_url)."""
     owner, name = _split_repo(repo)
     gh = get_installation_client()

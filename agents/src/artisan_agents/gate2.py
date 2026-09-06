@@ -79,7 +79,7 @@ async def start_gate2(
 
     await firestore_client.update_ticket(repo, issue_number, current_step="domain_expert")
     domain_outputs = await _run_domain_experts(decision, issue_title, issue_body, repo_context)
-    # v2 wave 1.5 (#17): the routed domains' lens criteria follow the ticket into verification,
+    # The routed domains' lens criteria follow the ticket into verification,
     # so "verified" means the change was actually judged against the expertise routing selected.
     review_criteria = criteria_for_domains(list(decision.domains))
 
@@ -132,10 +132,9 @@ async def start_gate2(
             issue_body=issue_body, review_criteria=review_criteria,
         )
 
-        # #17 hard-gating (wave 1.7, unlocked by the verification eval reaching 100% criteria
-        # agreement — the 95% reliability bar the report-first rollout was gated on): a not_met
-        # lens criterion forces the attempt red even when the model's holistic verdict is green,
-        # and its evidence becomes the retry feedback. not_applicable never gates.
+        # Criteria hard-gating: a not_met lens criterion forces the attempt red even when the
+        # model's holistic verdict is green, and its evidence becomes the retry feedback.
+        # not_applicable never gates.
         not_met = [c for c in verdict.criteria_results if c.status == "not_met"]
         if not_met and verdict.green:
             await event_context.current_sink().emit(
