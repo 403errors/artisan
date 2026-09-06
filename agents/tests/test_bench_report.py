@@ -41,9 +41,31 @@ def test_report_renders_funnel_and_graded_columns(tmp_path, monkeypatch):
     run_dir.joinpath("grading.json").write_text(json.dumps({"a__x-1": True, "b__y-2": False}))
 
     report = bench_report.build_report()
-    assert "| swebench-verified | 2 | **50.0%** (1/2) | 50% | 50% | 0 | 1.5 |" in report
+    assert (
+        "| swebench-verified | 2 | **50.0%** (1/2) | 50.0% (1/2) | 50% | 50% | 0 | 1.5 |"
+        in report
+    )
     # benchmarks never run render a placeholder row, not a crash
     assert "| swebench-live | not run |" in report
+
+
+def test_first_attempt_resolved_counts_only_single_attempt_resolves(tmp_path, monkeypatch):
+    """L1 metric: 1st-attempt resolved = official-harness-resolved AND n_attempts == 1.
+    b__y-2 resolved but needed 2 attempts (retries re-pay the whole loop — it must NOT count)."""
+    monkeypatch.setattr(bench_report, "RUNS_DIR", tmp_path)
+    run_dir = tmp_path / "swebench-verified"
+    run_dir.mkdir(parents=True)
+    run_dir.joinpath("run_log.json").write_text(json.dumps({
+        "a__x-1": {"terminal": "pr_open", "n_attempts": 1},
+        "b__y-2": {"terminal": "pr_open", "n_attempts": 2},
+        "c__z-3": {"terminal": "escalated", "n_attempts": 3},
+    }))
+    run_dir.joinpath("grading.json").write_text(
+        json.dumps({"a__x-1": True, "b__y-2": True, "c__z-3": False})
+    )
+
+    report = bench_report.build_report()
+    assert "| swebench-verified | 3 | **66.7%** (2/3) | 33.3% (1/3) |" in report
 
 
 def test_report_marks_ungraded_benchmarks(tmp_path, monkeypatch):

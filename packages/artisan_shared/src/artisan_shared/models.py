@@ -141,6 +141,12 @@ class ExecutionResult(BaseModel):
     # Verification short-circuits red on False exactly like tests_passed=False. Optional so
     # Firestore docs written by older producers stay valid.
     build_passed: bool | None = None
+    # Bounded failure excerpt (v2 cost lever L1): the failing step's own words — install/build/
+    # test output tail, "agent made no changes", scan/push failure reason. Until this existed, a
+    # red attempt's retry feedback was verification prose + a logs LINK the next attempt's agents
+    # can't open; carrying the actual failing-test names/errors into PRIOR_FEEDBACK is what lets
+    # attempt 2 converge instead of flailing. Empty on success paths. Producers cap the size.
+    failure_detail: str = ""
 
 
 class CriterionResult(BaseModel):

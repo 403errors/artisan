@@ -58,7 +58,7 @@ def _benchmark_row(key: str) -> str:
     run_dir = RUNS_DIR / key
     log_path = run_dir / "run_log.json"
     if not log_path.exists():
-        return f"| {key} | not run | — | — | — | — | — |"
+        return f"| {key} | not run | — | — | — | — | — | — |"
     log = json.loads(log_path.read_text())
     attempted = [v for v in log.values() if isinstance(v, dict)]
     n = len(attempted)
@@ -73,11 +73,20 @@ def _benchmark_row(key: str) -> str:
         grading = json.loads(grading_path.read_text())
         resolved = sum(1 for v in grading.values() if v)
         resolved_str = f"**{resolved / len(grading):.1%}** ({resolved}/{len(grading)})"
+        # First-attempt resolve (L1): official-harness resolved with a single pipeline attempt.
+        # The cost-lever metric — every retry re-pays the whole agent loop.
+        first_attempt = sum(
+            1
+            for iid, ok in grading.items()
+            if ok and isinstance(log.get(iid), dict) and log[iid].get("n_attempts") == 1
+        )
+        first_attempt_str = f"{first_attempt / len(grading):.1%} ({first_attempt}/{len(grading)})"
     else:
         resolved_str = "awaiting official harness"
+        first_attempt_str = "—"
     return (
-        f"| {key} | {n} | {resolved_str} | {pr_open / n:.0%} | {escalated / n:.0%} "
-        f"| {errors} | {mean_attempts} |"
+        f"| {key} | {n} | {resolved_str} | {first_attempt_str} | {pr_open / n:.0%} "
+        f"| {escalated / n:.0%} | {errors} | {mean_attempts} |"
     )
 
 
@@ -91,13 +100,14 @@ def build_report() -> str:
             "by each benchmark's official harness (imported via --import-harness)."
         ),
         "",
-        "| Benchmark | Attempted | Resolved (official) | PR opened | Escalated | Runner errors | Mean attempts |",
-        "|---|---|---|---|---|---|---|",
+        "| Benchmark | Attempted | Resolved (official) | 1st-attempt resolved | PR opened | Escalated | Runner errors | Mean attempts |",
+        "|---|---|---|---|---|---|---|---|",
         *(_benchmark_row(key) for key in sorted(BENCHMARKS)),
         "",
         (
             "Resolved rate = official-harness FAIL_TO_PASS+PASS_TO_PASS verdicts on our "
-            "predictions.jsonl. PR-opened/escalated/attempts are Artisan-internal funnel metrics "
+            "predictions.jsonl; 1st-attempt resolved = the subset that needed no retry (the "
+            "cost-lever metric). PR-opened/escalated/attempts are Artisan-internal funnel metrics "
             "from run_log.json (how the pipeline behaved), not correctness claims."
         ),
         "",

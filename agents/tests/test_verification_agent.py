@@ -67,6 +67,54 @@ async def test_short_circuit_still_emits_an_agent_completed_event() -> None:
 
 
 @pytest.mark.asyncio
+async def test_tests_short_circuit_feedback_embeds_failure_detail_when_present() -> None:
+    """L1: the failing step's own output rides the verdict feedback into the next attempt's
+    PRIOR_FEEDBACK — a bare logs URI is a link the retry's agents cannot open."""
+    result = ExecutionResult(
+        branch="artisan/ART-1",
+        diff_summary="x",
+        tests_passed=False,
+        logs_uri="gs://logs/1",
+        failure_detail="test suite failed ('pytest'):\nFAILED tests/test_a.py::test_x - assert 1 == 2",
+    )
+    verdict = await run_verification(
+        plan=_PLAN, execution_result=result, issue_title="Title", issue_body="Body"
+    )
+    assert verdict.green is False
+    assert "FAILED tests/test_a.py::test_x" in verdict.feedback
+    assert "gs://logs" not in verdict.feedback  # detail replaces the dead link
+
+
+@pytest.mark.asyncio
+async def test_tests_short_circuit_feedback_falls_back_to_logs_uri_without_detail() -> None:
+    """Older producers (no failure_detail field) keep the pre-L1 logs-link feedback shape."""
+    result = ExecutionResult(
+        branch="artisan/ART-1", diff_summary="x", tests_passed=False, logs_uri="gs://logs/1"
+    )
+    verdict = await run_verification(
+        plan=_PLAN, execution_result=result, issue_title="Title", issue_body="Body"
+    )
+    assert verdict.feedback == "The full test suite failed on this attempt. Logs: gs://logs/1"
+
+
+@pytest.mark.asyncio
+async def test_build_short_circuit_feedback_embeds_failure_detail_when_present() -> None:
+    result = ExecutionResult(
+        branch="artisan/ART-1",
+        diff_summary="x",
+        tests_passed=False,
+        build_passed=False,
+        logs_uri="gs://logs/1",
+        failure_detail="build failed ('npm run build'):\nerror TS2304: Cannot find name 'foo'",
+    )
+    verdict = await run_verification(
+        plan=_PLAN, execution_result=result, issue_title="Title", issue_body="Body"
+    )
+    assert verdict.green is False
+    assert "TS2304" in verdict.feedback
+
+
+@pytest.mark.asyncio
 async def test_passed_tests_and_matching_diff_is_verified_green(monkeypatch, fake_llm_cls) -> None:
     monkeypatch.setattr(
         verification_agent_module.verification_agent,

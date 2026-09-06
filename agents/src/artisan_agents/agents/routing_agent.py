@@ -7,6 +7,7 @@ import asyncio
 from artisan_shared.models import RepoContext, RoutingDecision
 from artisan_shared.prompt_safety import UNTRUSTED_CONTENT_NOTICE, wrap_untrusted
 from artisan_shared.routing_consensus import (
+    FALLBACK_LABEL,
     agreement_to_confidence,
     canonical_domains,
     consensus_vote,
@@ -16,7 +17,11 @@ from google.genai import types
 
 from artisan_agents.agents._run_agent import run_structured
 from artisan_agents.agents.domain_expert_agent import PERSONA_DOMAINS
-from artisan_agents.config import GEMINI_MODEL_ID, ROUTING_SELF_CONSISTENCY
+from artisan_agents.config import (
+    GEMINI_MODEL_ID,
+    ROUTING_EARLY_EXIT,
+    ROUTING_SELF_CONSISTENCY,
+)
 from artisan_agents.repo_context_summary import repo_context_summary
 
 APP_NAME = "artisan-routing"
@@ -116,12 +121,16 @@ async def run_routing(
     jira_key: str,
     repo_context: RepoContext | None = None,
     self_consistency: int = ROUTING_SELF_CONSISTENCY,
+    early_exit: bool = ROUTING_EARLY_EXIT,
 ) -> RoutingDecision:
-    """Single-shot when self_consistency <= 1; otherwise takes N concurrent samples (temp is
+    """Single-shot when self_consistency <= 1; otherwise takes N samples (temp is
     pinned to 0, but temp-0 still drifts on boundary cases — the eval's solidity case proved it)
-    and majority-votes the canonical domain sets. The returned decision comes from a rep in the
-    winning cluster, so fallback cases keep their meaningful raw label (e.g. "mainframe") rather
-    than the canonical "fallback" token; `derived_confidence` records the agreement level."""
+    and majority-votes the canonical domain sets. With ROUTING_EARLY_EXIT on (the default), an
+    unambiguous first sample (exactly one registry domain) is accepted immediately and the
+    remaining N-1 samples never run — the vote is reserved for boundary shapes. The returned
+    decision comes from a rep in the winning cluster, so fallback cases keep their meaningful raw
+    label (e.g. "mainframe") rather than the canonical "fallback" token; `derived_confidence`
+    records the agreement level."""
     prompt = _build_prompt(issue_title, issue_body, jira_key, repo_context)
 
     async def _once() -> RoutingDecision:
@@ -136,7 +145,20 @@ async def run_routing(
     if self_consistency <= 1:
         return await _once()
 
-    reps = list(await asyncio.gather(*(_once() for _ in range(self_consistency))))
+    if early_exit:
+        # L3: run sample 1 alone first. Exactly one registry domain (no fallback label, no
+        # multi-domain set) is an unambiguous temp-0 verdict — accept it and skip the remaining
+        # N-1 live calls. Boundary shapes (fallback/multi/empty) are exactly where temp-0 drift
+        # lives, so those fan out to the full vote below.
+        first = await _once()
+        first_canonical = canonical_domains(first.domains, PERSONA_DOMAINS)
+        if len(first_canonical) == 1 and FALLBACK_LABEL not in first_canonical:
+            return first.model_copy(update={"derived_confidence": "high"})
+        rest = await asyncio.gather(*(_once() for _ in range(self_consistency - 1)))
+        reps = [first, *rest]
+    else:
+        reps = list(await asyncio.gather(*(_once() for _ in range(self_consistency))))
+
     canonical_sets = [canonical_domains(r.domains, PERSONA_DOMAINS) for r in reps]
     winner, agreement = consensus_vote(canonical_sets, PERSONA_DOMAINS)
     decision = next(r for r, s in zip(reps, canonical_sets) if s == winner)

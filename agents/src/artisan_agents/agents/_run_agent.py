@@ -5,6 +5,7 @@ identically by every Gate 2 reasoning agent (routing, domain-expert, planning, v
 Every call is a fresh, isolated session — Firestore, not agent
 memory, is the state authority (SYSTEM_DESIGN.md §7)."""
 
+import json
 import uuid
 from typing import TypeVar
 
@@ -14,6 +15,7 @@ from google.genai import types
 from pydantic import BaseModel
 
 from artisan_agents.event_context import current_sink
+from artisan_shared.llm_usage import accumulate_usage, new_usage_totals, usage_summary
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -55,10 +57,13 @@ async def run_structured(
     if images:
         parts.extend(types.Part.from_bytes(data=data, mime_type=mime) for data, mime in images)
     message = types.Content(role="user", parts=parts)
-    async for _event in runner.run_async(
+    usage = new_usage_totals()
+    async for event in runner.run_async(
         user_id=_USER_ID, session_id=session.id, new_message=message
     ):
-        pass
+        # Token telemetry (L2a): each model call's final event carries usage_metadata, including
+        # cached_content_token_count — the implicit-context-caching signal. Previously discarded.
+        accumulate_usage(usage, getattr(event, "usage_metadata", None))
     final_session = await session_service.get_session(
         app_name=app_name, user_id=_USER_ID, session_id=session.id
     )
@@ -66,7 +71,10 @@ async def run_structured(
 
     await sink.emit(
         type="agent_completed",
-        summary=f"{agent.name} completed",
-        detail=result.model_dump_json(),
+        summary=f"{agent.name} completed — {usage_summary(usage)}",
+        # The validated result's fields plus a `usage` key — additive, so detail consumers
+        # (dashboard renders it as opaque JSON) and substring-asserting tests are unaffected.
+        # Compact separators keep the exact `"key":value` shape model_dump_json produced before.
+        detail=json.dumps({**result.model_dump(mode="json"), "usage": usage}, separators=(",", ":")),
     )
     return result

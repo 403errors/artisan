@@ -15,12 +15,14 @@ afterward via `git diff --stat` into `ExecutionResult.diff_summary`, not a singl
 verdict. That's a deliberate exception to the "typed I/O only" rule, which
 targets *inter-agent* exchange, not a tool-use side-effect loop like this one."""
 
+import json
 import shlex
 import subprocess
 import uuid
 from pathlib import Path
 
 from artisan_shared.event_log import EventSink, NoOpEventSink
+from artisan_shared.llm_usage import accumulate_usage, new_usage_totals, usage_summary
 from artisan_shared.models import Plan
 from artisan_shared.prompt_safety import UNTRUSTED_CONTENT_NOTICE, wrap_untrusted
 from google.adk import Agent, Runner
@@ -233,6 +235,7 @@ async def _run_bounded_agent(
     message = types.Content(role="user", parts=[types.Part(text=prompt)])
 
     pending: dict[str, str] = {}  # FunctionCall.id -> this call's event doc id
+    usage = new_usage_totals()
 
     try:
         async for event in runner.run_async(
@@ -240,6 +243,13 @@ async def _run_bounded_agent(
         ):
             if event.partial:
                 continue
+
+            # Token telemetry (L2a): per-model-call usage_metadata, summed over the whole loop —
+            # this loop is the pipeline's token whale, and cached_content_token_count shows
+            # whether Vertex's implicit context caching is hitting its static instruction+tools
+            # prefix. Emitted once after the loop, only when real usage was seen (fake LLMs in
+            # tests yield no metadata, and a zeroed event would be pure noise).
+            accumulate_usage(usage, getattr(event, "usage_metadata", None))
 
             for call in event.get_function_calls():
                 doc_id = await sink.emit(
@@ -268,6 +278,13 @@ async def _run_bounded_agent(
     except ToolCallLimitExceeded as exc:
         # Previously silently swallowed — a real failure that should be visible, not just capped.
         await sink.emit(type="error", summary=str(exc))
+
+    if any(usage.values()):
+        await sink.emit(
+            type="agent_completed",
+            summary=f"coding_agent completed — {usage_summary(usage)}",
+            detail=json.dumps({"usage": usage}),
+        )
 
     return finished.get("summary", "(coding agent did not call finish)")
 

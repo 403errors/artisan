@@ -398,6 +398,7 @@ async def run_instance(benchmark: Benchmark, instance: dict, *, max_attempts: in
                     branch=branch,
                     diff_summary=f"coding agent raised: {type(exc).__name__}: {exc}"[:500],
                     tests_passed=False, logs_uri="bench-local",
+                    failure_detail=f"coding agent raised: {type(exc).__name__}: {exc}"[:500],
                 )
             _run(["git", "-C", str(workdir), "add", "-A"])
             patch = _run(["git", "-C", str(workdir), "diff", "--cached", instance["base_commit"]]).stdout
@@ -407,6 +408,7 @@ async def run_instance(benchmark: Benchmark, instance: dict, *, max_attempts: in
                 return ExecutionResult(
                     branch=branch, diff_summary=f"coding agent made no changes. Summary: {summary}",
                     tests_passed=False, logs_uri="bench-local",
+                    failure_detail=f"coding agent made no changes. Summary: {summary}",
                 )
             cmd = preset_cmd or infer_test_command(workdir, test_files)
             tests_ok, test_out = run_tests_in_container(image, patch, cmd, container_dir)
@@ -425,6 +427,11 @@ async def run_instance(benchmark: Benchmark, instance: dict, *, max_attempts: in
                 tests_passed=tests_ok, logs_uri="bench-local",
                 diff_patch=patch[:12_000],  # #12: verification sees the bounded real patch
                 changed_file_contents=changed_files,  # ... and the unchanged siblings
+                # L1: mirror production — a red test run carries its output tail into the
+                # retry feedback via failure_detail.
+                failure_detail=(
+                    "" if tests_ok else f"test suite failed ({cmd!r}):\n{test_out[-4000:]}"
+                ),
             )
 
     # RepoContext from a throwaway checkout (the executor makes its own per attempt).

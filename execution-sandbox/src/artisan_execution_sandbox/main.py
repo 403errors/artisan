@@ -141,7 +141,7 @@ async def run_attempt(
         except git_ops.GitCommandError as exc:
             return ExecutionResult(
                 branch=branch, diff_summary=f"clone/branch failed: {exc}", tests_passed=False,
-                logs_uri=_logs_uri(),
+                logs_uri=_logs_uri(), failure_detail=f"clone/branch failed: {exc}",
             )
 
         config = repo_config.resolve(workdir)
@@ -181,6 +181,10 @@ async def run_attempt(
                         tests_passed=False,
                         build_passed=False,
                         logs_uri=_logs_uri(),
+                        failure_detail=(
+                            f"dependency install failed ({config.install_cmd!r}):\n"
+                            f"{_tail(install_output, FAILURE_DETAIL_LIMIT)}"
+                        ),
                     )
                 saved_dep_key = await asyncio.to_thread(dep_cache.save, workdir, repo)
 
@@ -199,6 +203,7 @@ async def run_attempt(
                     diff_summary=f"coding agent made no changes. Summary: {summary}",
                     tests_passed=False,
                     logs_uri=_logs_uri(),
+                    failure_detail=f"coding agent made no changes. Summary: {summary}",
                 )
 
             # Build gate (compile/typecheck) is distinct from the test suite: a change that
@@ -219,6 +224,10 @@ async def run_attempt(
                         tests_passed=False,
                         build_passed=False,
                         logs_uri=_logs_uri(),
+                        failure_detail=(
+                            f"build failed ({config.build_cmd!r}):\n"
+                            f"{_tail(build_output, FAILURE_DETAIL_LIMIT)}"
+                        ),
                     )
 
             print("[artisan-execution-sandbox] running tests...")
@@ -233,6 +242,7 @@ async def run_attempt(
                 return ExecutionResult(
                     branch=branch, diff_summary=diff_summary, tests_passed=False,
                     logs_uri=f"security scan blocked: secret detected — {secrets_findings}",
+                    failure_detail=f"security scan blocked: secret detected — {secrets_findings}",
                 )
 
             static_ok, static_findings = security_scan.scan_static(str(workdir))
@@ -240,6 +250,9 @@ async def run_attempt(
                 return ExecutionResult(
                     branch=branch, diff_summary=diff_summary, tests_passed=False,
                     logs_uri=f"security scan blocked: static analysis finding — {static_findings}",
+                    failure_detail=(
+                        f"security scan blocked: static analysis finding — {static_findings}"
+                    ),
                 )
 
             new_deps = security_scan.scan_new_dependencies(str(workdir))
@@ -256,7 +269,7 @@ async def run_attempt(
             except git_ops.GitCommandError as exc:
                 return ExecutionResult(
                     branch=branch, diff_summary=diff_summary, tests_passed=False,
-                    logs_uri=f"push failed: {exc}",
+                    logs_uri=f"push failed: {exc}", failure_detail=f"push failed: {exc}",
                 )
 
             return ExecutionResult(
@@ -267,6 +280,15 @@ async def run_attempt(
                 logs_uri=_logs_uri(),
                 diff_patch=git_ops.staged_diff(str(workdir)),
                 changed_file_contents=git_ops.staged_file_contents(str(workdir)),
+                # A red test run's output tail is the single most useful thing attempt 2 can
+                # see — until now it was only printed to the job's logs, which the next
+                # attempt's agents cannot open. Empty on green (nothing to feed back).
+                failure_detail=(
+                    ""
+                    if tests_passed
+                    else f"test suite failed ({config.test_cmd!r}):\n"
+                    f"{_tail(test_output, FAILURE_DETAIL_LIMIT)}"
+                ),
             )
         finally:
             await asyncio.to_thread(dep_cache.save, workdir, repo, skip_key=saved_dep_key)
@@ -276,6 +298,11 @@ def _tail(output: str, limit: int = 2000) -> str:
     """Bounded tail of a failed step's output for the ExecutionResult's diff_summary — enough
     signal for the retry's feedback and the dashboard, without unbounded logs in Firestore."""
     return output if len(output) <= limit else "…" + output[-limit:]
+
+
+# failure_detail (the field retry feedback actually consumes) gets a larger budget than the
+# diff_summary tail: the failing test names + error excerpts are what attempt 2 converges on.
+FAILURE_DETAIL_LIMIT = 4000
 
 
 async def run_conflict_detection(
@@ -353,7 +380,7 @@ async def run_conflict_resolution(
         except git_ops.GitCommandError as exc:
             return ExecutionResult(
                 branch=head_branch, diff_summary=f"clone/merge failed: {exc}", tests_passed=False,
-                logs_uri=_logs_uri(),
+                logs_uri=_logs_uri(), failure_detail=f"clone/merge failed: {exc}",
             )
 
         # Config resolves on both paths so `config` is always defined below; deps are installed
@@ -392,6 +419,10 @@ async def run_conflict_resolution(
                                 tests_passed=False,
                                 build_passed=False,
                                 logs_uri=_logs_uri(),
+                                failure_detail=(
+                                    f"dependency install failed ({config.install_cmd!r}):\n"
+                                    f"{_tail(install_output, FAILURE_DETAIL_LIMIT)}"
+                                ),
                             )
                         saved_dep_key = await asyncio.to_thread(dep_cache.save, workdir, repo)
                 conflicted_files = git_ops.list_conflicted_files(str(workdir))
@@ -405,6 +436,7 @@ async def run_conflict_resolution(
                 return ExecutionResult(
                     branch=head_branch, diff_summary=f"no changes after resolution. {summary}",
                     tests_passed=False, logs_uri=_logs_uri(),
+                    failure_detail=f"no changes after resolution. {summary}",
                 )
 
             # Reached only when the agent resolved a real conflict and left staged changes (a
@@ -424,6 +456,10 @@ async def run_conflict_resolution(
                         tests_passed=False,
                         build_passed=False,
                         logs_uri=_logs_uri(),
+                        failure_detail=(
+                            f"build failed ({config.build_cmd!r}):\n"
+                            f"{_tail(build_output, FAILURE_DETAIL_LIMIT)}"
+                        ),
                     )
 
             print("[artisan-execution-sandbox] running tests...")
@@ -439,6 +475,10 @@ async def run_conflict_resolution(
                 return ExecutionResult(
                     branch=head_branch, diff_summary=diff_summary, tests_passed=False,
                     logs_uri=_logs_uri(),
+                    failure_detail=(
+                        f"test suite failed ({config.test_cmd!r}):\n"
+                        f"{_tail(test_output, FAILURE_DETAIL_LIMIT)}"
+                    ),
                 )
 
             print("[artisan-execution-sandbox] running security scans...")
@@ -447,6 +487,7 @@ async def run_conflict_resolution(
                 return ExecutionResult(
                     branch=head_branch, diff_summary=diff_summary, tests_passed=False,
                     logs_uri=f"security scan blocked: secret detected — {secrets_findings}",
+                    failure_detail=f"security scan blocked: secret detected — {secrets_findings}",
                 )
 
             static_ok, static_findings = security_scan.scan_static(str(workdir))
@@ -454,6 +495,9 @@ async def run_conflict_resolution(
                 return ExecutionResult(
                     branch=head_branch, diff_summary=diff_summary, tests_passed=False,
                     logs_uri=f"security scan blocked: static analysis finding — {static_findings}",
+                    failure_detail=(
+                        f"security scan blocked: static analysis finding — {static_findings}"
+                    ),
                 )
 
             new_deps = security_scan.scan_new_dependencies(str(workdir))
@@ -469,7 +513,7 @@ async def run_conflict_resolution(
             except git_ops.GitCommandError as exc:
                 return ExecutionResult(
                     branch=head_branch, diff_summary=diff_summary, tests_passed=False,
-                    logs_uri=f"push failed: {exc}",
+                    logs_uri=f"push failed: {exc}", failure_detail=f"push failed: {exc}",
                 )
 
             return ExecutionResult(

@@ -177,6 +177,8 @@ async def test_self_consistency_unanimous_derives_high(stub_model) -> None:
 
 @pytest.mark.asyncio
 async def test_self_consistency_majority_vote_wins_and_derives_medium(stub_model_sequence) -> None:
+    # early_exit=False: these tests exercise the VOTE, which is now the fan-out path — a clear
+    # single-domain first sample would otherwise be accepted before voting ever happens.
     stub_model_sequence(
         [
             '{"domains": ["backend"], "parallel": false}',
@@ -184,7 +186,7 @@ async def test_self_consistency_majority_vote_wins_and_derives_medium(stub_model
             '{"domains": ["backend"], "parallel": false}',
         ]
     )
-    decision = await run_routing(issue_title="t", issue_body="b", jira_key="ART-1")
+    decision = await run_routing(issue_title="t", issue_body="b", jira_key="ART-1", early_exit=False)
     assert decision.domains == ["backend"]
     assert decision.derived_confidence == "medium"
 
@@ -198,7 +200,7 @@ async def test_self_consistency_full_split_derives_low(stub_model_sequence) -> N
             '{"domains": ["database"], "parallel": false}',
         ]
     )
-    decision = await run_routing(issue_title="t", issue_body="b", jira_key="ART-1")
+    decision = await run_routing(issue_title="t", issue_body="b", jira_key="ART-1", early_exit=False)
     # 1-1-1 split: no majority -> low, regardless of which rep the tie-break ships.
     assert decision.derived_confidence == "low"
 
@@ -227,3 +229,71 @@ async def test_self_consistency_disabled_is_single_shot(stub_model) -> None:
     )
     assert decision.domains == ["cli"]
     assert decision.derived_confidence is None
+
+
+def _counting_llm(monkeypatch, fake_llm_cls, response_json: str) -> list:
+    """A FakeLlm that counts its own calls — early-exit tests assert exactly how many live
+    samples a decision cost."""
+    calls: list = []
+
+    class _CountingLlm(fake_llm_cls):
+        async def generate_content_async(
+            self, llm_request, stream: bool = False
+        ) -> AsyncGenerator[LlmResponse, None]:
+            calls.append(1)
+            yield LlmResponse(
+                content=types.Content(role="model", parts=[types.Part(text=response_json)])
+            )
+
+    monkeypatch.setattr(routing_agent_module.routing_agent, "model", _CountingLlm())
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_early_exit_accepts_a_clear_single_domain_after_one_sample(
+    monkeypatch, fake_llm_cls
+) -> None:
+    """L3: exactly one registry domain at temp 0 is unambiguous — the remaining N-1 samples
+    (2 of 3 live calls by default) never run."""
+    calls = _counting_llm(
+        monkeypatch, fake_llm_cls, '{"domains": ["backend"], "parallel": false}'
+    )
+    decision = await run_routing(issue_title="t", issue_body="b", jira_key="ART-1")
+    assert decision.domains == ["backend"]
+    assert decision.derived_confidence == "high"
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_early_exit_does_not_trigger_on_a_fallback_label(monkeypatch, fake_llm_cls) -> None:
+    """Off-registry labels are exactly the boundary cases the vote exists for — fan out."""
+    calls = _counting_llm(
+        monkeypatch, fake_llm_cls, '{"domains": ["mainframe"], "parallel": false}'
+    )
+    decision = await run_routing(issue_title="t", issue_body="b", jira_key="ART-1")
+    assert len(calls) == 3
+    assert decision.domains == ["mainframe"]  # raw label kept from the winning rep
+    assert decision.derived_confidence == "high"  # unanimous canonical fallback vote
+
+
+@pytest.mark.asyncio
+async def test_early_exit_does_not_trigger_on_a_multi_domain_set(monkeypatch, fake_llm_cls) -> None:
+    calls = _counting_llm(
+        monkeypatch, fake_llm_cls, '{"domains": ["frontend", "backend"], "parallel": true}'
+    )
+    decision = await run_routing(issue_title="t", issue_body="b", jira_key="ART-1")
+    assert len(calls) == 3
+    assert set(decision.domains) == {"frontend", "backend"}
+
+
+@pytest.mark.asyncio
+async def test_early_exit_disabled_runs_the_full_vote_even_when_clear(
+    monkeypatch, fake_llm_cls
+) -> None:
+    calls = _counting_llm(
+        monkeypatch, fake_llm_cls, '{"domains": ["backend"], "parallel": false}'
+    )
+    decision = await run_routing(issue_title="t", issue_body="b", jira_key="ART-1", early_exit=False)
+    assert len(calls) == 3
+    assert decision.domains == ["backend"]
+    assert decision.derived_confidence == "high"

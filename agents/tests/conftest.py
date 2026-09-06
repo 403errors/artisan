@@ -62,12 +62,16 @@ def _reset_ambient_event_sink():
 class FakeLlm(BaseLlm):
     model: str = "fake"
     response_text: str = ""
+    # Optional token-usage payload, flowed through LlmResponse -> Event.usage_metadata exactly
+    # like the real Gemini backend — lets telemetry tests assert accumulation without live calls.
+    usage: types.GenerateContentResponseUsageMetadata | None = None
 
     async def generate_content_async(
         self, llm_request, stream: bool = False
     ) -> AsyncGenerator[LlmResponse, None]:
         yield LlmResponse(
-            content=types.Content(role="model", parts=[types.Part(text=self.response_text)])
+            content=types.Content(role="model", parts=[types.Part(text=self.response_text)]),
+            usage_metadata=self.usage,
         )
 
 

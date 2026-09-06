@@ -216,6 +216,7 @@ def _make_local_executor(scenario_dir: Path, scenario: dict, attempts: list[dict
                     diff_summary=f"coding agent raised: {type(exc).__name__}: {exc}"[:500],
                     tests_passed=False,
                     logs_uri="local-eval",
+                    failure_detail=f"coding agent raised: {type(exc).__name__}: {exc}"[:500],
                 )
 
             _git(workdir, "add", "-A")
@@ -230,6 +231,7 @@ def _make_local_executor(scenario_dir: Path, scenario: dict, attempts: list[dict
                     diff_summary=f"coding agent made no changes. Summary: {summary}",
                     tests_passed=False,
                     logs_uri="local-eval",
+                    failure_detail=f"coding agent made no changes. Summary: {summary}",
                 )
             # #12: mirror production — verification sees the bounded real patch, not just a stat,
             # plus full content of changed files (unchanged siblings carry the same bug class).
@@ -259,6 +261,13 @@ def _make_local_executor(scenario_dir: Path, scenario: dict, attempts: list[dict
                 logs_uri="local-eval",
                 diff_patch=diff_patch,
                 changed_file_contents=changed_files,
+                # Mirror production (L1): a red visible run carries its output tail into
+                # failure_detail so the retry-feedback path is exercised by the eval too.
+                failure_detail=(
+                    ""
+                    if visible_ok
+                    else f"test suite failed ({scenario['test_command']!r}):\n{visible_out[-4000:]}"
+                ),
             )
 
     return local_trigger_execution
@@ -372,6 +381,9 @@ async def test_e2e_gate2_on_seeded_bugs(monkeypatch) -> None:
 def _build_report(results: list[dict]) -> tuple[str, dict]:
     n = len(results)
     verified_correct = sum(1 for r in results if r["pipeline_success"])
+    # First-attempt success (L1): verified-correct with no retry. This is the cost-lever metric —
+    # every retry re-pays the whole agent loop, so this rate IS the per-ticket cost curve.
+    first_attempt = sum(1 for r in results if r["pipeline_success"] and r["n_attempts"] == 1)
     false_green = sum(1 for r in results if r["false_green"])
     escalated = sum(1 for r in results if r["terminal"] == "escalated")
     routing_correct = sum(1 for r in results if r["routing_correct"])
@@ -400,6 +412,7 @@ def _build_report(results: list[dict]) -> tuple[str, dict]:
         "## Headline metrics",
         "",
         f"- **Verified-correct rate (PR opened AND held-out oracle passes):** {verified_correct / n:.1%}",
+        f"- **First-attempt success (verified-correct with no retry):** {first_attempt / n:.1%}",
         f"- **False-green rate (PR opened but oracle REJECTS the fix):** {false_green / n:.1%}",
         f"- **Escalation rate (pipeline gave up):** {escalated / n:.1%}",
         f"- **Routing exact-match:** {routing_correct / n:.1%}",
@@ -430,6 +443,7 @@ def _build_report(results: list[dict]) -> tuple[str, dict]:
         "n_runs": n,
         "n_reps": N_REPS,
         "verified_correct_rate": verified_correct / n,
+        "first_attempt_success_rate": first_attempt / n,
         "false_green_rate": false_green / n,
         "escalation_rate": escalated / n,
         "routing_exact_match": routing_correct / n,

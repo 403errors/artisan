@@ -3,6 +3,7 @@ either behaves (writes a file, then finishes) or misbehaves (always requests ano
 never calls live Gemini. The tool-call ceiling test is the key safety-net case: a stuck model must
 terminate at the cap instead of hanging past the job's own execution timeout."""
 
+import json
 import uuid
 from collections.abc import AsyncGenerator
 
@@ -370,6 +371,49 @@ async def test_no_sink_given_still_runs_normally(tmp_path) -> None:
     """sink defaults to None -> a NoOpEventSink internally — must not change behavior."""
     summary = await run_coding_agent(workdir=tmp_path, plan=_PLAN, model=_ScriptedLlm())
     assert summary == "wrote hello.txt"
+
+
+class _ScriptedLlmWithUsage(_ScriptedLlm):
+    """Same script, but every model call reports token usage like the real Gemini backend —
+    lets the L2a telemetry test assert loop-level accumulation without live calls."""
+
+    async def generate_content_async(
+        self, llm_request, stream: bool = False
+    ) -> AsyncGenerator[LlmResponse, None]:
+        async for response in super().generate_content_async(llm_request, stream):
+            response.usage_metadata = types.GenerateContentResponseUsageMetadata(
+                prompt_token_count=100, candidates_token_count=10, cached_content_token_count=60
+            )
+            yield response
+
+
+@pytest.mark.asyncio
+async def test_token_usage_is_accumulated_and_emitted_once_per_run(tmp_path) -> None:
+    """L2a: one agent_completed event carrying the summed usage over every model call in the
+    loop (the scripted run makes at least two: write_file, finish)."""
+    sink = _RecordingSink()
+
+    summary = await run_coding_agent(
+        workdir=tmp_path, plan=_PLAN, model=_ScriptedLlmWithUsage(), sink=sink
+    )
+
+    assert summary == "wrote hello.txt"
+    completed = [e for e in sink.events if e["type"] == "agent_completed"]
+    assert len(completed) == 1
+    usage = json.loads(completed[0]["detail"])["usage"]
+    assert usage["prompt_token_count"] >= 200  # 100 per model call, 2+ calls
+    assert usage["cached_content_token_count"] == usage["prompt_token_count"] * 60 // 100
+    assert "cached=" in completed[0]["summary"]
+
+
+@pytest.mark.asyncio
+async def test_no_usage_event_when_the_backend_reports_no_usage(tmp_path) -> None:
+    """Fake/absent usage metadata must stay silent — a zeroed event would be pure noise."""
+    sink = _RecordingSink()
+
+    await run_coding_agent(workdir=tmp_path, plan=_PLAN, model=_ScriptedLlm(), sink=sink)
+
+    assert [e for e in sink.events if e["type"] == "agent_completed"] == []
 
 
 def test_prompt_includes_wrapped_removed_code_section_when_present() -> None:

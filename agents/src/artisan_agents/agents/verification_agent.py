@@ -95,6 +95,16 @@ def _build_prompt(
     return prompt
 
 
+def _short_circuit_feedback(message: str, execution_result: ExecutionResult) -> str:
+    """Fail-closed verdict feedback. The ExecutionResult's failure_detail carries the failing
+    step's own output (failing test names, compiler errors) — embedding it is what makes the
+    NEXT attempt's PRIOR_FEEDBACK actionable (L1): a bare logs URI is a link the retry's agents
+    cannot open. Older producers without the field fall back to the logs link."""
+    if execution_result.failure_detail:
+        return f"{message}\n\nFailure output:\n{execution_result.failure_detail}"
+    return f"{message} Logs: {execution_result.logs_uri}"
+
+
 async def run_verification(
     *,
     plan: Plan,
@@ -109,9 +119,8 @@ async def run_verification(
         # compile never got as far as a meaningful test run.
         verdict = VerificationVerdict(
             green=False,
-            feedback=(
-                "The build/dependency setup failed on this attempt. "
-                f"Logs: {execution_result.logs_uri}"
+            feedback=_short_circuit_feedback(
+                "The build/dependency setup failed on this attempt.", execution_result
             ),
         )
         # This path never calls run_structured, so it needs its own agent_completed emit — a
@@ -128,7 +137,9 @@ async def run_verification(
         # spend a Gemini call asking it to second-guess a fact already known from the test run.
         verdict = VerificationVerdict(
             green=False,
-            feedback=f"The full test suite failed on this attempt. Logs: {execution_result.logs_uri}",
+            feedback=_short_circuit_feedback(
+                "The full test suite failed on this attempt.", execution_result
+            ),
         )
         # This path never calls run_structured, so it needs its own agent_completed emit — a
         # skipped-but-recorded verification, not an invisible gap in the trail.

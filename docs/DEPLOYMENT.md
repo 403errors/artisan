@@ -57,6 +57,7 @@ defaults:
 | `GOOGLE_CLOUD_LOCATION` | Vertex AI location — **must be `global`**, not a region; `gemini-3.8-flash` isn't served from regional endpoints like `us-central1` (see [CONTEXT.md](./CONTEXT.md) Milestone 3) | `global` |
 | `ARTISAN_CLOUD_RUN_REGION` | Region of the `execution-sandbox` Cloud Run Job the orchestrator triggers (Sprint 3, Gate 2) | `us-central1` |
 | `ARTISAN_EXECUTION_SANDBOX_JOB_NAME` | Name of that Cloud Run Job | `execution-sandbox` |
+| `ARTISAN_ROUTING_EARLY_EXIT` | Gate 2 routing: accept a clear first self-consistency sample (exactly one registry domain) without running the remaining samples — boundary shapes (fallback/multi-domain) still fan out to the full `ARTISAN_ROUTING_SELF_CONSISTENCY` vote | `1` (on) |
 
 Jira access is a direct REST API call (Basic Auth, email + `jira-api-token` from Secret Manager) —
 not routed through the `mcp-atlassian` service from Sprint 1, which was deleted after being

@@ -61,6 +61,11 @@ EXECUTION_SANDBOX_JOB_NAME = os.environ.get("ARTISAN_EXECUTION_SANDBOX_JOB_NAME"
 # `confidence` is uncalibrated — see agents/evals/REPORT.md). Routing is a small classification
 # prompt at temperature 0, so 3x cost is trivial next to planning; set 1 to disable.
 ROUTING_SELF_CONSISTENCY = int(os.environ.get("ARTISAN_ROUTING_SELF_CONSISTENCY", "3"))
+# Early exit (v2 cost lever L3): sample 1 landing on exactly one registry domain (no fallback
+# label, no multi-domain set) is accepted immediately — a clear temp-0 verdict is stable, and the
+# drift the N-sample vote exists for lives in boundary cases, which still fan out to the full
+# self_consistency samples. On by default; set 0 to always run the full vote.
+ROUTING_EARLY_EXIT = os.environ.get("ARTISAN_ROUTING_EARLY_EXIT", "1") == "1"
 # Gate 2 coding-agent tool-call cap override (v2 exec-env generalization). Unset: gate2.py tiers
 # the cap by repo size (<500 files -> 40, <5k -> 80, else 120 — bench evidence: real-scale repos
 # escalated at the demo-tuned 40, see agents/evals/bench/README.md). Set: the override wins for

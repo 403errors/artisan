@@ -522,6 +522,9 @@ async def test_install_failure_returns_failed_result_before_the_coding_agent(mon
     assert result.build_passed is False
     assert "dependency install failed" in result.diff_summary
     assert "ERESOLVE" in result.diff_summary
+    # L1: the failure excerpt also rides failure_detail into the next attempt's feedback.
+    assert "dependency install failed" in result.failure_detail
+    assert "ERESOLVE" in result.failure_detail
 
 
 @pytest.mark.asyncio
@@ -561,9 +564,46 @@ async def test_build_failure_short_circuits_tests_and_push_but_still_saves_the_c
     assert result.build_passed is False
     assert "build failed" in result.diff_summary
     assert "compile error" in result.diff_summary
+    assert "build failed" in result.failure_detail
+    assert "compile error" in result.failure_detail
     assert push_calls == []
     # The finally-save runs even on failure paths, so a retry gets a warm install.
     assert len(save_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_tests_carry_the_output_tail_in_failure_detail(monkeypatch) -> None:
+    """L1: a red test run's output tail — the failing test names — is what attempt 2's
+    PRIOR_FEEDBACK needs. It must land on the ExecutionResult, not just the job's logs."""
+    monkeypatch.setattr(main_module.git_ops, "clone", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.git_ops, "create_branch", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.repo_config, "resolve", lambda workdir: _config())
+    monkeypatch.setattr(
+        main_module.git_ops, "stage_all_and_diff_stat", lambda repo_dir: "1 file changed"
+    )
+    monkeypatch.setattr(main_module.git_ops, "has_staged_changes", lambda repo_dir: True)
+    monkeypatch.setattr(main_module.git_ops, "commit_all", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.git_ops, "push", lambda *a, **k: None)
+    monkeypatch.setattr(main_module.git_ops, "staged_diff", lambda *a, **k: "diff")
+    monkeypatch.setattr(main_module.git_ops, "staged_file_contents", lambda *a, **k: {})
+    monkeypatch.setattr(
+        main_module.check_runner,
+        "run_tests",
+        lambda *a, **k: (False, "ok ...\nFAILED tests/test_a.py::test_x - assert 1 == 2"),
+    )
+
+    async def fake_run_coding_agent(**kwargs):
+        return "did the thing"
+
+    monkeypatch.setattr(main_module, "run_coding_agent", fake_run_coding_agent)
+
+    result = await main_module.run_attempt(
+        repo="acme/demo", branch="artisan/x-1", plan=_PLAN, prior_feedback=None
+    )
+
+    assert result.tests_passed is False
+    assert "FAILED tests/test_a.py::test_x" in result.failure_detail
+    assert "npm test" in result.failure_detail
 
 
 @pytest.mark.asyncio

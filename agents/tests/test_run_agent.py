@@ -2,12 +2,15 @@
 (routing, domain-expert, planning, verification, conflict-classification, and Gate 1's intake
 agent since its Sprint 6 refactor) funnels through this one function."""
 
+import json
+
 import pytest
 from artisan_agents import event_context
 from artisan_agents.agents._run_agent import run_structured
 from artisan_agents.config import GEMINI_MODEL_ID
 from artisan_shared.event_log import NoOpEventSink
 from google.adk import Agent
+from google.genai import types
 from pydantic import BaseModel
 
 
@@ -59,3 +62,68 @@ async def test_run_structured_emits_invoked_then_completed_on_a_child_sink_named
     assert [e["type"] for e in child.events] == ["agent_invoked", "agent_completed"]
     assert "fake_agent" in child.events[0]["summary"]
     assert '"ok":true' in child.events[1]["detail"]
+
+
+@pytest.mark.asyncio
+async def test_run_structured_accumulates_token_usage_into_agent_completed(
+    fake_llm_cls,
+) -> None:
+    """L2a telemetry: usage_metadata from the event stream lands on the agent_completed event —
+    the result fields stay top-level (additive `usage` key), and the summary carries the
+    human-readable totals including the implicit-cache hit count."""
+    parent_sink = _RecordingSink()
+    event_context.set_sink(parent_sink)
+
+    agent = Agent(
+        model=GEMINI_MODEL_ID,
+        name="fake_agent",
+        instruction="x",
+        output_schema=_Verdict,
+        output_key="verdict",
+    )
+    agent.model = fake_llm_cls(
+        response_text='{"ok": true}',
+        usage=types.GenerateContentResponseUsageMetadata(
+            prompt_token_count=100, candidates_token_count=7, cached_content_token_count=40
+        ),
+    )
+
+    await run_structured(
+        agent=agent, app_name="test-app", output_key="verdict", output_model=_Verdict, prompt="go"
+    )
+
+    completed = parent_sink.children[0].events[1]
+    detail = json.loads(completed["detail"])
+    assert detail["ok"] is True  # result fields untouched
+    assert detail["usage"] == {
+        "prompt_token_count": 100,
+        "candidates_token_count": 7,
+        "cached_content_token_count": 40,
+        "thoughts_token_count": 0,
+    }
+    assert "prompt=100 (cached=40, 40%)" in completed["summary"]
+
+
+@pytest.mark.asyncio
+async def test_run_structured_reports_zeroed_usage_when_the_backend_sends_none(
+    fake_llm_cls,
+) -> None:
+    """Fake/absent usage metadata must not break the event — totals are simply zero."""
+    parent_sink = _RecordingSink()
+    event_context.set_sink(parent_sink)
+
+    agent = Agent(
+        model=GEMINI_MODEL_ID,
+        name="fake_agent",
+        instruction="x",
+        output_schema=_Verdict,
+        output_key="verdict",
+    )
+    agent.model = fake_llm_cls(response_text='{"ok": true}')
+
+    await run_structured(
+        agent=agent, app_name="test-app", output_key="verdict", output_model=_Verdict, prompt="go"
+    )
+
+    detail = json.loads(parent_sink.children[0].events[1]["detail"])
+    assert detail["usage"]["prompt_token_count"] == 0
